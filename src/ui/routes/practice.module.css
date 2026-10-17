@@ -965,3 +965,47 @@
   font-family: var(--font-mono);
   font-size: 0.74rem;
 }
+
+.focusList {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0.85rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.focusCard {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1.25rem;
+  padding: 0.95rem 1rem;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--warning);
+  border-radius: var(--radius-sm);
+  background: rgba(14, 21, 36, 0.55);
+}
+
+.focusMain {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.focusTitle {
+  color: var(--text);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.focusDetail {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.focusScore {
+  color: var(--warning);
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+}

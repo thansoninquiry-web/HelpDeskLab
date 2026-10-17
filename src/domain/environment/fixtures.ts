@@ -1,4 +1,15 @@
-import type { Device, DirectoryUser, DnsRecord, Printer, Site, World } from './types'
+import type {
+  Device,
+  DhcpScope,
+  DirectoryUser,
+  DnsRecord,
+  FileShare,
+  M365Account,
+  Printer,
+  SecurityGroup,
+  Site,
+  World,
+} from './types'
 
 export const BASE_CLOCK = Date.UTC(2026, 9, 16, 9, 0, 0)
 export const CLOCK_STEP_MS = 60_000
@@ -236,14 +247,13 @@ const devices: Device[] = [
     assignedUserId: 'u-amara',
     loggedInUserId: 'u-amara',
     linkUp: true,
-    ipMode: 'dhcp',
-    ipAddress: '10.20.8.41',
-    subnetMask: '255.255.255.0',
-    gateway: '10.20.8.1',
-    dnsServers: ['10.20.4.10', '10.20.4.11'],
-    dhcpLease: {
-      server: '10.20.4.12',
-      obtainedAt: BASE_CLOCK - 3 * 60 * 60 * 1000,
+    ipMode: 'dhcp',      ipAddress: '10.20.8.51',
+      subnetMask: '255.255.255.0',
+      gateway: '10.20.8.1',
+      dnsServers: ['10.20.4.10', '10.20.4.11'],
+      dhcpLease: {
+        server: '10.20.4.12',
+        obtainedAt: BASE_CLOCK - 3 * 60 * 60 * 1000,
       expiresAt: BASE_CLOCK + 21 * 60 * 60 * 1000,
     },
     spoolerStatus: 'running',
@@ -468,6 +478,109 @@ const printers: Printer[] = [
   },
 ]
 
+const dhcpScopes: DhcpScope[] = [
+  {
+    siteId: 'hq',
+    name: 'HQ-Users',
+    server: '10.20.4.12',
+    startAddress: '10.20.4.40',
+    endAddress: '10.20.4.199',
+    exclusions: ['10.20.4.41', '10.20.4.42'],
+    leaseMinutes: 480,
+    dnsServers: ['10.20.4.10', '10.20.4.11'],
+    router: '10.20.4.1',
+    leases: [
+      { address: '10.20.4.57', hostname: 'LT-4471', state: 'active', expiresAt: BASE_CLOCK + 18 * 60 * 60 * 1000 },
+      { address: '10.20.4.58', hostname: 'LT-4472', state: 'active', expiresAt: BASE_CLOCK + 22 * 60 * 60 * 1000 },
+      { address: '10.20.4.59', hostname: 'DT-2201', state: 'active', expiresAt: BASE_CLOCK + 20 * 60 * 60 * 1000 },
+    ],
+  },
+  {
+    siteId: 'depot',
+    name: 'Depot-Users',
+    server: '10.20.4.12',
+    startAddress: '10.20.8.40',
+    endAddress: '10.20.8.199',
+    exclusions: ['10.20.8.41', '10.20.8.42'],
+    leaseMinutes: 480,
+    dnsServers: ['10.20.4.10', '10.20.4.11'],
+    router: '10.20.8.1',
+    leases: [
+      { address: '10.20.8.51', hostname: 'LT-8812', state: 'active', expiresAt: BASE_CLOCK + 21 * 60 * 60 * 1000 },
+    ],
+  },
+  {
+    siteId: 'warehouse',
+    name: 'Warehouse-Users',
+    server: '10.20.4.12',
+    startAddress: '10.20.12.30',
+    endAddress: '10.20.12.199',
+    exclusions: [],
+    leaseMinutes: 480,
+    dnsServers: ['10.20.4.10', '10.20.4.11'],
+    router: '10.20.12.1',
+    leases: [
+      { address: '10.20.12.31', hostname: 'LT-9901', state: 'active', expiresAt: BASE_CLOCK + 19 * 60 * 60 * 1000 },
+      { address: '10.20.12.32', hostname: 'LT-WH-02', state: 'active', expiresAt: BASE_CLOCK + 9 * 60 * 60 * 1000 },
+    ],
+  },
+]
+
+const m365Accounts: M365Account[] = users.map((user, index) => ({
+  userId: user.id,
+  mfaRegistered: true,
+  mfaMethod: 'authenticator',
+  signInBlocked: false,
+  lastSignInError: null,
+  lastSignInAt: BASE_CLOCK - (index + 1) * 45 * 60 * 1000,
+  signInAttempts: 1,
+}))
+
+const groups: SecurityGroup[] = [
+  { name: 'FS-All-Users', members: users.map((user) => user.id) },
+  { name: 'FS-Finance-RW', members: ['u-dana', 'u-linh', 'u-ravi'] },
+  { name: 'FS-Finance-RO', members: ['u-theo', 'u-kira'] },
+  { name: 'FS-Ops-RW', members: ['u-marcus', 'u-theo', 'u-ravi'] },
+  { name: 'FS-Dispatch-RW', members: ['u-kira', 'u-jules', 'u-amara'] },
+]
+
+const shares: FileShare[] = [
+  {
+    id: 'share-finance',
+    name: 'Finance',
+    path: String.raw`\\SRV-FS01\Finance`,
+    server: 'SRV-FS01',
+    siteId: 'hq',
+    grants: [
+      { principal: { kind: 'group', name: 'FS-Finance-RW' }, access: 'change', allow: true },
+      { principal: { kind: 'group', name: 'FS-Finance-RO' }, access: 'read', allow: true },
+      { principal: { kind: 'group', name: 'FS-All-Users' }, access: 'read', allow: true },
+    ],
+  },
+  {
+    id: 'share-operations',
+    name: 'Operations',
+    path: String.raw`\\SRV-FS01\Operations`,
+    server: 'SRV-FS01',
+    siteId: 'hq',
+    grants: [
+      { principal: { kind: 'group', name: 'FS-Ops-RW' }, access: 'change', allow: true },
+      { principal: { kind: 'group', name: 'FS-All-Users' }, access: 'read', allow: true },
+    ],
+  },
+  {
+    id: 'share-dispatch',
+    name: 'Dispatch',
+    path: String.raw`\\SRV-FS01\Dispatch`,
+    server: 'SRV-FS01',
+    siteId: 'hq',
+    grants: [
+      { principal: { kind: 'group', name: 'FS-Dispatch-RW' }, access: 'change', allow: true },
+      { principal: { kind: 'group', name: 'FS-All-Users' }, access: 'read', allow: true },
+    ],
+  },
+]
+
 function buildDnsRecords(domain: string, deviceList: readonly Device[]): DnsRecord[] {
   const records: DnsRecord[] = [
     { name: `intranet.${domain}`, address: '10.20.4.20' },
@@ -509,7 +622,42 @@ export function createLarkspurWorld(clock: number = BASE_CLOCK): World {
       publicNameServers: ['1.1.1.1', '9.9.9.9'],
       dnsRecords: buildDnsRecords(DOMAIN, devices),
     },
+    dhcpScopes: structuredClone(dhcpScopes),
+    m365: {
+      name: 'Larkspur Logistics',
+      domain: DOMAIN,
+      accounts: structuredClone(m365Accounts),
+    },
+    shares: structuredClone(shares),
+    groups: structuredClone(groups),
     currentDeviceId: 'lt-4471',
+  }
+  return world
+}
+
+/**
+ * Sessions saved before M6 carry worlds without the DHCP, M365, and share
+ * state. Backfill it so an interrupted attempt can still be resumed instead of
+ * crashing on the first command that reads the new collections.
+ */
+export function ensureWorldState(world: World): World {
+  const legacy = world as unknown as {
+    dhcpScopes?: DhcpScope[]
+    m365?: World['m365']
+    shares?: FileShare[]
+    groups?: SecurityGroup[]
+  }
+
+  if (!Array.isArray(legacy.dhcpScopes) || !legacy.m365) {
+    const template = createLarkspurWorld(world.clock)
+    legacy.dhcpScopes = template.dhcpScopes
+    legacy.m365 = template.m365
+  }
+  if (!Array.isArray(legacy.shares)) {
+    legacy.shares = []
+  }
+  if (!Array.isArray(legacy.groups)) {
+    legacy.groups = []
   }
   return world
 }

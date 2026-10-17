@@ -81,6 +81,27 @@ describe('app shell', () => {
     expect(screen.getByRole('button', { name: 'Open ticket' })).toBeInTheDocument()
   })
 
+  it('filters the queue to the family passed from a weak-topic link', async () => {
+    await mockQueue([
+      queueTicket,
+      {
+        ...queueTicket,
+        id: 'ticket-m365',
+        scenarioId: 'M365-01',
+        scenarioTitle: 'Microsoft 365 sign-in',
+        variantId: 'smart-lockout',
+        category: 'identity',
+        subject: 'Dana cannot sign in to Microsoft 365',
+      },
+    ])
+    renderAt('/practice?family=M365-01')
+
+    expect(await screen.findByText('Dana cannot sign in to Microsoft 365')).toBeInTheDocument()
+    expect(screen.queryByText('Dana cannot reach the file server')).not.toBeInTheDocument()
+    expect(screen.getByText(/Focused on Microsoft 365/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Generate three of this family' })).toBeInTheDocument()
+  })
+
   it('renders the not-found page for unknown routes', () => {
     renderAt('/does-not-exist')
 

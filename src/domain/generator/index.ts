@@ -1,9 +1,14 @@
+import { findScope } from '../environment/dhcp'
 import { BASE_CLOCK, createLarkspurWorld } from '../environment/fixtures'
+import { teamShare } from '../environment/shares'
 import type { Device, Printer, Site, World } from '../environment/types'
 import type { JsonObject } from '../shared/json'
 import { hashSeed, createRng } from '../shared/rng'
 import type { Rng } from '../shared/rng'
+import { dhcpFamily } from './families/dhcp'
+import { fileShareFamily } from './families/shares'
 import { identityFamily } from './families/identity'
+import { m365Family } from './families/m365'
 import { networkFamily } from './families/network'
 import { printerFamily } from './families/printer'
 import type {
@@ -22,6 +27,9 @@ export type { ClosureCode } from './rubric'
 export const SCENARIO_FAMILIES: readonly ScenarioFamily[] = [
   identityFamily,
   networkFamily,
+  dhcpFamily,
+  m365Family,
+  fileShareFamily,
   printerFamily,
 ]
 
@@ -56,6 +64,21 @@ function candidatesFor(family: ScenarioFamily, world: World): Candidate[] {
         continue
       }
     }
+    // The M6 families only make sense on a live, DHCP-addressed, enabled account.
+    if (family.id === 'DHCP-01' || family.id === 'M365-01' || family.id === 'FS-01') {
+      if (family.id === 'DHCP-01' && device.ipMode !== 'dhcp') {
+        continue
+      }
+      if (user.status === 'disabled') {
+        continue
+      }
+      if (family.id === 'FS-01' && !teamShare(world, user)) {
+        continue
+      }
+      if (family.id === 'M365-01' && !world.m365.accounts.some((entry) => entry.userId === user.id)) {
+        continue
+      }
+    }
     candidates.push({ user, device, site })
   }
 
@@ -83,6 +106,8 @@ function slotValues(
   printer: Printer | undefined,
 ): Record<string, string> {
   const [firstName, ...rest] = context.user.displayName.split(' ')
+  const team = teamShare(context.world, context.user)
+  const scope = findScope(context.world, context.site.id)
   return {
     firstName: firstName ?? context.user.displayName,
     lastName: rest.join(' '),
@@ -95,6 +120,12 @@ function slotValues(
     printerName: printer?.name ?? 'the shared printer',
     os: context.device.os,
     domain: context.domain,
+    siteId: context.site.id,
+    scopeName: scope?.name ?? 'the site scope',
+    shareName: team?.share.name ?? 'Finance',
+    sharePath: team?.share.path ?? String.raw`\\SRV-FS01\Finance`,
+    groupName: team?.group.name ?? 'FS-All-Users',
+    tenantName: context.world.m365.name,
   }
 }
 

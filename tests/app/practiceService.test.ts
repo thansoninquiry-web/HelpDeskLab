@@ -19,6 +19,8 @@ vi.mock('../../src/app/persistenceService', () => ({
 
 import {
   addNote,
+  computeWeakTopics,
+  createTickets,
   findActiveSessionId,
   loadDebrief,
   loadProgress,
@@ -140,6 +142,116 @@ describe('practice service', () => {
     expect(progress.rows[0]?.scenarioTitle).toBe('Password and account access')
   })
 
+  it('creates generated tickets for a specific family', async () => {
+    const created = await createTickets(2, undefined, 'M365-01')
+
+    expect(created).toHaveLength(2)
+    expect(created.every((ticket) => ticket.scenarioId === 'M365-01')).toBe(true)
+    expect(created.every((ticket) => ticket.scenarioTitle === 'Microsoft 365 sign-in')).toBe(true)
+  })
+
+  it('scores a full escalation with a handoff note', async () => {
+    const generated = generatedFor('DHCP-01', 'scope-wrong-dns')
+    await insertTicket(persistence, generated, 'ticket-dhcp')
+
+    await startAttempt('ticket-dhcp')
+    for (const step of generated.reference) {
+      if (step.type === 'command') {
+        await submitCommand(step.input)
+      } else if (step.type === 'note' && step.noteKind !== 'resolution') {
+        await addNote(step.noteKind, step.text)
+      }
+    }
+
+    const handoff = generated.reference.find(
+      (step) => step.type === 'note' && step.noteKind === 'resolution',
+    )
+    const debrief = await resolveAttempt({
+      code: 'escalated-tier2',
+      note: handoff?.type === 'note' ? handoff.text : '',
+    })
+
+    expect(debrief.passed).toBe(true)
+    expect(debrief.total).toBe(100)
+    expect(debrief.decision.outcome).toBe('escalated')
+    expect(debrief.items.find((item) => item.id === 'escalation-note')?.passed).toBe(true)
+  })
+
+  it('ranks the lowest-scoring families and names the weakest category', () => {
+    const history = [
+      {
+        scenarioId: 'NET-01',
+        variantId: 'bad-static-dns',
+        total: 70,
+        passed: false,
+        computedAt: 1,
+        categoryScores: {
+          diagnosis: { earned: 10, possible: 20 },
+          documentation: { earned: 10, possible: 20 },
+          resolution: { earned: 30, possible: 40 },
+          safety: { earned: 0, possible: 0 },
+        },
+      },
+      {
+        scenarioId: 'NET-01',
+        variantId: 'stale-dhcp-lease',
+        total: 80,
+        passed: true,
+        computedAt: 2,
+        categoryScores: {
+          diagnosis: { earned: 10, possible: 20 },
+          documentation: { earned: 10, possible: 20 },
+          resolution: { earned: 30, possible: 40 },
+          safety: { earned: 0, possible: 0 },
+        },
+      },
+      {
+        scenarioId: 'FS-01',
+        variantId: 'explicit-deny',
+        total: 60,
+        passed: false,
+        computedAt: 3,
+        categoryScores: {
+          diagnosis: { earned: 15, possible: 20 },
+          documentation: { earned: 0, possible: 20 },
+          resolution: { earned: 30, possible: 40 },
+          safety: { earned: 0, possible: 10 },
+        },
+      },
+      {
+        scenarioId: 'PRN-01',
+        variantId: 'spooler-stopped',
+        total: 95,
+        passed: true,
+        computedAt: 4,
+        categoryScores: null,
+      },
+    ]
+
+    const topics = computeWeakTopics(history)
+
+    expect(topics.map((topic) => topic.scenarioId)).toEqual(['FS-01', 'NET-01'])
+    expect(topics[0]?.averageScore).toBe(60)
+    expect(topics[0]?.weakestCategory?.category).toBe('documentation')
+    expect(topics[0]?.recommendation).toMatch(/notes and handoff/i)
+    expect(topics[1]?.averageScore).toBe(75)
+  })
+
+  it('has no weak topics when every family averages 90 or better', () => {
+    const topics = computeWeakTopics([
+      {
+        scenarioId: 'NET-01',
+        variantId: 'bad-static-dns',
+        total: 95,
+        passed: true,
+        computedAt: 1,
+        categoryScores: null,
+      },
+    ])
+
+    expect(topics).toEqual([])
+  })
+
   it('resumes an open session with its recorded action log', async () => {
     const generated = generatedFor('NET-01', 'bad-static-dns')
     await insertTicket(persistence, generated, 'ticket-network')
@@ -174,5 +286,9 @@ describe('practice service', () => {
     expect(stats?.attempts).toBe(1)
     expect(stats?.passes).toBe(0)
     expect(stats?.leitnerBox).toBe(1)
+
+    const progress = await loadProgress()
+    expect(progress.weakTopics[0]?.scenarioId).toBe('PWD-01')
+    expect(progress.weakTopics[0]?.recommendation).toMatch(/PWD-01/)
   })
 })

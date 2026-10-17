@@ -1,3 +1,4 @@
+import { ensureWorldState } from '../domain/environment/fixtures'
 import { applyCommand } from '../domain/environment/reducer'
 import type { World } from '../domain/environment/types'
 import {
@@ -7,7 +8,7 @@ import {
   randomSeed,
 } from '../domain/generator'
 import type { GeneratedTicket, PublicTicket, ReferenceStep, Severity, TicketCategory } from '../domain/generator'
-import type { ScenarioStats } from '../domain/progress/types'
+import type { ScoreHistoryEntry, ScenarioStats } from '../domain/progress/types'
 import { evaluateSession } from '../domain/scoring/evaluator'
 import type {
   CategoryScore,
@@ -103,12 +104,29 @@ export interface ProgressRow {
   dueAt: number | null
 }
 
+export interface WeakTopic {
+  scenarioId: string
+  scenarioTitle: string
+  attempts: number
+  averageScore: number
+  passRate: number
+  weakestCategory: {
+    category: RubricCategory
+    label: string
+    earned: number
+    possible: number
+    percent: number
+  } | null
+  recommendation: string
+}
+
 export interface ProgressView {
   attempts: number
   passes: number
   bestScore: number
   averageBest: number
   rows: ProgressRow[]
+  weakTopics: WeakTopic[]
 }
 
 export type NoteKind = 'troubleshooting' | 'customer' | 'resolution'
@@ -143,7 +161,7 @@ function toJson(value: unknown): JsonObject {
 }
 
 function asWorld(value: JsonObject): World {
-  return value as unknown as World
+  return ensureWorldState(value as unknown as World)
 }
 
 function isRecord(value: unknown): value is Record<string, JsonValue> {
@@ -218,6 +236,7 @@ function sortQueue(tickets: TicketView[]): TicketView[] {
 export async function createTickets(
   count: number,
   existing?: readonly Ticket[],
+  familyId?: string,
 ): Promise<TicketView[]> {
   const db = await database()
   const known = existing ?? (await db.tickets.listRecent(QUEUE_SCAN))
@@ -226,7 +245,7 @@ export async function createTickets(
 
   for (let index = 0; index < count; index += 1) {
     const seed = randomSeed()
-    const generated = generateTicket(seed, { avoidSignatures })
+    const generated = generateTicket(seed, familyId ? { avoidSignatures, familyId } : { avoidSignatures })
     avoidSignatures.push(generated.signature)
 
     const ticket: Ticket = {
@@ -433,6 +452,80 @@ export function callerPrompts(): readonly CallerPrompt[] {
   return CALLER_PROMPTS
 }
 
+type CallerIntent = (typeof CALLER_PROMPTS)[number]['intent']
+
+/** Variant-specific replies override the category defaults below. */
+const VARIANT_ANSWERS: Record<string, Partial<Record<CallerIntent, string>>> = {
+  'account-lockout': {
+    'what-error': 'It says my account has been locked out and to contact an administrator.',
+  },
+  'expired-password': {
+    'what-error': 'It says my password has expired and the change password option just fails.',
+  },
+  'disabled-account': {
+    'what-error': 'It says my account is disabled and I should contact my administrator.',
+  },
+  'bad-static-dns': {
+    'what-error': 'The browser says the site cannot be reached. Some apps still work though.',
+    'when-start': 'Since I restarted my laptop about an hour ago.',
+    'what-changed':
+      'Nothing I did on purpose. Someone from IT set a fixed address on it last week.',
+  },
+  'stale-dhcp-lease': {
+    'what-error': 'It says no internet. There is a warning triangle on the network icon.',
+    'when-start': 'This morning, after the laptop sat in my bag all weekend.',
+  },
+  'scope-wrong-dns': {
+    'what-error': 'It says the site cannot be reached. Some apps still work though.',
+    'when-start': 'Since first thing this morning, and it is not just me.',
+    'what-changed':
+      'Nothing on my side. The laptop picks up its settings automatically when it starts.',
+    'other-users':
+      'Two people near me have the same problem, so it is not just my machine.',
+  },
+  'scope-exhausted': {
+    'what-error': 'It says no internet, with a warning on the network icon.',
+    'when-start': 'When I picked up the spare laptop this morning.',
+    'what-changed': 'Nothing. This laptop was in the pool over the weekend.',
+    'other-users': 'The loaner next to mine could not connect either.',
+  },
+  'mfa-method-lost': {
+    'what-error':
+      'It asks me to approve on my phone, but that phone is gone. Then it says no method is available.',
+    'when-start': 'Since I swapped phones on Saturday.',
+    'what-changed': 'I replaced my handset. Nothing else changed.',
+    'other-users': 'No, everyone else is signing in fine.',
+  },
+  'smart-lockout': {
+    'what-error':
+      'It says my account has been locked to protect me. It never showed an error about the password.',
+    'when-start': 'Last night, after I used the hotel Wi-Fi.',
+    'what-changed': 'I am travelling this week; that is the only difference.',
+    'other-users': 'No, my colleague on the same trip is fine.',
+  },
+  'missing-group-membership': {
+    'what-error': 'It lets me open the folder but every file is read-only when I try to save.',
+    'when-start': 'Since this morning. I could save last week.',
+    'what-changed': 'I moved teams last month, but nothing changed this week.',
+    'other-users': 'My colleague in the same team can still edit the files.',
+  },
+  'explicit-deny': {
+    'what-error': 'It says access is denied and will not open the folder at all.',
+    'when-start': 'Since yesterday. It worked last month.',
+    'what-changed': 'Nothing on my side. My manager says I am still in the team.',
+    'other-users': 'My colleagues can still open it.',
+  },
+  'spooler-stopped': {
+    'what-error': 'Nothing happens at all. The job disappears from the list after a while.',
+    'what-changed': 'Nothing. I have not installed anything or changed settings.',
+  },
+  'job-stuck-offline': {
+    'what-error':
+      'It says the printer is offline and one job has been stuck at printing since the morning.',
+    'what-changed': 'I cancelled a big invoice job this morning and it never disappeared.',
+  },
+}
+
 function callerAnswer(intent: string, ticket: TicketView): { question: string; answer: string } | null {
   const prompt = CALLER_PROMPTS.find((entry) => entry.intent === intent)
   if (!prompt) {
@@ -440,34 +533,9 @@ function callerAnswer(intent: string, ticket: TicketView): { question: string; a
   }
 
   const answers: Record<string, string> = {
-    'what-error':
-      ticket.variantId === 'account-lockout'
-        ? 'It says my account has been locked out and to contact an administrator.'
-        : ticket.variantId === 'expired-password'
-          ? 'It says my password has expired and the change password option just fails.'
-          : ticket.variantId === 'disabled-account'
-            ? 'It says my account is disabled and I should contact my administrator.'
-            : ticket.variantId === 'bad-static-dns'
-              ? 'The browser says the site cannot be reached. Some apps still work though.'
-              : ticket.variantId === 'stale-dhcp-lease'
-                ? 'It says no internet. There is a warning triangle on the network icon.'
-                : ticket.variantId === 'spooler-stopped'
-                  ? 'Nothing happens at all. The job disappears from the list after a while.'
-                  : 'It says the printer is offline and one job has been stuck at printing since the morning.',
-    'when-start':
-      ticket.variantId === 'stale-dhcp-lease'
-        ? 'This morning, after the laptop sat in my bag all weekend.'
-        : ticket.variantId === 'bad-static-dns'
-          ? 'Since I restarted my laptop about an hour ago.'
-          : 'This morning. It was all fine yesterday.',
-    'what-changed':
-      ticket.variantId === 'bad-static-dns'
-        ? 'Nothing I did on purpose. Someone from IT set a fixed address on it last week.'
-        : ticket.variantId === 'spooler-stopped'
-          ? 'Nothing. I have not installed anything or changed settings.'
-          : ticket.variantId === 'job-stuck-offline'
-            ? 'I cancelled a big invoice job this morning and it never disappeared.'
-            : 'Nothing that I know of. I have not changed my password or installed anything.',
+    'what-error': 'It is not showing a clear message, sorry.',
+    'when-start': 'This morning. It was all fine yesterday.',
+    'what-changed': 'Nothing that I know of. I have not changed anything.',
     'other-users':
       ticket.category === 'printer'
         ? 'My colleague cannot print to that printer either, so it is not just my laptop.'
@@ -482,7 +550,12 @@ function callerAnswer(intent: string, ticket: TicketView): { question: string; a
           : 'I tried signing in a few times and restarted the laptop.',
   }
 
-  return { question: prompt.label, answer: answers[intent] ?? 'I am not sure, sorry.' }
+  const variantAnswer = VARIANT_ANSWERS[ticket.variantId]?.[intent as CallerIntent]
+
+  return {
+    question: prompt.label,
+    answer: variantAnswer ?? answers[intent] ?? 'I am not sure, sorry.',
+  }
 }
 
 export async function askCaller(intent: string): Promise<WorkspaceView> {
@@ -750,9 +823,107 @@ export async function loadDebrief(sessionId: string): Promise<DebriefView | null
 
 /* -------------------------------------------------------------- progress */
 
+const CATEGORY_LABELS: Record<RubricCategory, string> = {
+  diagnosis: 'diagnosis and evidence',
+  documentation: 'notes and handoff',
+  resolution: 'the fix and closure decision',
+  safety: 'safety checks',
+}
+
+const WEAK_TOPIC_THRESHOLD = 90
+const MAX_WEAK_TOPICS = 2
+
+/**
+ * Families are ranked by average score, then by pass rate, so the suggestion is
+ * driven by what was actually scored rather than by how often it was tried.
+ */
+export function computeWeakTopics(history: readonly ScoreHistoryEntry[]): WeakTopic[] {
+  const byScenario = new Map<string, ScoreHistoryEntry[]>()
+  for (const entry of history) {
+    const existing = byScenario.get(entry.scenarioId)
+    if (existing) {
+      existing.push(entry)
+    } else {
+      byScenario.set(entry.scenarioId, [entry])
+    }
+  }
+
+  const topics: WeakTopic[] = []
+
+  for (const [scenarioId, entries] of byScenario) {
+    const attempts = entries.length
+    const averageScore = Math.round(
+      entries.reduce((total, entry) => total + entry.total, 0) / attempts,
+    )
+    const passRate = Math.round(
+      (entries.filter((entry) => entry.passed).length / attempts) * 100,
+    )
+
+    const totals: Record<RubricCategory, { earned: number; possible: number }> = {
+      diagnosis: { earned: 0, possible: 0 },
+      documentation: { earned: 0, possible: 0 },
+      resolution: { earned: 0, possible: 0 },
+      safety: { earned: 0, possible: 0 },
+    }
+
+    for (const entry of entries) {
+      if (!entry.categoryScores) {
+        continue
+      }
+      for (const category of Object.keys(totals) as RubricCategory[]) {
+        totals[category].earned += entry.categoryScores[category].earned
+        totals[category].possible += entry.categoryScores[category].possible
+      }
+    }
+
+    let weakestCategory: WeakTopic['weakestCategory'] = null
+    for (const category of Object.keys(totals) as RubricCategory[]) {
+      const score = totals[category]
+      if (score.possible === 0) {
+        continue
+      }
+      const percent = Math.round((score.earned / score.possible) * 100)
+      if (!weakestCategory || percent < weakestCategory.percent) {
+        weakestCategory = {
+          category,
+          label: CATEGORY_LABELS[category],
+          earned: score.earned,
+          possible: score.possible,
+          percent,
+        }
+      }
+    }
+
+    const recommendation =
+      weakestCategory && weakestCategory.percent < 100
+        ? `You lose the most marks on ${weakestCategory.label}. Practise a ${scenarioId} ticket and work on that before retrying.`
+        : `Your average is ${averageScore}. Retry a ${scenarioId} ticket to keep the pattern fresh.`
+
+    topics.push({
+      scenarioId,
+      scenarioTitle: titleFor(scenarioId),
+      attempts,
+      averageScore,
+      passRate,
+      weakestCategory,
+      recommendation,
+    })
+  }
+
+  return topics
+    .filter((topic) => topic.averageScore < WEAK_TOPIC_THRESHOLD)
+    .sort(
+      (left, right) =>
+        left.averageScore - right.averageScore ||
+        left.passRate - right.passRate ||
+        right.attempts - left.attempts,
+    )
+    .slice(0, MAX_WEAK_TOPICS)
+}
+
 export async function loadProgress(): Promise<ProgressView> {
   const db = await database()
-  const stats = await db.progress.list()
+  const [stats, history] = await Promise.all([db.progress.list(), db.scores.listHistory()])
   const rows: ProgressRow[] = stats.map((entry) => ({
     scenarioId: entry.scenarioId,
     scenarioTitle: titleFor(entry.scenarioId),
@@ -772,12 +943,22 @@ export async function loadProgress(): Promise<ProgressView> {
       ? 0
       : Math.round(rows.reduce((total, row) => total + row.bestScore, 0) / rows.length)
 
-  return { attempts, passes, bestScore, averageBest, rows }
+  return {
+    attempts,
+    passes,
+    bestScore,
+    averageBest,
+    rows,
+    weakTopics: computeWeakTopics(history),
+  }
 }
 
 const SCENARIO_TITLES: Record<string, string> = {
   'PWD-01': 'Password and account access',
   'NET-01': 'Network and name resolution',
+  'DHCP-01': 'DHCP scopes and addresses',
+  'M365-01': 'Microsoft 365 sign-in',
+  'FS-01': 'Shared drives and permissions',
   'PRN-01': 'Printing and the spooler',
 }
 

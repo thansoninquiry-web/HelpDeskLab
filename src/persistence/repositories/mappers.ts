@@ -1,5 +1,5 @@
 import { isJsonObject, type JsonObject, type JsonValue } from '../../domain/shared/json'
-import type { LeitnerBox, ScenarioStats } from '../../domain/progress/types'
+import type { LeitnerBox, ScenarioStats, ScoreHistoryEntry } from '../../domain/progress/types'
 import type { Score, ScoreBand } from '../../domain/scoring/types'
 import type {
   ActionKind,
@@ -149,6 +149,49 @@ export function mapScore(row: Row): Score {
     band: oneOf(expectText(row, 'band', 'scores'), ['fail', 'pass', 'strong'] as const, 'scores.band') satisfies ScoreBand,
     rubric: parseJsonObject(row.rubric_json ?? null, 'scores.rubric_json'),
     computedAt: expectInteger(row, 'computed_at', 'scores'),
+  }
+}
+
+const RUBRIC_CATEGORIES = ['diagnosis', 'documentation', 'resolution', 'safety'] as const
+
+function parseCategoryScores(
+  value: JsonValue | undefined,
+): ScoreHistoryEntry['categoryScores'] {
+  if (!isJsonObject(value)) {
+    return null
+  }
+
+  const scores: Partial<Record<(typeof RUBRIC_CATEGORIES)[number], { earned: number; possible: number }>> = {}
+  for (const category of RUBRIC_CATEGORIES) {
+    const entry = value[category]
+    if (!isJsonObject(entry)) {
+      return null
+    }
+    const earned = entry.earned
+    const possible = entry.possible
+    if (typeof earned !== 'number' || typeof possible !== 'number') {
+      return null
+    }
+    scores[category] = { earned, possible }
+  }
+
+  return {
+    diagnosis: scores.diagnosis ?? { earned: 0, possible: 0 },
+    documentation: scores.documentation ?? { earned: 0, possible: 0 },
+    resolution: scores.resolution ?? { earned: 0, possible: 0 },
+    safety: scores.safety ?? { earned: 0, possible: 0 },
+  }
+}
+
+export function mapScoreHistory(row: Row): ScoreHistoryEntry {
+  const rubric = parseJsonObject(row.rubric_json ?? null, 'scores.rubric_json')
+  return {
+    scenarioId: expectText(row, 'scenario_id', 'tickets'),
+    variantId: expectText(row, 'variant_id', 'tickets'),
+    total: expectInteger(row, 'total', 'scores'),
+    passed: expectBoolean(row, 'passed', 'scores'),
+    computedAt: expectInteger(row, 'computed_at', 'scores'),
+    categoryScores: parseCategoryScores(rubric.categoryScores),
   }
 }
 

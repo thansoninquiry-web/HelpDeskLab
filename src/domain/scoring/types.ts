@@ -23,12 +23,26 @@ export interface SessionDecision {
   note: string
 }
 
+export interface NoteCoveragePart {
+  id: string
+  /** Shown in the debrief, for example "what the next team should do". */
+  label: string
+  /** Any one of these case-insensitive fragments satisfies the part. */
+  any: readonly string[]
+}
+
 export type CheckSpec =
   | { kind: 'ran'; command: string; argsInclude?: string }
   | { kind: 'effect'; effect: EffectType; target?: string }
   | { kind: 'verify-caller' }
   | { kind: 'ask'; intent?: string }
   | { kind: 'note'; noteKind: 'troubleshooting' | 'customer' | 'resolution'; minLength?: number }
+  | {
+      kind: 'note-covers'
+      noteKind: 'troubleshooting' | 'customer' | 'resolution'
+      parts: readonly NoteCoveragePart[]
+      minLength?: number
+    }
   | { kind: 'ordered'; of: CheckSpec[] }
   | { kind: 'absent'; of: CheckSpec }
   | { kind: 'decision'; outcome: DecisionOutcome; codes?: string[] }

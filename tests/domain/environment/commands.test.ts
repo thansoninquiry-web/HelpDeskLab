@@ -252,3 +252,226 @@ describe('help, errors, and determinism', () => {
     expect(JSON.parse(JSON.stringify(first.world))).toEqual(first.world)
   })
 })
+
+describe('DHCP scope commands', () => {
+  function scopeFor(world: World, siteId: string) {
+    const scope = world.dhcpScopes.find((entry) => entry.siteId === siteId)
+    if (!scope) {
+      throw new Error(`no scope for ${siteId}`)
+    }
+    return scope
+  }
+
+  function fillScope(world: World, siteId: string) {
+    const scope = scopeFor(world, siteId)
+    const start = Number(scope.startAddress.split('.')[3])
+    const end = Number(scope.endAddress.split('.')[3])
+    const base = scope.startAddress.split('.').slice(0, 3).join('.')
+    const used = new Set(scope.leases.map((lease) => lease.address))
+
+    for (let octet = start; octet <= end; octet += 1) {
+      const address = `${base}.${octet}`
+      if (used.has(address) || scope.exclusions.includes(address)) {
+        continue
+      }
+      scope.leases.push({
+        address,
+        hostname: `LT-LOAN-${octet}`,
+        state: 'stale',
+        expiresAt: world.clock - 3_600_000,
+      })
+    }
+  }
+
+  it('reports scope options, capacity, and the lease table', () => {
+    const result = applyCommand(createLarkspurWorld(), 'get-dhcp-scope hq')
+
+    expect(result.ok).toBe(true)
+    expect(text(result)).toContain('Scope       : HQ-Users')
+    expect(text(result)).toContain('Range       : 10.20.4.40 - 10.20.4.199')
+    expect(text(result)).toContain('Option 006  : 10.20.4.10, 10.20.4.11')
+    expect(text(result)).toMatch(/available/)
+  })
+
+  it('removes a stale lease and refuses to remove an active one', () => {
+    const world = createLarkspurWorld()
+    scopeFor(world, 'hq').leases.push({
+      address: '10.20.4.150',
+      hostname: 'LT-LOAN-01',
+      state: 'stale',
+      expiresAt: world.clock - 3_600_000,
+    })
+
+    const removed = applyCommand(world, 'remove-dhcp-lease hq 10.20.4.150')
+
+    expect(removed.ok).toBe(true)
+    expect(removed.effects).toEqual([
+      {
+        type: 'dhcp_lease_removed',
+        target: 'hq/10.20.4.150',
+        details: { hostname: 'LT-LOAN-01', scope: 'HQ-Users' },
+      },
+    ])
+    expect(scopeFor(removed.world, 'hq').leases.some((lease) => lease.address === '10.20.4.150')).toBe(
+      false,
+    )
+
+    const active = applyCommand(world, 'remove-dhcp-lease hq 10.20.4.57')
+    expect(active.ok).toBe(false)
+    expect(text(active)).toMatch(/active lease/i)
+  })
+
+  it('fails a renewal instead of inventing an address when the scope is full', () => {
+    const world = createLarkspurWorld()
+    fillScope(world, 'hq')
+    const device = deviceIn(world, 'lt-4471')
+    device.ipAddress = '169.254.30.10'
+    device.gateway = null
+    device.dnsServers = []
+    device.dhcpLease = null
+
+    const result = applyCommand(world, 'ipconfig /renew')
+
+    expect(result.ok).toBe(false)
+    expect(text(result)).toMatch(/no free addresses/i)
+    expect(deviceIn(result.world, 'lt-4471').ipAddress).toBe('169.254.30.10')
+
+    const stale = scopeFor(result.world, 'hq').leases.find((lease) => lease.state === 'stale')
+    expect(stale).toBeDefined()
+
+    const freed = applyCommand(result.world, `remove-dhcp-lease hq ${stale?.address ?? ''}`)
+    expect(freed.ok).toBe(true)
+    const renewed = applyCommand(freed.world, 'ipconfig /renew')
+    expect(renewed.ok).toBe(true)
+    expect(renewed.effects[0]?.type).toBe('lease_renewed')
+  })
+
+  it('rejects unknown sites and addresses', () => {
+    const world = createLarkspurWorld()
+
+    expect(applyCommand(world, 'get-dhcp-scope atlantis').ok).toBe(false)
+    expect(applyCommand(world, 'remove-dhcp-lease hq 10.20.4.250').ok).toBe(false)
+    expect(applyCommand(world, 'get-dhcp-scope').ok).toBe(false)
+  })
+})
+
+describe('Microsoft 365 commands', () => {
+  it('shows the sign-in error, MFA state, and block state', () => {
+    const world = createLarkspurWorld()
+    const account = world.m365.accounts.find((entry) => entry.userId === 'u-dana')
+    if (!account) {
+      throw new Error('missing tenant account')
+    }
+    account.signInBlocked = true
+    account.lastSignInError = 'AADSTS50053'
+
+    const output = text(applyCommand(world, 'get-signin-log dwhitfield'))
+
+    expect(output).toContain('MFA registered  : True (authenticator)')
+    expect(output).toContain('Sign-in blocked : True')
+    expect(output).toContain('AADSTS50053')
+  })
+
+  it('unblocks sign-in and records the effect', () => {
+    const world = createLarkspurWorld()
+    const account = world.m365.accounts.find((entry) => entry.userId === 'u-dana')
+    if (!account) {
+      throw new Error('missing tenant account')
+    }
+    account.signInBlocked = true
+    account.lastSignInError = 'AADSTS50053'
+
+    const result = applyCommand(world, 'unblock-signin dwhitfield')
+
+    expect(result.ok).toBe(true)
+    expect(result.effects).toEqual([{ type: 'signin_unblocked', target: 'dwhitfield' }])
+    const updated = result.world.m365.accounts.find((entry) => entry.userId === 'u-dana')
+    expect(updated?.signInBlocked).toBe(false)
+    expect(updated?.lastSignInError).toBeNull()
+  })
+
+  it('clears registered MFA methods but not for disabled accounts', () => {
+    const world = createLarkspurWorld()
+    const reset = applyCommand(world, 'reset-mfa dwhitfield')
+
+    expect(reset.ok).toBe(true)
+    expect(reset.effects[0]).toMatchObject({ type: 'mfa_reset', target: 'dwhitfield' })
+    const account = reset.world.m365.accounts.find((entry) => entry.userId === 'u-dana')
+    expect(account?.mfaRegistered).toBe(false)
+    expect(account?.mfaMethod).toBe('none')
+
+    const disabled = applyCommand(world, 'reset-mfa jortiz')
+    expect(disabled.ok).toBe(false)
+    expect(text(disabled)).toMatch(/disabled/i)
+
+    const repeat = applyCommand(reset.world, 'reset-mfa dwhitfield')
+    expect(repeat.effects).toEqual([])
+    expect(text(repeat)).toMatch(/no mfa methods/i)
+  })
+})
+
+describe('file share commands', () => {
+  it('reports effective access and the group behind it', () => {
+    const output = text(applyCommand(createLarkspurWorld(), 'get-share-access Finance dwhitfield'))
+
+    expect(output).toContain('Effective   : Change')
+    expect(output).toContain('FS-Finance-RW')
+    expect(output).toContain('Entries')
+  })
+
+  it('shows read-only access when the read-write group is missing', () => {
+    const world = createLarkspurWorld()
+    const group = world.groups.find((entry) => entry.name === 'FS-Finance-RW')
+    if (!group) {
+      throw new Error('missing group')
+    }
+    group.members = group.members.filter((id) => id !== 'u-dana')
+
+    const output = text(applyCommand(world, 'get-share-access Finance dwhitfield'))
+    expect(output).toContain('Effective   : Read')
+    expect(output).toMatch(/Reason\s+: Allowed through LARKSPUR.FS-All-Users\./)
+
+    const added = applyCommand(world, 'add-group-member FS-Finance-RW dwhitfield')
+    expect(added.effects).toEqual([
+      { type: 'group_member_added', target: 'FS-Finance-RW/dwhitfield' },
+    ])
+    expect(text(applyCommand(added.world, 'get-share-access Finance dwhitfield'))).toContain(
+      'Effective   : Change',
+    )
+  })
+
+  it('reports and removes an explicit deny', () => {
+    const world = createLarkspurWorld()
+    const share = world.shares.find((entry) => entry.name === 'Finance')
+    if (!share) {
+      throw new Error('missing share')
+    }
+    share.grants.push({
+      principal: { kind: 'user', samAccountName: 'dwhitfield' },
+      access: 'read',
+      allow: false,
+    })
+
+    const denied = text(applyCommand(world, 'get-share-access Finance dwhitfield'))
+    expect(denied).toContain('Effective   : Denied')
+    expect(denied).toContain('Explicit Deny')
+
+    const removed = applyCommand(world, 'remove-share-deny Finance dwhitfield')
+    expect(removed.ok).toBe(true)
+    expect(removed.effects).toEqual([
+      { type: 'share_deny_removed', target: 'Finance/dwhitfield' },
+    ])
+    expect(text(applyCommand(removed.world, 'get-share-access Finance dwhitfield'))).toContain(
+      'Effective   : Change',
+    )
+  })
+
+  it('rejects unknown shares, groups, and users', () => {
+    const world = createLarkspurWorld()
+
+    expect(applyCommand(world, 'get-share-access Payroll').ok).toBe(false)
+    expect(applyCommand(world, 'add-group-member FS-Nope dwhitfield').ok).toBe(false)
+    expect(applyCommand(world, 'add-group-member FS-All-Users ghost').ok).toBe(false)
+    expect(applyCommand(world, 'remove-share-deny Finance ghost').ok).toBe(false)
+  })
+})

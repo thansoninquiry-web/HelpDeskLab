@@ -406,21 +406,22 @@ export function TicketWorkspacePage() {
             ))}
           </select>
           <label className={styles.fieldLabel} htmlFor="resolution-note">
-            Handoff note (optional)
+            Handoff note
           </label>
           <textarea
             id="resolution-note"
             className={styles.noteInput}
-            rows={2}
+            rows={3}
             value={resolutionNote}
             onChange={(event) => setResolutionNote(event.target.value)}
-            placeholder="What should the next person know?"
+            placeholder="What was reported, what you checked, and what the next team should do"
           />
           <button type="submit" className={styles.primaryButton} disabled={busy}>
             Resolve ticket
           </button>
           <p className={styles.mutedSmall}>
-            Resolving closes the session and scores your evidence, notes, and decision.
+            Required when you escalate: name the report, the evidence, and the next action. Resolving
+            closes the session and scores your evidence, notes, and decision.
           </p>
         </form>
 
@@ -451,6 +452,20 @@ export function TicketWorkspacePage() {
             <dd>Restart the local spooler</dd>
             <dt>clear-printqueue</dt>
             <dd>Remove stuck jobs</dd>
+            <dt>get-dhcp-scope &lt;site&gt;</dt>
+            <dd>Scope options and leases</dd>
+            <dt>remove-dhcp-lease &lt;site&gt; &lt;ip&gt;</dt>
+            <dd>Clear a stale lease</dd>
+            <dt>get-signin-log &lt;user&gt;</dt>
+            <dd>M365 sign-in and MFA state</dd>
+            <dt>reset-mfa &lt;user&gt;</dt>
+            <dd>Clear a lost MFA method</dd>
+            <dt>unblock-signin &lt;user&gt;</dt>
+            <dd>Clear a smart lockout</dd>
+            <dt>get-share-access &lt;share&gt;</dt>
+            <dd>Effective access on a share</dd>
+            <dt>add-group-member &lt;group&gt; &lt;user&gt;</dt>
+            <dd>Restore share access</dd>
           </dl>
         </div>
       </aside>

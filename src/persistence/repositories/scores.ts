@@ -1,8 +1,9 @@
 import type { ScoreRepository } from '../../domain/ports'
+import type { ScoreHistoryEntry } from '../../domain/progress/types'
 import type { Score } from '../../domain/scoring/types'
 import type { SessionId } from '../../domain/tickets/types'
 import type { RepositoryContext } from './context'
-import { mapScore } from './mappers'
+import { mapScore, mapScoreHistory } from './mappers'
 import { assertLimit, rethrowUniqueViolation } from './validation'
 
 const COLUMNS = 'session_id, total, passed, band, rubric_json, computed_at'
@@ -36,6 +37,25 @@ export class SqliteScoreRepository implements ScoreRepository {
       const row = db.exec(`SELECT ${COLUMNS} FROM scores WHERE session_id = ?`, [sessionId])[0]
       return row ? mapScore(row) : null
     })
+  }
+
+  listHistory(): Promise<ScoreHistoryEntry[]> {
+    return this.context.read((db) =>
+      db
+        .exec(
+          `SELECT t.scenario_id AS scenario_id,
+                  t.variant_id AS variant_id,
+                  s.total AS total,
+                  s.passed AS passed,
+                  s.computed_at AS computed_at,
+                  s.rubric_json AS rubric_json
+           FROM scores s
+           JOIN sessions se ON se.id = s.session_id
+           JOIN tickets t ON t.id = se.ticket_id
+           ORDER BY s.computed_at ASC, s.session_id ASC`,
+        )
+        .map(mapScoreHistory),
+    )
   }
 
   async listRecent(limit: number): Promise<Score[]> {

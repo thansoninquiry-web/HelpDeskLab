@@ -140,12 +140,25 @@ describe('ticket generator', () => {
       for (let seed = 1; seed <= 18; seed += 1) {
         const ticket = generateTicket(seed, { familyId: family.id })
         const world = structuredClone(ticket.world)
+        const toolPrefixes: Record<string, string> = {
+          'DHCP-01': 'get-dhcp-scope',
+          'M365-01': 'get-signin-log',
+          'FS-01': 'get-share-access',
+        }
+        const prefix = toolPrefixes[family.id]
+        const toolStep = prefix
+          ? ticket.reference.find(
+              (step) => step.type === 'command' && step.input.startsWith(prefix),
+            )
+          : undefined
+        const familyCommand = toolStep?.type === 'command' ? toolStep.input : null
         const command =
-          family.category === 'identity'
+          familyCommand ??
+          (family.category === 'identity'
             ? `get-account ${ticket.public.requester.samAccountName}`
             : family.category === 'network'
               ? 'ipconfig /all'
-              : 'get-printers'
+              : 'get-printers')
         const result = applyCommand(world, command)
         const output = result.lines.map((line) => line.text).join('\n')
 
@@ -164,6 +177,18 @@ describe('ticket generator', () => {
           expect(output).toContain('passwordExpired : True')
         } else if (ticket.variantId === 'disabled-account') {
           expect(output).toContain('disabled')
+        } else if (ticket.variantId === 'scope-wrong-dns') {
+          expect(output).toContain('10.20.4.99')
+        } else if (ticket.variantId === 'scope-exhausted') {
+          expect(output).toContain('no free addresses')
+        } else if (ticket.variantId === 'mfa-method-lost') {
+          expect(output).toContain('AADSTS50076')
+        } else if (ticket.variantId === 'smart-lockout') {
+          expect(output).toContain('AADSTS50053')
+        } else if (ticket.variantId === 'missing-group-membership') {
+          expect(output).toContain('Effective   : Read')
+        } else if (ticket.variantId === 'explicit-deny') {
+          expect(output).toContain('Effective   : Denied')
         }
       }
     }

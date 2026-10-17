@@ -93,6 +93,67 @@ export const note = (
 
 export const verifyCaller = (): CheckSpec => ({ kind: 'verify-caller' })
 
+/**
+ * The handoff note is scored on its content, not its length: the next person
+ * needs the report, the evidence, and the next action, in any words.
+ */
+export const handoffNote = (): CheckSpec => ({
+  kind: 'note-covers',
+  noteKind: 'resolution',
+  minLength: 40,
+  parts: [
+    {
+      id: 'reported',
+      label: 'what the user reported',
+      any: ['report', 'said', 'says', 'states', 'complains', 'denied access', 'cannot', "can't", 'unable to', 'error'],
+    },
+    {
+      id: 'checked',
+      label: 'what you checked',
+      any: [
+        'checked',
+        'checking',
+        'confirmed',
+        'verified',
+        'reviewed',
+        'tested',
+        'ran ',
+        'looked',
+        'inspected',
+        'ipconfig',
+        'nslookup',
+        'get-account',
+        'get-signin-log',
+        'get-share-access',
+        'get-dhcp-scope',
+        'scope',
+        'sign-in log',
+        'share access',
+      ],
+    },
+    {
+      id: 'next',
+      label: 'what the next team should do',
+      any: [
+        'next',
+        'tier 2',
+        'tier2',
+        'escalat',
+        'network team',
+        'identity team',
+        'data owner',
+        'owner',
+        'follow up',
+        'follow-up',
+        'should',
+        'needs to',
+        'will need',
+        'handoff',
+      ],
+    },
+  ],
+})
+
 export const ask = (intent?: string): CheckSpec => ({ kind: 'ask', intent })
 
 export const decision = (outcome: DecisionOutcome, codes?: readonly string[]): CheckSpec => ({

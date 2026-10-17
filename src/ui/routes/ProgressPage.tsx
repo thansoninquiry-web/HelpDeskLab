@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router'
 import { loadProgress, type ProgressView } from '../../app/practiceService'
 import { PageHeader } from '../components/PageHeader'
 import styles from './practice.module.css'
@@ -69,6 +70,40 @@ export function ProgressPage() {
           <strong>{progress.averageBest}</strong>
         </div>
       </div>
+
+      <section className={styles.sectionBlock} aria-label="Focus next">
+        <h2>Focus next</h2>
+        {progress.weakTopics.length === 0 ? (
+          <p className={styles.muted}>
+            No weak spots yet. Once a family averages below 90, it appears here with the category
+            that costs you the most marks.
+          </p>
+        ) : (
+          <ul className={styles.focusList}>
+            {progress.weakTopics.map((topic) => (
+              <li key={topic.scenarioId} className={styles.focusCard}>
+                <div className={styles.focusMain}>
+                  <span className={styles.focusTitle}>{topic.scenarioTitle}</span>
+                  <span className={styles.focusDetail}>
+                    {topic.attempts} attempt{topic.attempts === 1 ? '' : 's'} · average{' '}
+                    <span className={styles.focusScore}>{topic.averageScore}</span> · {topic.passRate}% passed
+                    {topic.weakestCategory
+                      ? ` · weakest: ${topic.weakestCategory.label} (${topic.weakestCategory.earned}/${topic.weakestCategory.possible})`
+                      : ''}
+                  </span>
+                  <span className={styles.focusDetail}>{topic.recommendation}</span>
+                </div>
+                <Link
+                  className={styles.secondaryButton}
+                  to={`/practice?family=${encodeURIComponent(topic.scenarioId)}`}
+                >
+                  Practise {topic.scenarioId}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <section className={styles.sectionBlock} aria-label="Scenario mastery">
         <h2>By scenario</h2>

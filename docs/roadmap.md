@@ -1,6 +1,6 @@
 # HelpDeskLab — Roadmap
 
-**Status:** M0–M4 built · M5+ plan proposed, awaiting approval
+**Status:** M0–M4 and M6 built · M5 still open · M7+ plan proposed, awaiting approval
 **Last updated:** 2026-10-17
 **Companion:** [architecture.md](architecture.md)
 
@@ -42,9 +42,13 @@ timers, authoring) — never both at once.
   effects, ordering, notes, and the closure decision, with critical safety gates;
   attempts, action logs, scores, and per-scenario progress persisted in SQLite;
   and a debrief that explains every item plus a clean reference path.
+- **M6 — scenario depth, handoff notes, weak topics: done.** Three more families
+  (DHCP-01, M365-01, FS-01) with the tools they need, a scored escalation handoff
+  note, and weak-topic recommendations on Progress. This pulls forward M365 and
+  DHCP depth from Release 2 and moves R1 sign-off to M7.
 - **Next — M5:** close Release 1 — fairness lint, three fixtures per variant,
-  keyboard/resume audit, and streak plus Leitner surfacing. M6 signs the release
-  off; M7–M10 then evaluate the reference product's lesson, progression, call,
+  keyboard/resume audit, and streak plus Leitner surfacing. M7 then signs the
+  release off; M8–M11 evaluate the reference product's lesson, progression, call,
   and interview ideas in that order (see §9).
 
 The Release 1 checklist and acceptance criteria below are still outstanding; the
@@ -52,12 +56,14 @@ items above cover the build milestones but not yet the fairness-lint acceptance
 tests (500 tickets per variant, unsafe/lucky fixtures per scenario).
 
 A family is "done" only when it has a reference script, fairness lint coverage,
-three scoring fixtures, and a debrief that explains every deduction.
+three scoring fixtures, and a debrief that explains every deduction. M6 added
+the reference scripts and rubric coverage for three new families; their fairness
+lint and fixtures land with M5.
 
 ## 2. Release 1 — "First Shift"
 
-**Theme:** a learner can practise the three most common Tier 1 tickets
-indefinitely, and their history survives restarts.
+**Theme:** a learner can practise the most common Tier 1 tickets indefinitely,
+and their history survives restarts.
 
 ### In scope
 
@@ -66,44 +72,52 @@ indefinitely, and their history survives restarts.
 | **PWD-01** Password reset | account lockout · expired password | Verify the caller, distinguish lockout from expiry, reset safely, set expectations for next sign-in |
 | **NET-01** No internet | bad static DNS · stale DHCP lease | Read `ipconfig /all`, separate link/DNS/DHCP faults, apply the correct fix, avoid shotgun changes |
 | **PRN-01** Printer problems | spooler stopped · job stuck offline | Check printer vs queue vs default device, restart/clear in the correct order |
+| **DHCP-01** DHCP scopes and addresses | scope hands out a dead DNS server · scope exhausted | Read scope options and leases, tell a scope-wide fault from a device fault, clear only stale leases, know when the network team owns the fix |
+| **M365-01** Microsoft 365 sign-in | MFA method lost · smart lockout | Read a sign-in log and its AADSTS code, separate an MFA problem from a block, verify the caller before an MFA reset |
+| **FS-01** Shared drives and permissions | missing group membership · explicit deny | Distinguish denied from read-only, read effective access and its entries, restore a group membership, recognise a data-owner hold |
 
 Variation comes from **context** (fictional site, requester, hostname, OS build,
-subnet, printer model), **phrasing**, and **distractors**, not just the two
-variants. Two variants across three families with context permutation yields
-hundreds of distinct, non-repeating tickets.
+subnet, printer model, share, tenant state), **phrasing**, and **distractors**,
+not just the two variants. Two variants across six families with context
+permutation yields hundreds of distinct, non-repeating tickets.
 
-M365 sign-in is deliberately deferred to Release 2 instead of being squeezed
-into R1. The tenant model, sign-in error codes, and credential actions are
-already sketched in [architecture.md §11](architecture.md#11-forward-design-not-release-1),
-so deferral does not create rework; it keeps the first release to one weeknight's
-worth of content and a playable loop.
+M365 sign-in and DHCP operations were planned for Release 2; M6 pulled one
+variant of each forward because the identity and network faults were already
+visible in the world model. They are part of R1 now, which is why the release
+has six families and twelve variants. [architecture.md §11](architecture.md#11-forward-design-not-release-1)
+tracks what is still deferred (tenant administration, DHCP server changes,
+conditional access).
 
 **Fictional org:** Larkspur Logistics — three sites, ~40 employees, two DNS
-servers, one M365 tenant placeholder (not used until R2).
+servers, one M365 tenant, and three department file shares.
 
 ### Feature checklist
 
 - [ ] Seeded procedural generator with duplicate avoidance and replay by seed
 - [ ] Simulated environment: directory, devices, network, printers, caller
       dialogue, simulated clock
-- [ ] Terminal with ~15 commands plus quick actions, history, tab completion
+- [ ] Terminal with the network, identity, M365, share, and printer tools plus
+      history and quick actions
 - [ ] Caller chat with quick-reply intents and `verify-caller`
-- [ ] Debrief: per-item feedback, action timeline, expert path, closure message
+- [ ] Debrief: per-item feedback including the escalation handoff note, action
+      timeline, expert path, closure message
 - [ ] Scoring: resolution, diagnosis, safety gate (password reset), professionalism
 - [ ] SQLite persistence: tickets, sessions, actions, scores, stats, settings
 - [ ] Minimal service worker precaching the app shell and SQLite WASM, so the
       app opens offline after the first visit
 - [ ] Resume after reload; abandoned sessions handled cleanly
-- [ ] Progress: attempts/passes/best per family, XP, streak, Leitner due list
+- [ ] Progress: attempts/passes/best per family, XP, streak, Leitner due list,
+      and weak-topic recommendations with a filtered practice link
 - [ ] Export/import `.sqlite`, pre-migration backup, manual reset
 - [ ] First-run notice, settings, keyboard-only path, reduced motion
 - [ ] Domain/repository/UI tests, content fairness lint, build and typecheck
 
 ### Explicitly out of scope for R1
 
-M365 sign-in, DHCP server administration, multi-fault tickets, SLA countdowns,
-hints, adaptive difficulty, custom content packs, mobile layout, accounts/cloud
-sync, native installer, telemetry, any runtime network call.
+M365 tenant administration, DHCP server changes (scope options, relay, server
+console), multi-fault tickets, SLA countdowns, hints, adaptive difficulty, custom
+content packs, mobile layout, accounts/cloud sync, native installer, telemetry,
+any runtime network call.
 
 ### Acceptance criteria
 
@@ -112,12 +126,14 @@ R1 is shippable when all of these are demonstrated, not merely built:
 1. `npm install && npm run dev` starts the app; a production build (`vite
    preview`) works with the network disabled after one load, and data survives a
    full browser restart.
-2. The fairness lint generates 500 tickets per variant (3,000 total) with zero
+2. The fairness lint generates 500 tickets per variant (6,000 total) with zero
    schema failures, zero unsolvable tickets, and no duplicate signatures inside
    the recent window.
-3. For each of the six variants: reference script scores 100 and passes; an
+3. For each of the twelve variants: reference script scores 100 and passes; an
    unsafe or unverified script fails the safety gate; a "lucky end state, no
    evidence" script scores below 75. All three fixtures live in the repo.
+   Escalation variants must also fail the handoff item when the note omits the
+   report, the evidence, or the next action.
 4. The password flow demonstrably blocks a pass when identity verification is
    skipped, and the debrief explains what could have happened.
 5. A learner can start, diagnose, fix, resolve, and debrief a ticket using only
@@ -146,18 +162,19 @@ focused solo work**. No dates are committed.
 | M2 | Environment core: world model, command parser/registry, network + identity probes/actions, simulated clock | L | Reducer unit tests; wrong-tool outputs are realistic |
 | M3 | Generator and workspace across PWD-01, NET-01, and PRN-01: seeded tickets, queue, terminal, caller questions, verification, notes, resolve/escalate | L | Any generated ticket playable from queue to debrief · **done** |
 | M4 | Scoring and debrief: declarative specs over the action log and end state, safety gates, SQLite persistence, explained debrief | M | Reference/unsafe/lucky fixtures behave as specified · **done** |
-| M5 | Close Release 1: fairness lint, three fixtures per variant, keyboard/resume audit, streak and Leitner surfacing | M | R1 criteria 2–6 and 11 demonstrated |
-| M6 | R1 sign-off: recovery UI polish, a11y and performance pass, docs, manual E2E script | S | All acceptance criteria recorded |
+| M5 | Close Release 1: fairness lint over twelve variants, three fixtures per variant, keyboard/resume audit, streak and Leitner surfacing | M | R1 criteria 2–6 and 11 demonstrated |
+| M6 | Scenario depth, handoff notes, weak topics: DHCP-01, M365-01, FS-01 with their tools; a scored escalation handoff; weak-topic recommendations on Progress | L | Twelve variants score 100 on the reference path; escalation notes are scored by content; Progress names the weakest family |
+| M7 | R1 sign-off: recovery UI polish, a11y and performance pass, docs, manual E2E script | S | All acceptance criteria recorded |
 
-The plan is a vertical slice, not waterfall: M2–M4 are developed against NET-01
-so the loop is playable early; content for PWD/PRN follows once the mechanics are
-proven.
+The plan is a vertical slice, not waterfall: M2–M4 were developed against NET-01
+so the loop was playable early; M6 then widened the catalog once the mechanics
+were proven, and M5/M7 close the release around it.
 
 ### R1 risks
 
 | Risk | Mitigation |
 |------|-----------|
-| Three families still balloon into a large command surface | Cap tools per family; add a probe only when a rubric item needs it |
+| Six families balloon into a large command surface | Group tools by family in `help`; add a probe only when a rubric item needs it |
 | Wording variety makes tickets feel generic or ambiguous | Fairness lint + 10-seed manual read-through before sign-off |
 | Scoring teaches the rubric, not the job | Expert path written by scenario intent; diagnosis checks require evidence, not magic actions |
 | Browser storage eviction loses practice history | Persistent-storage request, visible status, export reminder, backup slot |
@@ -166,12 +183,12 @@ proven.
 
 **Theme:** sign-in and Microsoft 365 troubleshooting, plus the first smart layer.
 
-- **M365 sign-in family (M365-01):** disabled account, password expiry, MFA not
-  registered, conditional-access block, cached credential mismatch. Realistic
-  sign-in error codes and a tenant view: account status, licenses, MFA methods,
-  device compliance.
-- **DHCP depth:** APIPA, wrong DNS handed out by scope, lease not renewing;
-  read-only scope inspection, no server console.
+- **M365 depth beyond M6:** disabled account, password expiry, conditional-access
+  block, cached credential mismatch, plus a tenant view with licenses and device
+  compliance. M6 already ships the sign-in log, MFA reset, and smart-lockout unblock.
+- **DHCP depth beyond M6:** relay misconfiguration, reservations, and lease
+  duration faults. M6 already ships scope inspection, stale-lease cleanup, and
+  the scope-wide DNS fault.
 - **Hints that teach:** one nudge per rubric item, costs professionalism, logged
   for progress; never reveals hidden state directly.
 - **Adaptive selection:** Leitner plus per-skill mastery; difficulty rises only
@@ -264,7 +281,13 @@ No release ships unless:
 
 ## 9. Proposed M5+ plan — from the reference feature inventory
 
-**Proposed 2026-10-17 · awaiting approval · nothing implemented.**
+**Proposed 2026-10-17 · M6 delivered, the rest awaiting approval.**
+
+M6 replaced the old "R1 sign-off" slot with scenario depth: DHCP-01, M365-01,
+FS-01, a scored escalation handoff note, and weak-topic recommendations on
+Progress. That work was pulled forward from §3, so R1 sign-off moved from M6 to
+M7 and every later milestone shifted by one. The planning tables below use the
+current numbering.
 
 [docs/research/feature-inventory.md](research/feature-inventory.md) records what a
 single screen recording of a commercial service-desk simulator exposed. It is
@@ -278,10 +301,10 @@ versions below are independent designs rather than reconstructions.
 
 | Inventory idea | Value | Effort | Smallest useful version | Placement |
 |----------------|-------|--------|------------------------|-----------|
-| 1. Lessons tied to ticket families | High — the tickets assume vocabulary (spooler, lease, lockout) that a career changer may not have yet | S–M, mostly writing | One original single-screen field note per family (about 250 words): what the user experiences, the three tools worth reaching for first, the fix-versus-escalate rule, and two traps. Linked from the queue and the debrief. No paging, screenshots, video, or unlocking. | M7 |
-| 2. Points and rank progression | Medium — motivating, but XP already exists and is not yet surfaced | S, no schema change | A rank title derived from total stored XP, shown in the header with a small progress bar, plus a weekly practice streak computed from session timestamps on the dashboard. No achievements, badges, leaderboards, or currency. | M8 |
-| 4. Phone-call practice | Medium–high — call handling is the part of the job the terminal cannot teach, and the caller scripts already exist | M — a new interaction mode, no audio | A text call mode on one family: caller turns arrive in sequence with two decision points (verify identity, read back the fix), recorded in the action log and scored as one communication rubric item. No audio, transcription, voicemail box, or script authoring. | M9 |
-| 3. Mock interview mode | Medium overall, high for job seekers; weakest link to the simulated machine | M–L — content plus a new surface | Three original interviewer personas × five questions; each question is answered by picking the strongest of three original responses, followed by an explanation of why the others are weaker and a short summary. No free-text grading, no AI, no voice. | M10 |
+| 1. Lessons tied to ticket families | High — the tickets assume vocabulary (spooler, lease, lockout) that a career changer may not have yet | S–M, mostly writing | One original single-screen field note per family (about 250 words): what the user experiences, the three tools worth reaching for first, the fix-versus-escalate rule, and two traps. Linked from the queue and the debrief. No paging, screenshots, video, or unlocking. | M8 |
+| 2. Points and rank progression | Medium — motivating, but XP already exists and is not yet surfaced | S, no schema change | A rank title derived from total stored XP, shown in the header with a small progress bar, plus a weekly practice streak computed from session timestamps on the dashboard. No achievements, badges, leaderboards, or currency. | M9 |
+| 4. Phone-call practice | Medium–high — call handling is the part of the job the terminal cannot teach, and the caller scripts already exist | M — a new interaction mode, no audio | A text call mode on one family: caller turns arrive in sequence with two decision points (verify identity, read back the fix), recorded in the action log and scored as one communication rubric item. No audio, transcription, voicemail box, or script authoring. | M10 |
+| 3. Mock interview mode | Medium overall, high for job seekers; weakest link to the simulated machine | M–L — content plus a new surface | Three original interviewer personas × five questions; each question is answered by picking the strongest of three original responses, followed by an explanation of why the others are weaker and a short summary. No free-text grading, no AI, no voice. | M11 |
 | 5. Open-ticket count and severity colour-coding | Already delivered in M3 | None | The queue already shows open/closed counts and colour-coded severity | Done — verify in the M5 checklist |
 
 Deliberately not carried over from the reference product: paid gating, a points
@@ -290,32 +313,37 @@ voicemail. Nothing in this plan copies its wording or visual design.
 
 ### 9.2 Reuse of what already exists
 
-Every M7–M10 item is an overlay on the M2–M4 engine, not a second engine. This
+Every idea below is an overlay on the M2–M6 engine, not a second engine. This
 table is the constraint the estimates above assume; if a milestone cannot be
 built this way, its size goes up and it should be re-scoped before starting.
 
+M6 already demonstrated the pattern: three new families reused the generator
+contract, the command registry, the world JSON, and the rubric evaluator, and the
+handoff note reused the existing note actions rather than adding a schema field.
+
 | Milestone | Reuses | Genuinely new |
 |-----------|--------|---------------|
-| M7 Field notes | Scenario family and variant metadata, so a note can only name tools the simulator actually exposes; the existing command registry is the source for "tools worth reaching for first" | One static content module, a route, and two links — no schema change, no rule changes |
-| M8 Rank and streak | The evaluator's existing XP formula and per-session score rows (`scores` joined to `tickets.difficulty` reproduces each session's XP, because XP is a pure function of total, band, and difficulty); session `started_at` timestamps; `scenario_stats.leitner_box` and `due_at` for the due list | A derived selector (XP aggregate → rank title, distinct practice days → weekly streak) and a header chip; no table, column, or migration |
-| M9 Text call mode | Existing caller prompts and the `verify-caller` intent; the environment reducer for the state the caller reacts to; the session action log; the declarative rubric evaluator | Call turns recorded under the existing `ask-user` action kind (the `actions.kind` CHECK constraint would otherwise force a migration), so the log, debrief, and scoring loader stay as they are; plus a call-turn content file per variant and one communication rubric item |
-| M10 Interview drill | The page shell, the debrief-style summary layout, and the rubric evaluator's deterministic item model | Persona and question content plus an answer key; no AI, no free text, no persistence in v1 — the summary is shown once and not stored |
+| M8 Field notes | Scenario family and variant metadata, so a note can only name tools the simulator actually exposes; the existing command registry is the source for "tools worth reaching for first" | One static content module, a route, and two links — no schema change, no rule changes |
+| M9 Rank and streak | The evaluator's existing XP formula and per-session score rows (`scores` joined to `tickets.difficulty` reproduces each session's XP, because XP is a pure function of total, band, and difficulty); session `started_at` timestamps; `scenario_stats.leitner_box` and `due_at` for the due list | A derived selector (XP aggregate → rank title, distinct practice days → weekly streak) and a header chip; no table, column, or migration |
+| M10 Text call mode | Existing caller prompts and the `verify-caller` intent; the environment reducer for the state the caller reacts to; the session action log; the declarative rubric evaluator | Call turns recorded under the existing `ask-user` action kind (the `actions.kind` CHECK constraint would otherwise force a migration), so the log, debrief, and scoring loader stay as they are; plus a call-turn content file per variant and one communication rubric item |
+| M11 Interview drill | The page shell, the debrief-style summary layout, and the rubric evaluator's deterministic item model | Persona and question content plus an answer key; no AI, no free text, no persistence in v1 — the summary is shown once and not stored |
 
-Two consequences worth stating: none of M7–M10 needs a schema version, and M7 and
-M9 are content-heavy rather than rule-heavy. M9 is still the only item that adds
-an interaction mode and writes to an existing path, which is why it needs its
-fixture set before it ships rather than after.
+Two consequences worth stating: none of M8–M11 needs a schema version, and M8 and
+M10 are content-heavy rather than rule-heavy. M10 is still the only item that
+adds an interaction mode and writes to an existing path, which is why it needs
+its fixture set before it ships rather than after.
 
 ### 9.3 Milestones after M4
 
 | # | Milestone | Size | Exit check |
 |---|-----------|------|------------|
-| M5 | Close Release 1: fairness lint (500 tickets per variant, unsolvable and duplicate-signature checks), three scoring fixtures per variant, keyboard and resume audit, streak and Leitner surfacing | M | R1 criteria 2–6 and 11 demonstrated with no new feature surface |
-| M6 | R1 sign-off: recovery-flow polish, accessibility and performance pass, docs refresh, recorded manual E2E script | S | All R1 acceptance criteria recorded with evidence |
-| M7 | Family field notes: one original primer per family, linked from queue and debrief | S–M | Every family has a primer; copy independently written; no schema change |
-| M8 | Rank and streak: derived rank from XP, weekly streak on the dashboard | S | Rank and streak survive reload; thresholds documented; no new tables |
-| M9 | Text call mode: one family end-to-end | M | Call variant playable from greeting to resolution; transcript stored as actions; communication rubric item with fixtures |
-| M10 | Interview drill: personas, questions, deterministic scoring, summary | M–L | Three personas playable; scoring is deterministic and explained; no AI or free text required |
+| M5 | Close Release 1: fairness lint (500 tickets per variant, 6,000 total), three scoring fixtures per variant, keyboard and resume audit, streak and Leitner surfacing | M | R1 criteria 2–6 and 11 demonstrated with no new feature surface |
+| M6 | Scenario depth, handoff notes, weak topics — **done** | L | Twelve variants score 100 on the reference path; handoff notes scored by content; Progress names the weakest family |
+| M7 | R1 sign-off: recovery-flow polish, accessibility and performance pass, docs refresh, recorded manual E2E script | S | All R1 acceptance criteria recorded with evidence |
+| M8 | Family field notes: one original primer per family, linked from queue and debrief | S–M | Every family has a primer; copy independently written; no schema change |
+| M9 | Rank and streak: derived rank from XP, weekly streak on the dashboard | S | Rank and streak survive reload; thresholds documented; no new tables |
+| M10 | Text call mode: one family end-to-end | M | Call variant playable from greeting to resolution; transcript stored as actions; communication rubric item with fixtures |
+| M11 | Interview drill: personas, questions, deterministic scoring, summary | M–L | Three personas playable; scoring is deterministic and explained; no AI or free text required |
 
 **Why this order.** Release 1's acceptance criteria are still unmet, so closing
 them outranks any new surface. Field notes come first among the new features
@@ -325,9 +353,9 @@ tightly to the existing caller prompts and action log but introduces a new UI mo
 so it follows. The interview drill carries the largest content burden and the
 weakest dependency on the simulated machine, which is the product's differentiator,
 so it goes last. If learner feedback says interview prep matters more than call
-handling, M10 can move ahead of M9 without touching the engine.
+handling, M11 can move ahead of M10 without touching the engine.
 
-### 9.4 Guardrails for M7–M10
+### 9.4 Guardrails for M8–M11
 
 - Original copy only, written for HelpDeskLab; no text, layout, lesson content, or
   visual asset from the reference product.
@@ -339,13 +367,13 @@ handling, M10 can move ahead of M9 without touching the engine.
   only; no telemetry, accounts, or leaderboards.
 - Unknown reference behaviour stays unknown. We claim no parity with features that
   were not observed.
-- The deferred Release 2 domain work (M365 sign-in, DHCP depth, hints, adaptive
-  selection) still outranks mock interviews for real Tier 1 readiness; revisit its
-  order after M10.
+- The remaining Release 2 domain work (tenant administration, DHCP server
+  changes, hints, adaptive selection) still outranks mock interviews for real
+  Tier 1 readiness; revisit its order after M11.
 
 ### 9.5 Open questions for approval
 
-1. Does closing Release 1 (M5–M6) stay ahead of all new surfaces?
+1. Does closing Release 1 (M5 and M7) stay ahead of all new surfaces?
 2. Are single-screen field notes enough, or should each family get a three-page
    primer with paging?
 3. Are original rank names acceptable (for example a Tier 1 progression ladder),
@@ -360,11 +388,12 @@ Confirm the four choices listed in
 
 1. Browser-first PWA with WASM SQLite for R1 (recommended).
 2. Hybrid terminal + quick actions + caller chat interaction model (recommended).
-3. Three families × two variants in R1, M365 and DHCP depth in R2 (recommended).
+3. Six families × two variants in R1 after M6, with tenant administration and
+   DHCP server changes still in R2 (recommended).
 4. Keep all local attempt history, with export/import and manual reset
    (recommended).
 
-For the work ahead, also confirm the §9 sequencing: finish Release 1 (M5–M6)
-before M7 field notes, M8 rank and streak, M9 text call mode, and M10 interview
-drill — or say what to reorder. Nothing in §9 is implemented until that approval
-arrives.
+For the work ahead, also confirm the §9 sequencing: finish Release 1 (M5 and
+M7) before M8 field notes, M9 rank and streak, M10 text call mode, and M11
+interview drill — or say what to reorder. Nothing after M6 is implemented until
+that approval arrives.

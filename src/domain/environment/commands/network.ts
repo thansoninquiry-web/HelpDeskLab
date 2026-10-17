@@ -1,3 +1,4 @@
+import { findScope, nextFreeAddress, recordLease } from '../dhcp'
 import {
   canReachAddress,
   dnsFailureMessage,
@@ -61,6 +62,7 @@ function formatAdapter(world: World, device: Device, all: boolean): string[] {
     result.push(
       `   Lease Obtained. . . . . . . . . . : ${formatClock(device.dhcpLease.obtainedAt)}`,
       `   Lease Expires . . . . . . . . . . : ${formatClock(device.dhcpLease.expiresAt)}`,
+      `   DHCP Server . . . . . . . . . . . : ${device.dhcpLease.server}`,
     )
   }
 
@@ -99,25 +101,47 @@ function ipconfig(context: CommandContext): CommandOutcome {
       return failed([errorLine('The network cable is unplugged or the adapter is disconnected.')])
     }
 
+    const scope = findScope(world, context.site.id)
     const subnetBase = context.site.subnet.split('.').slice(0, 3).join('.')
     const currentAddress = device.ipAddress
-    const address =
-      currentAddress && currentAddress.startsWith(`${subnetBase}.`)
-        ? currentAddress
-        : nextDhcpAddress(context.site, device.id)
+    const preferred =
+      currentAddress && currentAddress.startsWith(`${subnetBase}.`) ? currentAddress : null
+    const ownLease = scope?.leases.find(
+      (lease) => lease.address === preferred && lease.hostname === device.hostname,
+    )
+    const address = ownLease
+      ? ownLease.address
+      : scope
+        ? nextFreeAddress(scope, preferred)
+        : (preferred ?? nextDhcpAddress(context.site, device.id))
+
+    if (!address) {
+      return failed([
+        errorLine('DHCP request failed: the scope has no free addresses.'),
+        mutedLine(
+          `Scope ${scope?.name ?? context.site.id} on ${scope?.server ?? context.site.dhcpServer} is exhausted. Stale leases must be cleared before this device can get an address.`,
+        ),
+      ])
+    }
 
     device.ipAddress = address
     device.subnetMask = '255.255.255.0'
-    device.gateway = context.site.gateway
-    if (device.dnsServers.length === 0) {
-      device.dnsServers = [...context.site.dnsServers]
-    }
+    device.gateway = scope?.router ?? context.site.gateway
+    // Scope option 006 always wins: a bad option is exactly how whole sites lose DNS.
+    device.dnsServers =
+      scope && scope.dnsServers.length > 0
+        ? [...scope.dnsServers]
+        : [...context.site.dnsServers]
     device.dhcpLease = {
-      server: context.site.dhcpServer,
+      server: scope?.server ?? context.site.dhcpServer,
       obtainedAt: context.now,
-      expiresAt: context.now + LEASE_DURATION_MS,
+      expiresAt:
+        context.now + (scope ? scope.leaseMinutes * 60_000 : LEASE_DURATION_MS),
     }
     updateHostRecord(world, device, address)
+    if (scope) {
+      recordLease(scope, device.hostname, address, context.now)
+    }
 
     return succeeded(
       formatAdapter(world, device, false).map((text) => line(text)),

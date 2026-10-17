@@ -7,6 +7,7 @@ import type {
   CategoryScore,
   CheckSpec,
   EvaluationResult,
+  NoteCoveragePart,
   Rubric,
   RubricCategory,
   RubricItem,
@@ -105,6 +106,29 @@ function actionSatisfies(spec: CheckSpec, action: EvaluatorAction): boolean {
   }
 }
 
+function notesOfKind(
+  actions: readonly EvaluatorAction[],
+  spec: Extract<CheckSpec, { kind: 'note-covers' }>,
+): string[] {
+  return actions.flatMap((action) => {
+    if (action.kind !== 'note' || action.input.noteKind !== spec.noteKind) {
+      return []
+    }
+    const text = typeof action.input.text === 'string' ? action.input.text.trim() : ''
+    return text.length >= (spec.minLength ?? 1) ? [text] : []
+  })
+}
+
+function missingNoteParts(
+  actions: readonly EvaluatorAction[],
+  spec: Extract<CheckSpec, { kind: 'note-covers' }>,
+): NoteCoveragePart[] {
+  const haystack = notesOfKind(actions, spec).join('\n').toLowerCase()
+  return spec.parts.filter(
+    (part) => !part.any.some((fragment) => haystack.includes(fragment.toLowerCase())),
+  )
+}
+
 function matchSequence(
   actions: readonly EvaluatorAction[],
   specs: readonly CheckSpec[],
@@ -164,6 +188,8 @@ function isSatisfiedAnywhere(
       return actions.some((_, index) => matchSequence(actions, spec.of, index))
     case 'absent':
       return !isSatisfiedAnywhere(actions, spec.of, world, decision)
+    case 'note-covers':
+      return missingNoteParts(actions, spec).length === 0
     case 'decision':
       return (
         decision.outcome === spec.outcome && (!spec.codes || spec.codes.includes(decision.code))
@@ -187,6 +213,8 @@ function describe(spec: CheckSpec): string {
       return 'ask the user a diagnostic question'
     case 'note':
       return `write a ${spec.noteKind} note${spec.minLength ? ` of at least ${spec.minLength} characters` : ''}`
+    case 'note-covers':
+      return `write a ${spec.noteKind} note that covers ${spec.parts.map((part) => part.label).join(', ')}`
     case 'ordered':
       return spec.of.map(describe).join(', then ')
     case 'absent':
@@ -200,6 +228,21 @@ function describe(spec: CheckSpec): string {
 
 function evidenceFor(spec: CheckSpec, passed: boolean): string {
   return passed ? `met: ${describe(spec)}` : `missing: ${describe(spec)}`
+}
+
+/** A handoff check reports each coverage part separately so the debrief is specific. */
+function evidenceForSpec(
+  spec: CheckSpec,
+  passed: boolean,
+  actions: readonly EvaluatorAction[],
+): string[] {
+  if (spec.kind !== 'note-covers') {
+    return [evidenceFor(spec, passed)]
+  }
+  const missing = new Set(missingNoteParts(actions, spec).map((part) => part.id))
+  return spec.parts.map((part) =>
+    missing.has(part.id) ? `missing: ${part.label}` : `met: ${part.label}`,
+  )
 }
 
 function evaluateItem(item: RubricItem, input: EvaluationInput): RubricItemResult {
@@ -218,7 +261,7 @@ function evaluateItem(item: RubricItem, input: EvaluationInput): RubricItemResul
     passed,
     why: item.why,
     hint: item.hint,
-    evidence: checks.map((check) => evidenceFor(check.spec, check.passed)),
+    evidence: checks.flatMap((check) => evidenceForSpec(check.spec, check.passed, input.actions)),
   }
 }
 

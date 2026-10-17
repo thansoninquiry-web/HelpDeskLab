@@ -59,6 +59,78 @@ export interface DhcpLease {
   expiresAt: number
 }
 
+export type DhcpLeaseState = 'active' | 'stale'
+
+export interface DhcpScopeLease {
+  address: string
+  hostname: string
+  state: DhcpLeaseState
+  expiresAt: number
+}
+
+/** One address pool on the site DHCP server, with its scope options. */
+export interface DhcpScope {
+  siteId: SiteId
+  name: string
+  server: string
+  startAddress: string
+  endAddress: string
+  /** Addresses inside the range that DHCP must never hand out (printers, servers). */
+  exclusions: string[]
+  leaseMinutes: number
+  /** Option 006. */
+  dnsServers: string[]
+  /** Option 003. */
+  router: string | null
+  leases: DhcpScopeLease[]
+}
+
+export type MfaMethod = 'authenticator' | 'sms' | 'none'
+
+export interface M365Account {
+  userId: UserId
+  mfaRegistered: boolean
+  mfaMethod: MfaMethod
+  signInBlocked: boolean
+  /** AADSTS error code from the most recent sign-in, or null when it succeeded. */
+  lastSignInError: string | null
+  lastSignInAt: number | null
+  signInAttempts: number
+}
+
+export interface M365Tenant {
+  name: string
+  domain: string
+  accounts: M365Account[]
+}
+
+export type ShareAccess = 'read' | 'change' | 'full'
+
+export type SharePrincipal =
+  | { kind: 'group'; name: string }
+  | { kind: 'user'; samAccountName: string }
+
+export interface ShareGrant {
+  principal: SharePrincipal
+  access: ShareAccess
+  /** false is an explicit Deny, which outranks every allow entry. */
+  allow: boolean
+}
+
+export interface FileShare {
+  id: string
+  name: string
+  path: string
+  server: string
+  siteId: SiteId
+  grants: ShareGrant[]
+}
+
+export interface SecurityGroup {
+  name: string
+  members: UserId[]
+}
+
 export interface Device {
   id: DeviceId
   hostname: string
@@ -105,6 +177,10 @@ export interface World {
   devices: Device[]
   printers: Printer[]
   network: NetworkState
+  dhcpScopes: DhcpScope[]
+  m365: M365Tenant
+  shares: FileShare[]
+  groups: SecurityGroup[]
   currentDeviceId: DeviceId
   /** Filled in by the ticket generator; hidden from the learner. */
   fault?: {
@@ -127,6 +203,11 @@ export type EffectType =
   | 'spooler_restarted'
   | 'print_queue_cleared'
   | 'default_printer_changed'
+  | 'dhcp_lease_removed'
+  | 'mfa_reset'
+  | 'signin_unblocked'
+  | 'group_member_added'
+  | 'share_deny_removed'
 
 export interface Effect {
   type: EffectType

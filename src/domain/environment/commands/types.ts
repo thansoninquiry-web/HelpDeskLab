@@ -25,7 +25,7 @@ export interface CommandOutcome {
 export interface CommandDefinition {
   name: string
   aliases: readonly string[]
-  group: 'network' | 'identity' | 'printer' | 'session'
+  group: 'network' | 'dhcp' | 'identity' | 'm365' | 'printer' | 'shares' | 'session'
   usage: string
   summary: string
   run(context: CommandContext): CommandOutcome

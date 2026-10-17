@@ -1,16 +1,22 @@
 import { errorLine, line, mutedLine } from '../output'
 import type { OutputLine } from '../types'
+import { dhcpCommands } from './dhcp'
 import { identityCommands } from './identity'
+import { m365Commands } from './m365'
 import { networkCommands } from './network'
 import { printerCommands } from './printer'
 import { sessionCommands } from './session'
+import { shareCommands } from './shares'
 import type { CommandContext, CommandDefinition } from './types'
 import { failed, succeeded } from './types'
 
 function helpOverview(): OutputLine[] {
   const groups: Array<{ label: string; group: CommandDefinition['group'] }> = [
     { label: 'Network', group: 'network' },
+    { label: 'DHCP', group: 'dhcp' },
     { label: 'Identity', group: 'identity' },
+    { label: 'Microsoft 365', group: 'm365' },
+    { label: 'File shares', group: 'shares' },
     { label: 'Printing', group: 'printer' },
     { label: 'Session', group: 'session' },
   ]
@@ -72,7 +78,10 @@ const helpDefinition: CommandDefinition = {
 
 export const COMMANDS: readonly CommandDefinition[] = [
   ...networkCommands,
+  ...dhcpCommands,
   ...identityCommands,
+  ...m365Commands,
+  ...shareCommands,
   ...printerCommands,
   ...sessionCommands,
   helpDefinition,

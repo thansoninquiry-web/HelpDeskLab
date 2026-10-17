@@ -1,5 +1,5 @@
 import type { JsonValue } from './shared/json'
-import type { ScenarioStats } from './progress/types'
+import type { ScenarioStats, ScoreHistoryEntry } from './progress/types'
 import type { Score } from './scoring/types'
 import type {
   NewSessionAction,
@@ -41,6 +41,8 @@ export interface ScoreRepository {
   save(score: Score): Promise<void>
   findBySession(sessionId: SessionId): Promise<Score | null>
   listRecent(limit: number): Promise<Score[]>
+  /** Every scored attempt with its scenario and category breakdown, oldest first. */
+  listHistory(): Promise<ScoreHistoryEntry[]>
 }
 
 export interface ProgressRepository {

@@ -222,3 +222,105 @@ describe('scoring engine', () => {
     expect(result.feedback.some((line) => line.startsWith('Breakdown:'))).toBe(true)
   })
 })
+
+function attemptWithHandoff(ticket: GeneratedTicket, handoff: string) {
+  let world = structuredClone(ticket.world)
+  const actions: EvaluatorAction[] = []
+
+  for (const step of ticket.reference) {
+    if (step.type === 'command') {
+      const result = applyCommand(world, step.input)
+      world = result.world
+      actions.push({
+        kind: 'command',
+        input: { command: step.input },
+        output: JSON.parse(
+          JSON.stringify({ lines: result.lines, effects: result.effects, ok: result.ok }),
+        ) as JsonObject,
+      })
+    } else if (step.type === 'verify-caller') {
+      actions.push({
+        kind: 'verify-caller',
+        input: { method: 'employee-id' },
+        output: { summary: 'Verified against the directory.' },
+      })
+    } else if (step.type === 'ask-user') {
+      actions.push({
+        kind: 'ask-user',
+        input: { intent: step.intent },
+        output: { question: 'Question', answer: 'Answer' },
+      })
+    } else if (step.noteKind !== 'resolution') {
+      actions.push({
+        kind: 'note',
+        input: { noteKind: step.noteKind, text: step.text },
+        output: { saved: true },
+      })
+    }
+  }
+
+  if (handoff.length > 0) {
+    actions.push({
+      kind: 'note',
+      input: { noteKind: 'resolution', text: handoff },
+      output: { saved: true },
+    })
+  }
+
+  return {
+    actions,
+    world,
+    decision: {
+      outcome: ticket.expectedOutcome,
+      code: ticket.expectedCodes[0] ?? 'resolved-remote',
+      note: handoff,
+    },
+  }
+}
+
+describe('escalation handoff notes', () => {
+  it('passes only when the note covers the report, the checks, and the next action', () => {
+    const ticket = ticketFor('DHCP-01', 'scope-wrong-dns')
+    const complete = evaluateSession({
+      rubric: ticket.rubric,
+      difficulty: ticket.difficulty,
+      ...attemptWithHandoff(
+        ticket,
+        'Reported: users at the site cannot resolve names. Checked: ipconfig and get-dhcp-scope both show 10.20.4.99 as option 006. Next: the network team should correct the scope option.',
+      ),
+    })
+
+    expect(complete.items.find((item) => item.id === 'escalation-note')?.passed).toBe(true)
+    expect(complete.total).toBe(100)
+  })
+
+  it('names the missing part instead of failing the whole note', () => {
+    const ticket = ticketFor('DHCP-01', 'scope-wrong-dns')
+    const partial = evaluateSession({
+      rubric: ticket.rubric,
+      difficulty: ticket.difficulty,
+      ...attemptWithHandoff(
+        ticket,
+        'Reported: users at the site cannot resolve names. Checked: ipconfig and get-dhcp-scope both show 10.20.4.99 as option 006.',
+      ),
+    })
+    const item = partial.items.find((entry) => entry.id === 'escalation-note')
+
+    expect(item?.passed).toBe(false)
+    expect(item?.evidence).toContain('missing: what the next team should do')
+    expect(item?.evidence).toContain('met: what the user reported')
+    expect(partial.passed).toBe(false)
+    expect(partial.criticalFailures).toContain('Wrote a handoff that the next team can act on')
+  })
+
+  it('rejects a handoff that is too short to be useful', () => {
+    const ticket = ticketFor('FS-01', 'explicit-deny')
+    const result = evaluateSession({
+      rubric: ticket.rubric,
+      difficulty: ticket.difficulty,
+      ...attemptWithHandoff(ticket, 'Passing this on.'),
+    })
+
+    expect(result.items.find((item) => item.id === 'escalation-note')?.passed).toBe(false)
+  })
+})

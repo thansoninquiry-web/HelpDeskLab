@@ -3,7 +3,7 @@ import type { DecisionOutcome, Rubric } from '../scoring/types'
 import type { Rng } from '../shared/rng'
 
 export type Severity = 'critical' | 'high' | 'medium' | 'low'
-export type TicketCategory = 'identity' | 'network' | 'printer'
+export type TicketCategory = 'access' | 'identity' | 'network' | 'printer'
 
 export interface TicketRequester {
   name: string

@@ -121,6 +121,45 @@ describe('repositories', () => {
     )
   })
 
+  it('lists score history joined to its scenario and category breakdown', async () => {
+    const { persistence } = env
+    const categoryScores = {
+      diagnosis: { earned: 4, possible: 10 },
+      documentation: { earned: 6, possible: 20 },
+      resolution: { earned: 20, possible: 30 },
+      safety: { earned: 5, possible: 5 },
+    }
+
+    await persistence.tickets.create(makeTicket())
+    await persistence.tickets.create(
+      makeTicket({ id: 'ticket-2', scenarioId: 'M365-01', variantId: 'smart-lockout', seed: 43, signature: 'sig-0002' }),
+    )
+    await persistence.sessions.create(makeSession())
+    await persistence.sessions.create(makeSession('ticket-2', { id: 'session-2' }))
+    await persistence.scores.save(
+      makeScore('session-1', {
+        total: 62,
+        passed: false,
+        band: 'fail',
+        computedAt: 10,
+        rubric: { items: [], categoryScores },
+      }),
+    )
+    await persistence.scores.save(
+      makeScore('session-2', { total: 91, band: 'strong', computedAt: 20 }),
+    )
+
+    const history = await persistence.scores.listHistory()
+
+    expect(history.map((entry) => [entry.scenarioId, entry.variantId, entry.total])).toEqual([
+      ['NET-01', 'bad-static-dns', 62],
+      ['M365-01', 'smart-lockout', 91],
+    ])
+    expect(history[0]?.categoryScores?.documentation).toEqual({ earned: 6, possible: 20 })
+    // Scores written before categories were stored simply report null.
+    expect(history[1]?.categoryScores).toBeNull()
+  })
+
   it('upserts scenario progress and settings values', async () => {
     const { persistence } = env
 

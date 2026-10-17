@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 import {
   createTickets,
   findActiveSessionId,
@@ -26,6 +26,9 @@ const STATUS_LABELS: Record<TicketView['status'], string> = {
 const FAMILY_LABELS: Record<string, string> = {
   'PWD-01': 'Accounts',
   'NET-01': 'Network',
+  'DHCP-01': 'DHCP',
+  'M365-01': 'Microsoft 365',
+  'FS-01': 'File shares',
   'PRN-01': 'Printing',
 }
 
@@ -40,6 +43,9 @@ function formatWhen(ms: number): string {
 
 export function PracticePage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const familyFilter = searchParams.get('family')
+  const focusTitle = familyFilter ? (FAMILY_LABELS[familyFilter] ?? familyFilter) : null
   const [tickets, setTickets] = useState<TicketView[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
@@ -89,7 +95,7 @@ export function PracticePage() {
     setBusyId('generate')
     setError(null)
     try {
-      await createTickets(3)
+      await createTickets(3, undefined, familyFilter ?? undefined)
       setState('loading')
       setReloadToken((token) => token + 1)
     } catch (caught) {
@@ -99,8 +105,11 @@ export function PracticePage() {
     }
   }
 
-  const open = tickets.filter((ticket) => ticket.status !== 'completed')
-  const closed = tickets.filter((ticket) => ticket.status === 'completed')
+  const visible = familyFilter
+    ? tickets.filter((ticket) => ticket.scenarioId === familyFilter)
+    : tickets
+  const open = visible.filter((ticket) => ticket.status !== 'completed')
+  const closed = visible.filter((ticket) => ticket.status === 'completed')
 
   return (
     <>
@@ -125,16 +134,28 @@ export function PracticePage() {
 
       <div className={styles.toolbar}>
         <span className={styles.toolbarCount}>
+          {focusTitle ? `Focused on ${focusTitle} · ` : ''}
           {open.length} open · {closed.length} closed
         </span>
-        <button
-          type="button"
-          className={styles.primaryButton}
-          onClick={() => void onGenerate()}
-          disabled={busyId !== null}
-        >
-          {busyId === 'generate' ? 'Generating…' : 'Generate three tickets'}
-        </button>
+        <div className={styles.buttonRow}>
+          {familyFilter ? (
+            <Link className={styles.secondaryButton} to="/practice">
+              Show all tickets
+            </Link>
+          ) : null}
+          <button
+            type="button"
+            className={styles.primaryButton}
+            onClick={() => void onGenerate()}
+            disabled={busyId !== null}
+          >
+            {busyId === 'generate'
+              ? 'Generating…'
+              : familyFilter
+                ? 'Generate three of this family'
+                : 'Generate three tickets'}
+          </button>
+        </div>
       </div>
 
       {error ? (
@@ -147,10 +168,14 @@ export function PracticePage() {
 
       {state === 'ready' ? (
         <ul className={styles.queue}>
-          {tickets.length === 0 ? (
-            <li className={styles.empty}>The queue is empty. Generate a few tickets to begin.</li>
+          {visible.length === 0 ? (
+            <li className={styles.empty}>
+              {focusTitle
+                ? `No ${focusTitle.toLowerCase()} tickets in the queue. Generate three to practise this family.`
+                : 'The queue is empty. Generate a few tickets to begin.'}
+            </li>
           ) : null}
-          {tickets.map((ticket) => (
+          {visible.map((ticket) => (
             <li key={ticket.id} className={styles.queueRow} data-status={ticket.status}>
               <div className={styles.queueMain}>
                 <div className={styles.queueMeta}>
