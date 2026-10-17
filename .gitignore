@@ -24,3 +24,5 @@ Thumbs.db
 # TypeScript / Vite caches
 *.tsbuildinfo
 .vite
+.freebuff/
+.freebuff/

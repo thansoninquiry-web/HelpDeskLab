@@ -1,7 +1,7 @@
 # HelpDeskLab — Roadmap
 
-**Status:** Proposed · awaiting approval · no code written yet
-**Last updated:** 2026-10-16
+**Status:** M0–M4 built · M5+ plan proposed, awaiting approval
+**Last updated:** 2026-10-17
 **Companion:** [architecture.md](architecture.md)
 
 ## 1. Goal and audience
@@ -21,7 +21,7 @@ ticket, real SQLite persistence, real scoring, real debrief. Each later release
 adds either breadth (more families, more variants) or depth (composite faults,
 timers, authoring) — never both at once.
 
-### Current status (2026-10-16)
+### Current status (2026-10-17)
 
 - **M0 — scaffold: done.** Strict Vite/React/TypeScript shell, routing, CSS
   tokens, Vitest + Testing Library, layered ESLint import rules, offline
@@ -42,8 +42,10 @@ timers, authoring) — never both at once.
   effects, ordering, notes, and the closure decision, with critical safety gates;
   attempts, action logs, scores, and per-scenario progress persisted in SQLite;
   and a debrief that explains every item plus a clean reference path.
-- **Next — M5:** more variants and distractors, fairness lint coverage,
-  streaks, and dashboard surfacing.
+- **Next — M5:** close Release 1 — fairness lint, three fixtures per variant,
+  keyboard/resume audit, and streak plus Leitner surfacing. M6 signs the release
+  off; M7–M10 then evaluate the reference product's lesson, progression, call,
+  and interview ideas in that order (see §9).
 
 The Release 1 checklist and acceptance criteria below are still outstanding; the
 items above cover the build milestones but not yet the fairness-lint acceptance
@@ -142,10 +144,10 @@ focused solo work**. No dates are committed.
 | M0 | Scaffold: Vite + React + TS strict, Router, Vitest, ESLint boundaries, CSS tokens, CI script, offline app-shell precache | S | App shell renders offline, typecheck/tests/lint green |
 | M1 | Persistence: schema, migrations, sql.js driver, IndexedDB snapshots, repositories, backup service | M | Repository tests round-trip every table; migration + corruption tests pass |
 | M2 | Environment core: world model, command parser/registry, network + identity probes/actions, simulated clock | L | Reducer unit tests; wrong-tool outputs are realistic |
-| M3 | First family end-to-end (NET-01): generator, catalog, ticket workspace, caller chat, fairness lint seed | L | One variant playable from generated ticket to debrief |
-| M4 | Scoring + debrief: declarative specs, evaluator, safety gate, fixtures, debrief UI | M | Reference/unsafe/lucky fixtures behave as specified on NET-01 |
-| M5 | Remaining R1 families + progress: PWD-01, PRN-01, `verify-caller`, XP/streak/Leitner, dashboard | M | Six variants pass scoring fixtures; stats update correctly |
-| M6 | Hardening: import/export UI, recovery flow, keyboard/a11y pass, performance check, docs, manual E2E script | S | All acceptance criteria checked and recorded |
+| M3 | Generator and workspace across PWD-01, NET-01, and PRN-01: seeded tickets, queue, terminal, caller questions, verification, notes, resolve/escalate | L | Any generated ticket playable from queue to debrief · **done** |
+| M4 | Scoring and debrief: declarative specs over the action log and end state, safety gates, SQLite persistence, explained debrief | M | Reference/unsafe/lucky fixtures behave as specified · **done** |
+| M5 | Close Release 1: fairness lint, three fixtures per variant, keyboard/resume audit, streak and Leitner surfacing | M | R1 criteria 2–6 and 11 demonstrated |
+| M6 | R1 sign-off: recovery UI polish, a11y and performance pass, docs, manual E2E script | S | All acceptance criteria recorded |
 
 The plan is a vertical slice, not waterfall: M2–M4 are developed against NET-01
 so the loop is playable early; content for PWD/PRN follows once the mechanics are
@@ -260,7 +262,98 @@ No release ships unless:
 4. The previous release's acceptance criteria still pass.
 5. No runtime network requests, no real credentials, no fictional-PII leakage.
 
-## 9. Approval requested
+## 9. Proposed M5+ plan — from the reference feature inventory
+
+**Proposed 2026-10-17 · awaiting approval · nothing implemented.**
+
+[docs/research/feature-inventory.md](research/feature-inventory.md) records what a
+single screen recording of a commercial service-desk simulator exposed. It is
+inspiration only. This plan reuses none of that product's text, branding, lesson
+content, images, or layout, and it does not treat anything the inventory marks
+**Unknown** as known: ticket detail fields, scoring format, points thresholds,
+call and voicemail mechanics, and interview format are all unknown here, so the
+versions below are independent designs rather than reconstructions.
+
+### 9.1 Evaluation, ordered by value versus effort
+
+| Inventory idea | Value | Effort | Smallest useful version | Placement |
+|----------------|-------|--------|------------------------|-----------|
+| 1. Lessons tied to ticket families | High — the tickets assume vocabulary (spooler, lease, lockout) that a career changer may not have yet | S–M, mostly writing | One original single-screen field note per family (about 250 words): what the user experiences, the three tools worth reaching for first, the fix-versus-escalate rule, and two traps. Linked from the queue and the debrief. No paging, screenshots, video, or unlocking. | M7 |
+| 2. Points and rank progression | Medium — motivating, but XP already exists and is not yet surfaced | S, no schema change | A rank title derived from total stored XP, shown in the header with a small progress bar, plus a weekly practice streak computed from session timestamps on the dashboard. No achievements, badges, leaderboards, or currency. | M8 |
+| 4. Phone-call practice | Medium–high — call handling is the part of the job the terminal cannot teach, and the caller scripts already exist | M — a new interaction mode, no audio | A text call mode on one family: caller turns arrive in sequence with two decision points (verify identity, read back the fix), recorded in the action log and scored as one communication rubric item. No audio, transcription, voicemail box, or script authoring. | M9 |
+| 3. Mock interview mode | Medium overall, high for job seekers; weakest link to the simulated machine | M–L — content plus a new surface | Three original interviewer personas × five questions; each question is answered by picking the strongest of three original responses, followed by an explanation of why the others are weaker and a short summary. No free-text grading, no AI, no voice. | M10 |
+| 5. Open-ticket count and severity colour-coding | Already delivered in M3 | None | The queue already shows open/closed counts and colour-coded severity | Done — verify in the M5 checklist |
+
+Deliberately not carried over from the reference product: paid gating, a points
+economy, achievements, video or screenshot-based lessons, voice calls, and
+voicemail. Nothing in this plan copies its wording or visual design.
+
+### 9.2 Reuse of what already exists
+
+Every M7–M10 item is an overlay on the M2–M4 engine, not a second engine. This
+table is the constraint the estimates above assume; if a milestone cannot be
+built this way, its size goes up and it should be re-scoped before starting.
+
+| Milestone | Reuses | Genuinely new |
+|-----------|--------|---------------|
+| M7 Field notes | Scenario family and variant metadata, so a note can only name tools the simulator actually exposes; the existing command registry is the source for "tools worth reaching for first" | One static content module, a route, and two links — no schema change, no rule changes |
+| M8 Rank and streak | The evaluator's existing XP formula and per-session score rows (`scores` joined to `tickets.difficulty` reproduces each session's XP, because XP is a pure function of total, band, and difficulty); session `started_at` timestamps; `scenario_stats.leitner_box` and `due_at` for the due list | A derived selector (XP aggregate → rank title, distinct practice days → weekly streak) and a header chip; no table, column, or migration |
+| M9 Text call mode | Existing caller prompts and the `verify-caller` intent; the environment reducer for the state the caller reacts to; the session action log; the declarative rubric evaluator | Call turns recorded under the existing `ask-user` action kind (the `actions.kind` CHECK constraint would otherwise force a migration), so the log, debrief, and scoring loader stay as they are; plus a call-turn content file per variant and one communication rubric item |
+| M10 Interview drill | The page shell, the debrief-style summary layout, and the rubric evaluator's deterministic item model | Persona and question content plus an answer key; no AI, no free text, no persistence in v1 — the summary is shown once and not stored |
+
+Two consequences worth stating: none of M7–M10 needs a schema version, and M7 and
+M9 are content-heavy rather than rule-heavy. M9 is still the only item that adds
+an interaction mode and writes to an existing path, which is why it needs its
+fixture set before it ships rather than after.
+
+### 9.3 Milestones after M4
+
+| # | Milestone | Size | Exit check |
+|---|-----------|------|------------|
+| M5 | Close Release 1: fairness lint (500 tickets per variant, unsolvable and duplicate-signature checks), three scoring fixtures per variant, keyboard and resume audit, streak and Leitner surfacing | M | R1 criteria 2–6 and 11 demonstrated with no new feature surface |
+| M6 | R1 sign-off: recovery-flow polish, accessibility and performance pass, docs refresh, recorded manual E2E script | S | All R1 acceptance criteria recorded with evidence |
+| M7 | Family field notes: one original primer per family, linked from queue and debrief | S–M | Every family has a primer; copy independently written; no schema change |
+| M8 | Rank and streak: derived rank from XP, weekly streak on the dashboard | S | Rank and streak survive reload; thresholds documented; no new tables |
+| M9 | Text call mode: one family end-to-end | M | Call variant playable from greeting to resolution; transcript stored as actions; communication rubric item with fixtures |
+| M10 | Interview drill: personas, questions, deterministic scoring, summary | M–L | Three personas playable; scoring is deterministic and explained; no AI or free text required |
+
+**Why this order.** Release 1's acceptance criteria are still unmet, so closing
+them outranks any new surface. Field notes come first among the new features
+because they are the cheapest high-value addition and need no engine change. Rank
+and streak are the next cheapest and reuse XP we already compute. Call mode couples
+tightly to the existing caller prompts and action log but introduces a new UI mode,
+so it follows. The interview drill carries the largest content burden and the
+weakest dependency on the simulated machine, which is the product's differentiator,
+so it goes last. If learner feedback says interview prep matters more than call
+handling, M10 can move ahead of M9 without touching the engine.
+
+### 9.4 Guardrails for M7–M10
+
+- Original copy only, written for HelpDeskLab; no text, layout, lesson content, or
+  visual asset from the reference product.
+- No paid tier or artificial gating: every feature stays available offline.
+- The simulated machine keeps priority. Call mode and the interview drill are
+  optional surfaces over the core loop, never replacements for it, and neither may
+  soften evidence-based scoring.
+- Rank, streak, and any progress indicator are computed from the local database
+  only; no telemetry, accounts, or leaderboards.
+- Unknown reference behaviour stays unknown. We claim no parity with features that
+  were not observed.
+- The deferred Release 2 domain work (M365 sign-in, DHCP depth, hints, adaptive
+  selection) still outranks mock interviews for real Tier 1 readiness; revisit its
+  order after M10.
+
+### 9.5 Open questions for approval
+
+1. Does closing Release 1 (M5–M6) stay ahead of all new surfaces?
+2. Are single-screen field notes enough, or should each family get a three-page
+   primer with paging?
+3. Are original rank names acceptable (for example a Tier 1 progression ladder),
+   or should progression stay a numeric XP total with no titles?
+4. Is a text-only call mode an acceptable first version, and is deterministic
+   multiple-choice interview scoring acceptable before any local-model work?
+
+## 10. Approval requested
 
 Confirm the four choices listed in
 [architecture.md §13](architecture.md#13-decisions-requested-at-approval):
@@ -271,5 +364,7 @@ Confirm the four choices listed in
 4. Keep all local attempt history, with export/import and manual reset
    (recommended).
 
-Approval unlocks M0 only — scaffold and guardrails — with a checkpoint after M3
-when the first ticket is playable end-to-end.
+For the work ahead, also confirm the §9 sequencing: finish Release 1 (M5–M6)
+before M7 field notes, M8 rank and streak, M9 text call mode, and M10 interview
+drill — or say what to reorder. Nothing in §9 is implemented until that approval
+arrives.
