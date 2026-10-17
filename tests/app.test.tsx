@@ -37,6 +37,7 @@ const queueTicket: TicketView = {
 vi.mock('../src/app/practiceService', () => ({
   loadQueue: vi.fn().mockResolvedValue([]),
   findActiveSessionId: vi.fn().mockResolvedValue(null),
+  loadPracticeRecommendations: vi.fn().mockResolvedValue([]),
   createTickets: vi.fn().mockResolvedValue([]),
   startAttempt: vi.fn(),
   formatSimClock: vi.fn().mockReturnValue('09:30'),

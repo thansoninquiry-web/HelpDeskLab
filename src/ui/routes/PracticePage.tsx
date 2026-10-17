@@ -3,8 +3,10 @@ import { Link, useNavigate, useSearchParams } from 'react-router'
 import {
   createTickets,
   findActiveSessionId,
+  loadPracticeRecommendations,
   loadQueue,
   startAttempt,
+  type TargetRecommendation,
   type TicketView,
 } from '../../app/practiceService'
 import { PageHeader } from '../components/PageHeader'
@@ -47,6 +49,7 @@ export function PracticePage() {
   const familyFilter = searchParams.get('family')
   const focusTitle = familyFilter ? (FAMILY_LABELS[familyFilter] ?? familyFilter) : null
   const [tickets, setTickets] = useState<TicketView[]>([])
+  const [recommendations, setRecommendations] = useState<TargetRecommendation[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -56,11 +59,12 @@ export function PracticePage() {
   useEffect(() => {
     let active = true
 
-    Promise.all([loadQueue(), findActiveSessionId()]).then(
-      ([queue, activeId]) => {
+    Promise.all([loadQueue(), findActiveSessionId(), loadPracticeRecommendations()]).then(
+      ([queue, activeId, targetRecommendations]) => {
         if (active) {
           setTickets(queue)
           setActiveSessionId(activeId)
+          setRecommendations(targetRecommendations)
           setState('ready')
         }
       },
@@ -118,6 +122,21 @@ export function PracticePage() {
         title="Practice"
         description="Every ticket below is backed by a real fault in the simulated Larkspur Logistics environment. Pick one up and work it like a shift."
       />
+
+      {recommendations.length > 0 ? (
+        <div className={styles.targetStrip}>
+          <span className={styles.targetStripLabel}>From your job targets</span>
+          {recommendations.map((recommendation) => (
+            <Link
+              key={recommendation.scenarioId}
+              className={styles.targetChip}
+              to={`/practice?family=${encodeURIComponent(recommendation.scenarioId)}`}
+            >
+              {recommendation.scenarioId} · {recommendation.reason}
+            </Link>
+          ))}
+        </div>
+      ) : null}
 
       {activeSessionId ? (
         <div className={styles.resumeBar}>

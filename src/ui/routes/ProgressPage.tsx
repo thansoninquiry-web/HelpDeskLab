@@ -105,6 +105,33 @@ export function ProgressPage() {
         )}
       </section>
 
+      {progress.targetRecommendations.length > 0 ? (
+        <section className={styles.sectionBlock} aria-label="From your job targets">
+          <h2>From your job targets</h2>
+          <p className={styles.muted}>
+            Weighted by how often your listings ask for a family and how much room you have to
+            improve. Manage the listings on{' '}
+            <Link to="/targets">Job targets</Link>.
+          </p>
+          <ul className={styles.focusList}>
+            {progress.targetRecommendations.map((recommendation) => (
+              <li key={recommendation.scenarioId} className={styles.focusCard}>
+                <div className={styles.focusMain}>
+                  <span className={styles.focusTitle}>{recommendation.title}</span>
+                  <span className={styles.focusDetail}>{recommendation.reason}</span>
+                </div>
+                <Link
+                  className={styles.secondaryButton}
+                  to={`/practice?family=${encodeURIComponent(recommendation.scenarioId)}`}
+                >
+                  Practise {recommendation.scenarioId}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       <section className={styles.sectionBlock} aria-label="Scenario mastery">
         <h2>By scenario</h2>
         {progress.rows.length === 0 ? (

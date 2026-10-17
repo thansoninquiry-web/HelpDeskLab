@@ -80,10 +80,13 @@ HelpDeskLab/
       scoring/                  # rubric types, spec evaluator, bands, feedback
       session/                  # ticket lifecycle, caller dialogue, resolution
       progress/                 # XP, streaks, Leitner scheduling, mastery stats
+      targets/                  # job listings → skills, coverage, recommendations,
+                                #   interview templates, share-safe export shape
     app/                        # orchestration services; the only layer UI calls
       persistenceService.ts     # opens and reports the browser database
       backupService.ts          # export / restore / reset wrapper
       practiceService.ts        # start / resume / abandon a ticket
+      targetsService.ts         # job listings, weighted focus, share-safe export
       commandService.ts         # parse + reduce + persist one action
       resolutionService.ts      # finalize attempt, score, update progress
       backupService.ts          # export / import / reset
@@ -94,9 +97,9 @@ HelpDeskLab/
       migrations.ts             # version guards, rollback, schema validation
       errors.ts                 # typed persistence errors
       database.ts               # open / export / import / reset facade
-      repositories/             # tickets, sessions, actions, scores, progress, settings
+      repositories/             # tickets, sessions, actions, scores, progress, settings, targets
     ui/                         # React only; no SQL, no domain mutation
-      routes/                   # dashboard, practice, ticket, debrief, progress, settings
+      routes/                   # dashboard, practice, ticket, debrief, targets, progress, settings
       components/               # terminal, ticket pane, caller chat, rubric report…
       state/                    # session store (zustand), app settings
       styles/                   # CSS custom properties + CSS Modules
@@ -119,12 +122,13 @@ functions are pure: given the same inputs they return the same outputs, no
 
 ## 4. Data model
 
-SQLite, six tables plus migration bookkeeping. All timestamps are epoch
+SQLite, seven tables plus migration bookkeeping. All timestamps are epoch
 milliseconds; all generated content is stored as JSON text so the schema stays
 small.
 
 ```sql
--- Schema version 1. The migration runner sets PRAGMA user_version after applying.
+-- Schema version 1 (job_targets arrives in version 2). The migration runner sets
+-- PRAGMA user_version after applying.
 
 CREATE TABLE tickets (
   id            TEXT PRIMARY KEY,
@@ -182,10 +186,24 @@ CREATE TABLE settings (
   key           TEXT PRIMARY KEY,
   value         TEXT NOT NULL
 );
+
+-- Schema version 2: local job listings. raw_description stays local and is
+-- absent from the share-safe JSON export; the full backup still contains it.
+CREATE TABLE job_targets (
+  id              TEXT PRIMARY KEY,
+  company         TEXT NOT NULL,
+  title           TEXT NOT NULL,
+  url             TEXT NOT NULL DEFAULT '',
+  applied_on      TEXT,                 -- 'YYYY-MM-DD' or NULL
+  status          TEXT NOT NULL,        -- researching|applied|interviewing|offer|closed
+  raw_description TEXT NOT NULL,
+  created_at      INTEGER NOT NULL,
+  updated_at      INTEGER NOT NULL
+);
 ```
 
 Indexes: `actions(session_id, seq)`, `sessions(ticket_id)`, `tickets(created_at)`,
-`scenario_stats(due_at)`.
+`scenario_stats(due_at)`, `job_targets(created_at)`.
 
 Notes:
 

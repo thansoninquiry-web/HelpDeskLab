@@ -1,6 +1,7 @@
 import { isJsonObject, type JsonObject, type JsonValue } from '../../domain/shared/json'
 import type { LeitnerBox, ScenarioStats, ScoreHistoryEntry } from '../../domain/progress/types'
 import type { Score, ScoreBand } from '../../domain/scoring/types'
+import { JOB_STATUSES, type JobStatus, type JobTarget } from '../../domain/targets/types'
 import type {
   ActionKind,
   Session,
@@ -192,6 +193,24 @@ export function mapScoreHistory(row: Row): ScoreHistoryEntry {
     passed: expectBoolean(row, 'passed', 'scores'),
     computedAt: expectInteger(row, 'computed_at', 'scores'),
     categoryScores: parseCategoryScores(rubric.categoryScores),
+  }
+}
+
+export function mapJobTarget(row: Row): JobTarget {
+  return {
+    id: expectText(row, 'id', 'job_targets'),
+    company: expectText(row, 'company', 'job_targets'),
+    title: expectText(row, 'title', 'job_targets'),
+    url: expectText(row, 'url', 'job_targets'),
+    appliedOn: expectNullableText(row, 'applied_on', 'job_targets'),
+    status: oneOf(
+      expectText(row, 'status', 'job_targets'),
+      JOB_STATUSES,
+      'job_targets.status',
+    ) satisfies JobStatus,
+    rawDescription: expectText(row, 'raw_description', 'job_targets'),
+    createdAt: expectInteger(row, 'created_at', 'job_targets'),
+    updatedAt: expectInteger(row, 'updated_at', 'job_targets'),
   }
 }
 

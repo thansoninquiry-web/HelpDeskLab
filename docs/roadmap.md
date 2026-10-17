@@ -1,6 +1,6 @@
 # HelpDeskLab — Roadmap
 
-**Status:** M0–M4 and M6 built · M5 still open · M7+ plan proposed, awaiting approval
+**Status:** M0–M4, M6, and the M7 job-targets surface built · M5 and R1 sign-off still open
 **Last updated:** 2026-10-17
 **Companion:** [architecture.md](architecture.md)
 
@@ -46,10 +46,16 @@ timers, authoring) — never both at once.
   (DHCP-01, M365-01, FS-01) with the tools they need, a scored escalation handoff
   note, and weak-topic recommendations on Progress. This pulls forward M365 and
   DHCP depth from Release 2 and moves R1 sign-off to M7.
+- **M7 — job targets and skills coverage: done (2026-10-17).** A learner-requested
+  surface delivered ahead of sign-off: local job listings, deterministic keyword
+  extraction into skills and families, coverage across all listings, demand-and-
+  weakness-weighted practice recommendations, and per-listing interview prompts.
+  §11 records the scope and evidence. This does not replace the R1 sign-off slot
+  below; the same M7 label covers both, and sign-off is still open.
 - **Next — M5:** close Release 1 — fairness lint, three fixtures per variant,
-  keyboard/resume audit, and streak plus Leitner surfacing. M7 then signs the
-  release off; M8–M11 evaluate the reference product's lesson, progression, call,
-  and interview ideas in that order (see §9).
+  keyboard/resume audit, and streak plus Leitner surfacing. R1 sign-off then
+  closes the release; M8–M11 evaluate the reference product's lesson,
+  progression, call, and interview ideas in that order (see §9).
 
 The Release 1 checklist and acceptance criteria below are still outstanding; the
 items above cover the build milestones but not yet the fairness-lint acceptance
@@ -339,7 +345,7 @@ its fixture set before it ships rather than after.
 |---|-----------|------|------------|
 | M5 | Close Release 1: fairness lint (500 tickets per variant, 6,000 total), three scoring fixtures per variant, keyboard and resume audit, streak and Leitner surfacing | M | R1 criteria 2–6 and 11 demonstrated with no new feature surface |
 | M6 | Scenario depth, handoff notes, weak topics — **done** | L | Twelve variants score 100 on the reference path; handoff notes scored by content; Progress names the weakest family |
-| M7 | R1 sign-off: recovery-flow polish, accessibility and performance pass, docs refresh, recorded manual E2E script | S | All R1 acceptance criteria recorded with evidence |
+| M7 | R1 sign-off: recovery-flow polish, accessibility and performance pass, docs refresh, recorded manual E2E script — **still open**; the job-targets surface that shipped under the same label is recorded in §11 | S | All R1 acceptance criteria recorded with evidence |
 | M8 | Family field notes: one original primer per family, linked from queue and debrief | S–M | Every family has a primer; copy independently written; no schema change |
 | M9 | Rank and streak: derived rank from XP, weekly streak on the dashboard | S | Rank and streak survive reload; thresholds documented; no new tables |
 | M10 | Text call mode: one family end-to-end | M | Call variant playable from greeting to resolution; transcript stored as actions; communication rubric item with fixtures |
@@ -397,3 +403,61 @@ For the work ahead, also confirm the §9 sequencing: finish Release 1 (M5 and
 M7) before M8 field notes, M9 rank and streak, M10 text call mode, and M11
 interview drill — or say what to reorder. Nothing after M6 is implemented until
 that approval arrives.
+
+## 11. M7 delivered — job targets and skills coverage
+
+**Built 2026-10-17.** Local-first, deterministic, and offline: no model call, no
+network request, and no listing text in anything meant for sharing. The M7 label
+here names the surface the learner asked for; the R1 sign-off slot in §9.3 keeps
+the same number and remains open.
+
+### What shipped
+
+| Piece | Behaviour |
+|-------|-----------|
+| Job listings | Paste company, title, URL, date applied, status, and the listing text. Stored in a new `job_targets` table (schema v2) and therefore included in the local `.sqlite` backup, export, and import. Edit status in place; delete with confirmation. |
+| Skill extraction | A fixed table of twelve A+-style skill areas maps lowercase keyword phrases to the six scenario families and their simulated tools. Matching is case-insensitive phrase matching with word boundaries; each phrase counts at most once per listing, so repetition in an advert cannot inflate coverage. |
+| Coverage view | Every known skill appears, requested or not, with the number of listings that asked for it and the families that practise it. Skills whose family list is empty — VPN and hardware today — read "Not covered yet". |
+| Weighted practice | Family demand (phrase mentions across listings) multiplied by room to improve (`100 − average score`, or 50 for a family never played). Surfaced on Job targets, on Progress ("From your job targets"), and as a strip on the practice queue, each linking to `/practice?family=…`. |
+| Interview prep | Per-listing disclosure with two original questions per matched skill (top three skills, six prompts) and a short "what this tests" note. Templates are static content; nothing is generated at runtime. |
+| Share-safe export | A JSON download containing company, title, URL, date, status, derived skills, and families — with `rawDescription` deliberately absent. The full database backup still contains the text because it is a local backup. |
+
+### Privacy and repository rules
+
+- Listing text lives only in the local SQLite database (IndexedDB snapshot). It
+  is excluded from the sharing export by construction, not by a UI toggle.
+- `.gitignore` now ignores `data/job-listings/` in case listings are ever dumped
+  to files, and the README says plainly not to commit or paste raw listings.
+- Extraction reads the text; it never writes it to logs, the action log, or any
+  analytics path.
+
+### Evidence
+
+- `npm run check` passes: typecheck, ESLint (including the UI-must-use-services
+  boundary), 152 tests, and the production build. A migration test seeds a v1
+  database, runs the v2 upgrade, and asserts the old row survives.
+- Domain tests cover extraction counts and false positives, coverage ordering and
+  uncovered skills, recommendation weighting and limits, template determinism,
+  and an export test that asserts a marker sentence from the listing is absent
+  from the JSON.
+- Persistence tests cover round-trip, ordering, duplicate ids, status updates,
+  deletion, and survival through export/import.
+- Service tests cover validation, trimming, the empty-database path, and the
+  share-safe payload. UI tests cover the saved listing, coverage table, practice
+  links, interview panel, save flow, export note, empty state, and save errors.
+- Verified manually in the browser: pasted a listing, saw ten requested skills
+  with VPN correctly marked "Not covered yet", expanded the six interview
+  questions, downloaded the share-safe file, and confirmed the Progress page and
+  queue chips link to the weighted families. No console errors; the only network
+  request is the local `sql-wasm.wasm` asset.
+
+### Known limits
+
+- Keyword extraction is literal. A listing that says "service desk" is matched,
+  but paraphrases such as "front-line support engineer" are not; the UI says so
+  when nothing matches.
+- Coverage counts listings, not emphasis: a skill mentioned once and a skill
+  mentioned ten times in one advert both add one listing.
+- No editing of saved listings beyond status; correcting a typo means deleting
+  and re-pasting.
+- No interview-answer grading, and the question bank is deliberately small.

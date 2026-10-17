@@ -9,6 +9,7 @@ import {
 } from '../domain/generator'
 import type { GeneratedTicket, PublicTicket, ReferenceStep, Severity, TicketCategory } from '../domain/generator'
 import type { ScoreHistoryEntry, ScenarioStats } from '../domain/progress/types'
+import type { TargetRecommendation } from '../domain/targets/types'
 import { evaluateSession } from '../domain/scoring/evaluator'
 import type {
   CategoryScore,
@@ -23,6 +24,9 @@ import type { ActionKind, Session, Ticket } from '../domain/tickets/types'
 import type { TicketStatus } from '../domain/tickets/types'
 import type { Persistence } from '../persistence/database'
 import { getLocalDatabase } from './persistenceService'
+import { loadTargetRecommendations } from './targetsService'
+
+export type { TargetRecommendation } from '../domain/targets/types'
 
 const QUEUE_TARGET = 5
 const QUEUE_SCAN = 60
@@ -127,6 +131,8 @@ export interface ProgressView {
   averageBest: number
   rows: ProgressRow[]
   weakTopics: WeakTopic[]
+  /** Weighted by how often job listings ask for a family and how weak the scores are. */
+  targetRecommendations: TargetRecommendation[]
 }
 
 export type NoteKind = 'troubleshooting' | 'customer' | 'resolution'
@@ -923,7 +929,11 @@ export function computeWeakTopics(history: readonly ScoreHistoryEntry[]): WeakTo
 
 export async function loadProgress(): Promise<ProgressView> {
   const db = await database()
-  const [stats, history] = await Promise.all([db.progress.list(), db.scores.listHistory()])
+  const [stats, history, targetRecommendations] = await Promise.all([
+    db.progress.list(),
+    db.scores.listHistory(),
+    loadTargetRecommendations(),
+  ])
   const rows: ProgressRow[] = stats.map((entry) => ({
     scenarioId: entry.scenarioId,
     scenarioTitle: titleFor(entry.scenarioId),
@@ -950,7 +960,13 @@ export async function loadProgress(): Promise<ProgressView> {
     averageBest,
     rows,
     weakTopics: computeWeakTopics(history),
+    targetRecommendations,
   }
+}
+
+/** Used by the queue to point at families the target listings ask for. */
+export async function loadPracticeRecommendations(): Promise<TargetRecommendation[]> {
+  return loadTargetRecommendations()
 }
 
 const SCENARIO_TITLES: Record<string, string> = {

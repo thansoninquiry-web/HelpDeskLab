@@ -1,4 +1,5 @@
 import type { ScenarioStats } from '../../src/domain/progress/types'
+import type { JobTarget } from '../../src/domain/targets/types'
 import type { Score } from '../../src/domain/scoring/types'
 import type {
   NewSessionAction,
@@ -56,6 +57,22 @@ export function makeScore(sessionId = 'session-1', overrides: Partial<Score> = {
     band: 'pass',
     rubric: { items: [{ id: 'verify-caller', passed: true }] },
     computedAt: 1_760_000_400_000,
+    ...overrides,
+  }
+}
+
+export function makeJobTarget(overrides: Partial<JobTarget> = {}): JobTarget {
+  return {
+    id: 'target-1',
+    company: 'Northwind Support',
+    title: 'Tier 1 Service Desk Analyst',
+    url: 'https://example.com/jobs/1',
+    appliedOn: '2026-10-01',
+    status: 'applied',
+    rawDescription:
+      'Reset passwords, troubleshoot DNS and DHCP, and document every step in the ticketing system.',
+    createdAt: 1_760_000_000_000,
+    updatedAt: 1_760_000_000_000,
     ...overrides,
   }
 }

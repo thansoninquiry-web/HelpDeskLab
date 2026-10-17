@@ -1,6 +1,7 @@
 import type { JsonValue } from './shared/json'
 import type { ScenarioStats, ScoreHistoryEntry } from './progress/types'
 import type { Score } from './scoring/types'
+import type { JobStatus, JobTarget } from './targets/types'
 import type {
   NewSessionAction,
   ScenarioId,
@@ -49,6 +50,14 @@ export interface ProgressRepository {
   get(scenarioId: ScenarioId): Promise<ScenarioStats | null>
   list(): Promise<ScenarioStats[]>
   upsert(stats: ScenarioStats): Promise<void>
+}
+
+export interface JobTargetRepository {
+  create(target: JobTarget): Promise<void>
+  list(): Promise<JobTarget[]>
+  findById(id: string): Promise<JobTarget | null>
+  updateStatus(id: string, status: JobStatus, updatedAt: number): Promise<void>
+  remove(id: string): Promise<void>
 }
 
 export interface SettingsRepository {

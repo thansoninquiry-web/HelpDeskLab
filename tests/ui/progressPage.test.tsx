@@ -25,6 +25,7 @@ const weakView: ProgressView = {
       dueAt: null,
     },
   ],
+  targetRecommendations: [],
   weakTopics: [
     {
       scenarioId: 'FS-01',

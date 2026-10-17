@@ -1,6 +1,7 @@
 import type {
   ActionRepository,
   BackupStore,
+  JobTargetRepository,
   ProgressRepository,
   ScoreRepository,
   SessionRepository,
@@ -25,6 +26,7 @@ export interface Persistence {
   scores: ScoreRepository
   progress: ProgressRepository
   settings: SettingsRepository
+  targets: JobTargetRepository
   schemaVersion(): number
   exportDatabase(): Promise<Uint8Array>
   importDatabase(bytes: Uint8Array): Promise<void>
@@ -67,6 +69,7 @@ export class SqlitePersistence implements Persistence, BackupStore {
   readonly scores: ScoreRepository
   readonly progress: ProgressRepository
   readonly settings: SettingsRepository
+  readonly targets: JobTargetRepository
 
   constructor(db: SqliteDriver, snapshotStore: SnapshotStore, wasmBinary?: ArrayBuffer) {
     this.db = db
@@ -84,6 +87,7 @@ export class SqlitePersistence implements Persistence, BackupStore {
     this.scores = repositories.scores
     this.progress = repositories.progress
     this.settings = repositories.settings
+    this.targets = repositories.targets
   }
 
   schemaVersion(): number {

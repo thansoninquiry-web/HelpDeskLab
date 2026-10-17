@@ -4,6 +4,7 @@ import styles from './AppShell.module.css'
 const navigation = [
   { to: '/', label: 'Dashboard' },
   { to: '/practice', label: 'Practice' },
+  { to: '/targets', label: 'Job targets' },
   { to: '/progress', label: 'Progress' },
   { to: '/settings', label: 'Settings' },
 ]
@@ -39,7 +40,7 @@ export function AppShell() {
           ))}
         </nav>
 
-        <span className={styles.badge}>M4 · practice loop</span>
+        <span className={styles.badge}>M7 · targets and practice</span>
       </header>
 
       <main id="main" className={styles.main}>

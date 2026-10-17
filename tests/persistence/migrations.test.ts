@@ -2,7 +2,12 @@
 import { describe, expect, it } from 'vitest'
 import { SchemaValidationError, SchemaVersionError } from '../../src/persistence/errors'
 import { listTables, runMigrations, validateMigrations } from '../../src/persistence/migrations'
-import { REQUIRED_TABLES, SCHEMA_VERSION, type Migration } from '../../src/persistence/schema'
+import {
+  MIGRATIONS,
+  REQUIRED_TABLES,
+  SCHEMA_VERSION,
+  type Migration,
+} from '../../src/persistence/schema'
 import { createSqliteDriver } from '../../src/persistence/sqlite'
 import { loadWasmBinary } from '../helpers/sqlite'
 
@@ -16,9 +21,29 @@ describe('runMigrations', () => {
 
     const result = runMigrations(db)
 
-    expect(result).toEqual({ from: 0, to: SCHEMA_VERSION, applied: [1] })
+    expect(result).toEqual({ from: 0, to: SCHEMA_VERSION, applied: [1, 2] })
     expect(db.getUserVersion()).toBe(SCHEMA_VERSION)
     expect(listTables(db)).toEqual(expect.arrayContaining([...REQUIRED_TABLES]))
+
+    db.close()
+  })
+
+  it('upgrades a v1 database in place and keeps its data', async () => {
+    const db = await freshDriver()
+    const v1 = MIGRATIONS.find((migration) => migration.version === 1)
+    expect(v1).toBeDefined()
+    for (const statement of v1?.statements ?? []) {
+      db.run(statement)
+    }
+    db.setUserVersion(1)
+    db.run("INSERT INTO settings (key, value) VALUES ('theme', '\"light\"')")
+    expect(db.getUserVersion()).toBe(1)
+
+    const result = runMigrations(db)
+
+    expect(result).toEqual({ from: 1, to: SCHEMA_VERSION, applied: [2] })
+    expect(db.exec("SELECT value FROM settings WHERE key = 'theme'")[0]?.value).toBe('"light"')
+    expect(listTables(db)).toContain('job_targets')
 
     db.close()
   })

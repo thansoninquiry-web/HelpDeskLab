@@ -4,6 +4,7 @@ import { SqliteProgressRepository } from './progress'
 import { SqliteScoreRepository } from './scores'
 import { SqliteSessionRepository } from './sessions'
 import { SqliteSettingsRepository } from './settings'
+import { SqliteJobTargetRepository } from './targets'
 import { SqliteTicketRepository } from './tickets'
 
 export interface Repositories {
@@ -13,6 +14,7 @@ export interface Repositories {
   scores: SqliteScoreRepository
   progress: SqliteProgressRepository
   settings: SqliteSettingsRepository
+  targets: SqliteJobTargetRepository
 }
 
 export function createRepositories(context: RepositoryContext): Repositories {
@@ -23,6 +25,7 @@ export function createRepositories(context: RepositoryContext): Repositories {
     scores: new SqliteScoreRepository(context),
     progress: new SqliteProgressRepository(context),
     settings: new SqliteSettingsRepository(context),
+    targets: new SqliteJobTargetRepository(context),
   }
 }
 

@@ -3,10 +3,11 @@ export interface Migration {
   statements: readonly string[]
 }
 
-export const SCHEMA_VERSION = 1
+export const SCHEMA_VERSION = 2
 
 export const REQUIRED_TABLES: readonly string[] = [
   'actions',
+  'job_targets',
   'scenario_stats',
   'scores',
   'sessions',
@@ -80,5 +81,22 @@ export const MIGRATIONS: readonly Migration[] = [
   {
     version: 1,
     statements: [...TABLE_STATEMENTS, ...INDEX_STATEMENTS],
+  },
+  {
+    version: 2,
+    statements: [
+      `CREATE TABLE job_targets (
+        id TEXT PRIMARY KEY,
+        company TEXT NOT NULL,
+        title TEXT NOT NULL,
+        url TEXT NOT NULL DEFAULT '',
+        applied_on TEXT,
+        status TEXT NOT NULL CHECK (status IN ('researching', 'applied', 'interviewing', 'offer', 'closed')),
+        raw_description TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      ) STRICT`,
+      'CREATE INDEX idx_job_targets_created_at ON job_targets(created_at DESC)',
+    ],
   },
 ]
