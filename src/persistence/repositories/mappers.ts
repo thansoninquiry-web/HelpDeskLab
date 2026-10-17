@@ -1,0 +1,169 @@
+import { isJsonObject, type JsonObject, type JsonValue } from '../../domain/shared/json'
+import type { LeitnerBox, ScenarioStats } from '../../domain/progress/types'
+import type { Score, ScoreBand } from '../../domain/scoring/types'
+import type {
+  ActionKind,
+  Session,
+  SessionAction,
+  SessionOutcome,
+  Ticket,
+  TicketStatus,
+} from '../../domain/tickets/types'
+import { DataCorruptionError } from '../errors'
+import type { Row, SqlValue } from '../sqlite'
+
+function expectText(row: Row, column: string, table: string): string {
+  const value = row[column]
+  if (typeof value !== 'string') {
+    throw new DataCorruptionError(`${table}.${column} is not text`)
+  }
+  return value
+}
+
+function expectNullableText(row: Row, column: string, table: string): string | null {
+  const value = row[column]
+  if (value === null || value === undefined) {
+    return null
+  }
+  if (typeof value !== 'string') {
+    throw new DataCorruptionError(`${table}.${column} is not text`)
+  }
+  return value
+}
+
+function expectInteger(row: Row, column: string, table: string): number {
+  const value = row[column]
+  if (typeof value !== 'number' || !Number.isInteger(value)) {
+    throw new DataCorruptionError(`${table}.${column} is not an integer`)
+  }
+  return value
+}
+
+function expectNullableInteger(row: Row, column: string, table: string): number | null {
+  const value = row[column]
+  if (value === null || value === undefined) {
+    return null
+  }
+  if (typeof value !== 'number' || !Number.isInteger(value)) {
+    throw new DataCorruptionError(`${table}.${column} is not an integer`)
+  }
+  return value
+}
+
+function expectBoolean(row: Row, column: string, table: string): boolean {
+  const value = expectInteger(row, column, table)
+  if (value !== 0 && value !== 1) {
+    throw new DataCorruptionError(`${table}.${column} is not a boolean`)
+  }
+  return value === 1
+}
+
+function parseJson(text: SqlValue, where: string): JsonValue {
+  if (typeof text !== 'string') {
+    throw new DataCorruptionError(`${where} is not stored as JSON text`)
+  }
+  try {
+    return JSON.parse(text) as JsonValue
+  } catch (error) {
+    throw new DataCorruptionError(`${where} contains invalid JSON`, { cause: error })
+  }
+}
+
+export function parseJsonObject(text: SqlValue, where: string): JsonObject {
+  const parsed = parseJson(text, where)
+  if (!isJsonObject(parsed)) {
+    throw new DataCorruptionError(`${where} does not contain a JSON object`)
+  }
+  return parsed
+}
+
+export function parseJsonValue(text: SqlValue, where: string): JsonValue {
+  return parseJson(text, where)
+}
+
+function oneOf<T extends string>(value: string, allowed: readonly T[], where: string): T {
+  if (!(allowed as readonly string[]).includes(value)) {
+    throw new DataCorruptionError(`${where} has an unexpected value: ${value}`)
+  }
+  return value as T
+}
+
+export function mapTicket(row: Row): Ticket {
+  const difficulty = expectInteger(row, 'difficulty', 'tickets')
+  if (difficulty !== 1 && difficulty !== 2 && difficulty !== 3) {
+    throw new DataCorruptionError(`tickets.difficulty has an unexpected value: ${difficulty}`)
+  }
+  return {
+    id: expectText(row, 'id', 'tickets'),
+    scenarioId: expectText(row, 'scenario_id', 'tickets'),
+    variantId: expectText(row, 'variant_id', 'tickets'),
+    difficulty,
+    seed: expectInteger(row, 'seed', 'tickets'),
+    signature: expectText(row, 'signature', 'tickets'),
+    publicContent: parseJsonObject(row.public_json ?? null, 'tickets.public_json'),
+    createdAt: expectInteger(row, 'created_at', 'tickets'),
+    status: oneOf(
+      expectText(row, 'status', 'tickets'),
+      ['available', 'in_progress', 'completed'] as const,
+      'tickets.status',
+    ) satisfies TicketStatus,
+  }
+}
+
+export function mapSession(row: Row): Session {
+  const rawOutcome = expectNullableText(row, 'outcome', 'sessions')
+  return {
+    id: expectText(row, 'id', 'sessions'),
+    ticketId: expectText(row, 'ticket_id', 'sessions'),
+    startedAt: expectInteger(row, 'started_at', 'sessions'),
+    endedAt: expectNullableInteger(row, 'ended_at', 'sessions'),
+    world: parseJsonObject(row.world_json ?? null, 'sessions.world_json'),
+    resolution: expectNullableText(row, 'resolution', 'sessions'),
+    outcome: rawOutcome === null
+      ? null
+      : oneOf(rawOutcome, ['resolved', 'abandoned'] as const, 'sessions.outcome') satisfies SessionOutcome,
+  }
+}
+
+export function mapAction(row: Row): SessionAction {
+  return {
+    id: expectInteger(row, 'id', 'actions'),
+    sessionId: expectText(row, 'session_id', 'actions'),
+    seq: expectInteger(row, 'seq', 'actions'),
+    atMs: expectInteger(row, 'at_ms', 'actions'),
+    kind: oneOf(
+      expectText(row, 'kind', 'actions'),
+      ['command', 'ask-user', 'verify-caller', 'note'] as const,
+      'actions.kind',
+    ) satisfies ActionKind,
+    input: parseJsonObject(row.input_json ?? null, 'actions.input_json'),
+    output: parseJsonObject(row.output_json ?? null, 'actions.output_json'),
+  }
+}
+
+export function mapScore(row: Row): Score {
+  return {
+    sessionId: expectText(row, 'session_id', 'scores'),
+    total: expectInteger(row, 'total', 'scores'),
+    passed: expectBoolean(row, 'passed', 'scores'),
+    band: oneOf(expectText(row, 'band', 'scores'), ['fail', 'pass', 'strong'] as const, 'scores.band') satisfies ScoreBand,
+    rubric: parseJsonObject(row.rubric_json ?? null, 'scores.rubric_json'),
+    computedAt: expectInteger(row, 'computed_at', 'scores'),
+  }
+}
+
+export function mapScenarioStats(row: Row): ScenarioStats {
+  const leitnerBox = expectInteger(row, 'leitner_box', 'scenario_stats')
+  if (leitnerBox < 1 || leitnerBox > 5) {
+    throw new DataCorruptionError(`scenario_stats.leitner_box has an unexpected value: ${leitnerBox}`)
+  }
+  return {
+    scenarioId: expectText(row, 'scenario_id', 'scenario_stats'),
+    attempts: expectInteger(row, 'attempts', 'scenario_stats'),
+    passes: expectInteger(row, 'passes', 'scenario_stats'),
+    bestScore: expectInteger(row, 'best_score', 'scenario_stats'),
+    lastPlayedAt: expectNullableInteger(row, 'last_played_at', 'scenario_stats'),
+    leitnerBox: leitnerBox as LeitnerBox,
+    dueAt: expectNullableInteger(row, 'due_at', 'scenario_stats'),
+  }
+}

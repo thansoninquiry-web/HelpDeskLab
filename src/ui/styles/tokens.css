@@ -1,0 +1,31 @@
+:root {
+  color-scheme: dark;
+
+  --bg: #070b14;
+  --bg-elevated: #0e1524;
+  --panel: #111a2c;
+  --panel-strong: #172238;
+  --border: #22304a;
+  --border-strong: #33466a;
+
+  --text: #e6edf7;
+  --text-muted: #93a4bd;
+  --text-faint: #6b7c96;
+
+  --accent: #4cc9f0;
+  --accent-strong: #22d3ee;
+  --accent-soft: rgba(76, 201, 240, 0.12);
+  --success: #4ade80;
+  --warning: #fbbf24;
+
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Code', 'SFMono-Regular', Consolas, monospace;
+
+  --max-width: 1120px;
+  --gutter: clamp(1.25rem, 4vw, 2.5rem);
+  --header-height: 4.5rem;
+}

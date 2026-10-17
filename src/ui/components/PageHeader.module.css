@@ -1,0 +1,25 @@
+.header {
+  display: flex;
+  max-width: 760px;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin-bottom: 2.5rem;
+}
+
+.eyebrow {
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.title {
+  font-size: clamp(2rem, 5vw, 3rem);
+}
+
+.description {
+  max-width: 62ch;
+  color: var(--text-muted);
+  font-size: 1.03rem;
+}
