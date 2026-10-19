@@ -1,13 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="HelpDeskLab">
-  <rect width="64" height="64" rx="14" fill="#0e1524" />
-  <rect x="10" y="14" width="44" height="28" rx="4" fill="none" stroke="#4cc9f0" stroke-width="3" />
+  <rect width="64" height="64" rx="8" fill="#0d1a30" />
+  <rect x="10" y="14" width="44" height="28" rx="3" fill="none" stroke="#38bdf8" stroke-width="3" />
   <path
     d="M20 23l8 6-8 6M34 35h10"
     fill="none"
-    stroke="#e6edf7"
+    stroke="#e8eef8"
     stroke-width="3"
     stroke-linecap="round"
     stroke-linejoin="round"
   />
-  <path d="M32 42v7M25 49h14" fill="none" stroke="#4cc9f0" stroke-width="3" stroke-linecap="round" />
+  <path d="M32 42v7M25 49h14" fill="none" stroke="#38bdf8" stroke-width="3" stroke-linecap="round" />
 </svg>

@@ -1,3 +1,9 @@
+import {
+  ACCOUNT_ARGUMENT,
+  GROUP_ARGUMENT,
+  type ConsoleAction,
+  type ConsoleEntry,
+} from './console'
 import type {
   DirectoryUser,
   FileShare,
@@ -131,4 +137,55 @@ export function removeShareDeny(
   }
   share.grants.splice(index, 1)
   return true
+}
+
+const SHARES_NOTE =
+  'Who can reach a share, and any explicit deny on it, are not listed here: check them with these actions so the evidence lands in the ticket log.'
+
+function shareActions(share: FileShare): ConsoleAction[] {
+  // No candidates are offered here on purpose: who can reach a share, and which
+  // group grants it, is exactly what these checks are for. A list of accounts or
+  // groups would be the answer handed over in advance.
+  return [
+    {
+      id: 'share-access',
+      label: 'Check access for an account',
+      detail: `Effective access to ${share.name}: explicit denies, group grants, and what the account ends up with.`,
+      command: (_target, args) => `get-share-access ${share.name} ${args?.[0] ?? ''}`.trim(),
+      args: [ACCOUNT_ARGUMENT],
+    },
+    {
+      id: 'share-grant',
+      label: 'Add an account to an access group',
+      detail: 'Group membership, which is how access to this share is granted.',
+      command: (_target, args) =>
+        `add-group-member ${args?.[0] ?? ''} ${args?.[1] ?? ''}`.trim(),
+      args: [GROUP_ARGUMENT, ACCOUNT_ARGUMENT],
+    },
+  ]
+}
+
+/**
+ * The File Shares projection: where each share lives, and the audited commands
+ * that reveal or change who can reach it.
+ */
+export function sharesConsoleEntries(world: World): ConsoleEntry[] {
+  return [...world.shares]
+    .sort((left, right) => left.name.localeCompare(right.name))
+    .map((share) => ({
+      id: share.id,
+      title: share.name,
+      subtitle: `${share.server} · ${share.path}`,
+      facts: [
+        { label: 'Host', value: share.server },
+        { label: 'Path', value: share.path },
+        {
+          label: 'Site',
+          value: world.sites.find((site) => site.id === share.siteId)?.name ?? share.siteId,
+        },
+      ],
+      groups: [],
+      actions: shareActions(share),
+      note: SHARES_NOTE,
+    }))
 }

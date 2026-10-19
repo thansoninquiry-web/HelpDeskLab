@@ -1,0 +1,662 @@
+import { SCENARIO_FAMILIES } from '../generator'
+import type { ScenarioId } from '../tickets/types'
+
+/**
+ * The course the app is organised around: sixteen support-desk modules, each
+ * with its own scope and exit criteria. Copy, scope and targets are our own;
+ * nothing here is borrowed from the reference product.
+ */
+
+export type ModuleStatus = 'playable' | 'planned'
+
+/** Every counter the curriculum can read. Values are filled in by the service. */
+export const MODULE_MEASURES = {
+  scoredAttempts: 0,
+  passedAttempts: 0,
+  familiesPlayed: 0,
+  familiesPassed: 0,
+  perfectSafety: 0,
+  perfectDiagnosis: 0,
+  perfectDocumentation: 0,
+  passwordPasses: 0,
+  accountPerfectDiagnosis: 0,
+  accountPerfectSafety: 0,
+  networkAddressPasses: 0,
+  networkPerfectDiagnosis: 0,
+  troubleshootingNotes: 0,
+  customerNotes: 0,
+  resolutionNotes: 0,
+  callerQuestions: 0,
+  callerIntents: 0,
+  askedBeforeTouching: 0,
+  verifiedBeforeTouching: 0,
+  callerVerifications: 0,
+  refusedRequests: 0,
+  remoteSessionsOpened: 0,
+  remoteReadBeforeChange: 0,
+  remoteWorkDocumented: 0,
+  mailboxReads: 0,
+  mailMessageTraces: 0,
+  mailboxPasses: 0,
+  quarantineReleases: 0,
+  sendersBlocked: 0,
+  mailSecurityPasses: 0,
+  deploymentQueueReads: 0,
+  deploymentReads: 0,
+  deploymentRuns: 0,
+  deploymentPasses: 0,
+  deploymentHoldPasses: 0,
+  shelfReads: 0,
+  machinesIssued: 0,
+  shelfHolds: 0,
+  shipmentReads: 0,
+  shipmentsDispatched: 0,
+  shipmentsDelivered: 0,
+  shipmentsRebooked: 0,
+  handedOff: 0,
+  listingsSaved: 0,
+  listingsWithSkills: 0,
+  demandedFamiliesPassed: 0,
+} as const
+
+export type ModuleMeasure = keyof typeof MODULE_MEASURES
+
+export type ModuleEvidence = Record<ModuleMeasure, number>
+
+export function emptyEvidence(): ModuleEvidence {
+  return { ...MODULE_MEASURES }
+}
+
+export interface ModuleRequirement {
+  id: string
+  /** What the learner has to demonstrate, in plain language. */
+  label: string
+  /** Longer explanation shown when the module is opened. */
+  detail: string
+  measure: ModuleMeasure
+  target: number
+}
+
+export interface CurriculumModule {
+  id: string
+  /** Position in the course, 1-based. */
+  number: number
+  title: string
+  summary: string
+  /**
+   * Scenario families whose attempts count toward this module. Empty when the
+   * module is judged on behaviour alone (interview practice) or is not built.
+   */
+  scope: readonly ScenarioId[]
+  status: ModuleStatus
+  requirements: readonly ModuleRequirement[]
+  /** Only set while a module has no lessons. */
+  note?: string
+}
+
+export interface RequirementProgress extends ModuleRequirement {
+  current: number
+  met: boolean
+}
+
+export interface ModuleProgress {
+  met: number
+  total: number
+  /** 0–100, rounded down so a full bar always means every requirement is met. */
+  percent: number
+  complete: boolean
+  requirements: readonly RequirementProgress[]
+}
+
+/** Modules judged on the work rather than one family count every family the app plays. */
+const ALL_FAMILIES: readonly ScenarioId[] = SCENARIO_FAMILIES.map((family) => family.id)
+
+function requirement(
+  id: string,
+  label: string,
+  detail: string,
+  measure: ModuleMeasure,
+  target: number,
+): ModuleRequirement {
+  return { id, label, detail, measure, target }
+}
+
+const planned = (
+  id: string,
+  number: number,
+  title: string,
+  summary: string,
+  note: string,
+): CurriculumModule => ({
+  id,
+  number,
+  title,
+  summary,
+  scope: [],
+  status: 'planned',
+  requirements: [],
+  note,
+})
+
+export const CURRICULUM: readonly CurriculumModule[] = [
+  {
+    id: 'first-shift',
+    number: 1,
+    title: 'Your First Shift',
+    summary: 'What a ticket is for, and what a clean handover looks like.',
+    scope: ALL_FAMILIES,
+    status: 'playable',
+    requirements: [
+      requirement(
+        'close-one',
+        'Close one ticket with a passing score',
+        'Any family counts. The queue does not care which ticket you start with.',
+        'passedAttempts',
+        1,
+      ),
+      requirement(
+        'own-words',
+        'Leave a troubleshooting note in your own words',
+        'What you saw, what you tried, what changed. Written before the ticket closes.',
+        'troubleshootingNotes',
+        1,
+      ),
+      requirement(
+        'tell-requester',
+        'Tell the requester what happens next',
+        'A customer note the person could actually read: the outcome and the next step.',
+        'customerNotes',
+        1,
+      ),
+    ],
+  },
+  {
+    id: 'ticket-queue',
+    number: 2,
+    title: 'The Ticket Queue',
+    summary: 'Order of work, what a breach means, and when to hand a ticket on.',
+    scope: ALL_FAMILIES,
+    status: 'playable',
+    requirements: [
+      requirement(
+        'three-passes',
+        'Close three tickets',
+        'Three passing attempts, in any mix of families.',
+        'passedAttempts',
+        3,
+      ),
+      requirement(
+        'two-families',
+        'Pass tickets in two different families',
+        'The queue is not one kind of problem. Work at least two of them.',
+        'familiesPassed',
+        2,
+      ),
+      requirement(
+        'hand-off',
+        'Hand one ticket to another team',
+        'Close an attempt as an escalation or a refusal. The reason is recorded on the session.',
+        'handedOff',
+        1,
+      ),
+    ],
+  },
+  {
+    id: 'documentation',
+    number: 3,
+    title: 'Documentation',
+    summary: 'Writing the record so the next person can act on it.',
+    scope: ALL_FAMILIES,
+    status: 'playable',
+    requirements: [
+      requirement(
+        'troubleshooting-notes',
+        'Write three troubleshooting notes',
+        'Short, factual, and about the evidence rather than the conclusion alone.',
+        'troubleshootingNotes',
+        3,
+      ),
+      requirement(
+        'customer-notes',
+        'Write two customer updates',
+        'No jargon. A reader outside IT should follow the outcome.',
+        'customerNotes',
+        2,
+      ),
+      requirement(
+        'resolution-note',
+        'Close a ticket with a resolution note',
+        'The fix, who did what, and anything the next shift should watch.',
+        'resolutionNotes',
+        1,
+      ),
+    ],
+  },
+  {
+    id: 'company-chat',
+    number: 4,
+    title: 'Company Chat',
+    summary: 'Asking one good question, then waiting for the answer.',
+    scope: ALL_FAMILIES,
+    status: 'playable',
+    requirements: [
+      requirement(
+        'four-intents',
+        'Ask four different kinds of question',
+        'Chat is a narrowing tool. Each intent is a different thing you can ask the requester.',
+        'callerIntents',
+        4,
+      ),
+      requirement(
+        'ask-first',
+        'Ask something before you touch the machine',
+        'One attempt where the first move is a question, not a command.',
+        'askedBeforeTouching',
+        1,
+      ),
+      requirement(
+        'ten-questions',
+        'Ask ten questions in total',
+        'Across every attempt you have open. Hints do not count.',
+        'callerQuestions',
+        10,
+      ),
+    ],
+  },
+  planned(
+    'voicemails',
+   5,
+    'Voicemails',
+    'Callbacks, notes from a message, and deciding what can wait.',
+    'Not in this build. The callback and voicemail workflow is not modelled yet, so this module has no lessons or requirements.',
+  ),
+  {
+    id: 'the-phone',
+    number: 6,
+    title: 'The Phone',
+    summary: 'Verifying who you are talking to, holding, and transferring.',
+    scope: ALL_FAMILIES,
+    status: 'playable',
+    requirements: [
+      requirement(
+        'verify-caller',
+        'Verify the person before you act',
+        'A successful verification on file. Reading a live code back beats trusting a name.',
+        'callerVerifications',
+        1,
+      ),
+      requirement(
+        'verify-first',
+        'Verify before your first change',
+        'One attempt where identity is confirmed before any command runs.',
+        'verifiedBeforeTouching',
+        1,
+      ),
+      requirement(
+        'refuse',
+        'Refuse a request that is not the caller’s to make',
+        'A refusal is recorded on the session. It scores better than a quiet workaround.',
+        'refusedRequests',
+        1,
+      ),
+    ],
+  },
+  {
+    id: 'directory',
+    number: 7,
+    title: 'Directory (Active Directory)',
+    summary: 'Accounts, groups, and changes that have no undo.',
+    scope: ['PWD-01', 'M365-01', 'FS-01'],
+    status: 'playable',
+    requirements: [
+      requirement(
+        'pass-account',
+        'Pass a password or sign-in ticket',
+        'Either account family. The directory is where both end up.',
+        'passwordPasses',
+        1,
+      ),
+      requirement(
+        'account-diagnosis',
+        'Full marks on diagnosis in an account ticket',
+        'Find the cause before you reset anything: lockout, expiry, or a bad cached credential.',
+        'accountPerfectDiagnosis',
+        1,
+      ),
+      requirement(
+        'account-safety',
+        'Clear an account ticket with no safety misses',
+        'Every safety check intact: verification, scope, and a change the user can reverse.',
+        'accountPerfectSafety',
+        1,
+      ),
+    ],
+  },
+  {
+    id: 'remote-desktop',
+    number: 8,
+    title: 'Remote Desktop',
+    summary: 'Connecting to a user’s machine, and reading before touching.',
+    scope: ALL_FAMILIES,
+    status: 'playable',
+    requirements: [
+      requirement(
+        'open-session',
+        'Open a support session to a user’s machine',
+        'Open a session to a machine no one else is on — from the Remote Desktop console, either terminal, or the Connect button in the machine record. All three are recorded the same way.',
+        'remoteSessionsOpened',
+        1,
+      ),
+      requirement(
+        'read-first',
+        'Read the machine before you change it',
+        'One attempt where a read-only command — `hostname`, `ipconfig /all`, a `get-` check, a directory listing — ran on the machine you connected to before a command that changes it.',
+        'remoteReadBeforeChange',
+        1,
+      ),
+      requirement(
+        'document-remote',
+        'Record what you changed while you were on the machine',
+        'A troubleshooting or resolution note in the same attempt, written after the work on the remote machine. The session is evidence; the note is the handover.',
+        'remoteWorkDocumented',
+        1,
+      ),
+    ],
+  },
+  {
+    id: 'server-room',
+    number: 9,
+    title: 'Server Room',
+    summary: 'Outages worked hop by hop, with the blast radius in view.',
+    scope: ['NET-01', 'DHCP-01'],
+    status: 'playable',
+    requirements: [
+      requirement(
+        'pass-network',
+        'Pass a network or address ticket',
+        'Either family. Name resolution and scope problems both land here.',
+        'networkAddressPasses',
+        1,
+      ),
+      requirement(
+        'network-diagnosis',
+        'Full marks on diagnosis in a network ticket',
+        'Walk the path: local address, gateway, resolver, then the service.',
+        'networkPerfectDiagnosis',
+        1,
+      ),
+      requirement(
+        'scope-the-outage',
+        'Hand off an outage that is not yours to fix',
+        'One escalation on file. Knowing the boundary is part of the job.',
+        'handedOff',
+        1,
+      ),
+    ],
+  },
+  {
+    id: 'mail-admin',
+    number: 10,
+    title: 'Mail Admin',
+    summary: 'Tracing a message and reading its delivery state.',
+    scope: ['MAIL-01'],
+    status: 'playable',
+    requirements: [
+      requirement(
+        'read-mailbox',
+        'Read a mailbox record',
+        'Open Mail Admin or run `get-mailbox` for the account the ticket names. Quota, forwarding, and holds live there; delivery does not.',
+        'mailboxReads',
+        1,
+      ),
+      requirement(
+        'trace-message',
+        'Trace a message through the tenant',
+        'A trace is the transport’s own account of one message: sender, recipient, filter verdict, and each step it took. Run `trace-message` on an id the mailbox lists.',
+        'mailMessageTraces',
+        1,
+      ),
+      requirement(
+        'pass-mail',
+        'Pass a mail delivery ticket',
+        'Close a MAIL-01 ticket with a passing score. The mailbox record and the trace are the evidence the close is judged on.',
+        'mailboxPasses',
+        1,
+      ),
+    ],
+  },
+  {
+    id: 'mail-security',
+    number: 11,
+    title: 'Mail Security',
+    summary: 'Reviewing quarantined mail: release, or leave it.',
+    scope: ['MAILSEC-01'],
+    status: 'playable',
+    requirements: [
+      requirement(
+        'trace-held',
+        'Trace a held message before deciding',
+        'A hold is the filter’s verdict, not a fact. Trace the message from Mail Security and compare the sender with the domain and the reason the filter recorded.',
+        'mailMessageTraces',
+        1,
+      ),
+      requirement(
+        'release-held',
+        'Release a held message you can defend',
+        'Release expected mail with `release-quarantine` or the Release button. The trace has to show why it was safe to deliver.',
+        'quarantineReleases',
+        1,
+      ),
+      requirement(
+        'block-sender',
+        'Leave a malicious message held and block its sender',
+        'Do not release an impersonation. Run `block-sender` on the address the trace shows; the block also drops the mail that address is holding.',
+        'sendersBlocked',
+        1,
+      ),
+      requirement(
+        'pass-security',
+        'Pass a mail security ticket',
+        'Close a MAILSEC-01 ticket with a passing score. Its two variants pull in opposite directions on purpose.',
+        'mailSecurityPasses',
+        1,
+      ),
+    ],
+  },  {
+    id: 'asset-management',
+    number: 12,
+    title: 'Asset Management',
+    summary: 'Who holds a machine, what is on the shelf, and whether it can go out.',
+    scope: ['DEP-01'],
+    status: 'playable',
+    requirements: [
+      requirement(
+        'read-deployment-queue',
+        'Read the shelf and deployment queue',
+        'The queue is the register of work booked against the shelves: which machine, which sequence, and what state the last run left it in. Run `get-deployment-queue` or open Computer Deployment.',
+        'deploymentQueueReads',
+        1,
+      ),
+      requirement(
+        'read-asset-record',
+        'Read the shelf record behind a machine',
+        'Asset Management shows who holds the machine; `get-deployment <tag>` logs the shelf state and note behind its run, which is what an issue decision turns on.',
+        'deploymentReads',
+        1,
+      ),
+      requirement(
+        'respect-shelf-hold',
+        'Pass the ticket where a shelf hold stops the handover',
+        'A machine quarantined for damage cannot be issued, and imaging it does not close the case. Read the hold and hand it to Field Services rather than running the sequence.',
+        'deploymentHoldPasses',
+        1,
+      ),
+    ],
+  },
+  {
+    id: 'computer-deployment',
+    number: 13,
+    title: 'Computer Deployment',
+    summary: 'Imaging runs, the shelf record, and the decision to rerun.',
+    scope: ['DEP-01'],
+    status: 'playable',
+    requirements: [
+      requirement(
+        'read-failed-run',
+        'Read the failed run and its shelf record',
+        'The sequence, the step it stopped on, the attempt count, and the shelf state are one record. Read it before rerunning anything; the step decides whether a rerun is the fix or the same failure again.',
+        'deploymentReads',
+        1,
+      ),
+      requirement(
+        'finish-run',
+        'Run a sequence to completion',
+        '`start-deployment` runs the booked sequence for one asset tag and marks that machine ready on the shelf. A run that was refused changed nothing and does not count.',
+        'deploymentRuns',
+        1,
+      ),
+      requirement(
+        'pass-deployment',
+        'Pass an imaging ticket',
+        'Close a DEP-01 ticket with a passing score. Its two variants pull in opposite directions: one finishes the failed run, the other leaves a held machine alone.',
+        'deploymentPasses',
+        1,
+      ),
+    ],
+  },
+  {
+    id: 'pc-shelf',
+    number: 14,
+    title: 'PC Shelf',
+    summary: 'Stockroom piles, counts, and categorised inventory.',
+    scope: ['DEP-01'],
+    status: 'playable',
+    requirements: [
+      requirement(
+        'read-shelf',
+        'Read a site’s shelf bay',
+        '`get-shelf <site>` or the PC Shelf console lists every machine held at a site, its state, its days on the shelf, and the note behind it. Counting by state is where every handover starts.',
+        'shelfReads',
+        1,
+      ),
+      requirement(
+        'book-ready-machine',
+        'Issue a ready machine to its new holder',
+        '`book-shelf-machine <assetTag> <samAccountName>` is the handover itself: only a machine in a ready state can leave, the account has to exist, and the machine appears on the asset register under that account afterwards.',
+        'machinesIssued',
+        1,
+      ),
+      requirement(
+        'hold-broken-stock',
+        'Hold a machine that must not be issued',
+        '`hold-shelf-machine <assetTag> <reason>` puts a machine on the shelf’s hold list so a fast handover cannot walk past a fault. A held machine is never issued, and only whoever owns the fault clears the hold.',
+        'shelfHolds',
+        1,
+      ),
+    ],
+  },
+  {
+    id: 'ship-manager',
+    number: 15,
+    title: 'Ship Manager',
+    summary: 'Outbound equipment, return labels, and tracking states.',
+    scope: ['DEP-01'],
+    status: 'playable',
+    requirements: [
+      requirement(
+        'read-board',
+        'Read the shipping board',
+        '`get-shipments` orders the desk by what needs attention: delayed collections first, then what still has to leave, then what is already out. `get-shipment <reference>` opens one movement’s route, carrier, and latest tracking event.',
+        'shipmentReads',
+        1,
+      ),
+      requirement(
+        'dispatch-shipment',
+        'Dispatch a collected shipment',
+        '`dispatch-shipment <reference>` records the handover to the carrier. Only a shipment in preparing can be dispatched; a delayed collection never happened, so it has to be rebooked first.',
+        'shipmentsDispatched',
+        1,
+      ),
+      requirement(
+        'deliver-shipment',
+        'Record a shipment that arrived',
+        '`deliver-shipment <reference>` closes the movement at the receiving site. A shipment that was never collected cannot be delivered, whatever the ticket asks for.',
+        'shipmentsDelivered',
+        1,
+      ),
+      requirement(
+        'rebook-delayed',
+        'Rebook a collection that was missed',
+        '`rebook-shipment <reference> <days>` puts a delayed shipment back into preparing with a new due date, instead of pretending it was delivered. A delay is a date to fix, not a delivery.',
+        'shipmentsRebooked',
+        1,
+      ),
+    ],
+  },
+  {
+    id: 'mock-interview',
+    number: 16,
+    title: 'Mock Interview',
+    summary: 'Turning your saved job listings into answers you can defend.',
+    scope: [],
+    status: 'playable',
+    requirements: [
+      requirement(
+        'save-listing',
+        'Save a listing you are chasing',
+        'Paste the requirements section on the Job targets page. It stays on this machine.',
+        'listingsSaved',
+        1,
+      ),
+      requirement(
+        'match-skills',
+        'Match a listing’s skills to your practice',
+        'A saved listing that names at least one skill the simulator covers.',
+        'listingsWithSkills',
+        1,
+      ),
+      requirement(
+        'cover-demand',
+        'Pass a family an advert actually asks for',
+        'Coverage only counts once the family behind the skill has a passing attempt.',
+        'demandedFamiliesPassed',
+        1,
+      ),
+    ],
+  },
+]
+
+export function moduleProgress(module: CurriculumModule, evidence: ModuleEvidence): ModuleProgress {
+  const requirements: RequirementProgress[] = module.requirements.map((entry) => {
+    const stored = evidence[entry.measure]
+    const current = Number.isFinite(stored) ? Math.max(0, Math.floor(stored)) : 0
+    return { ...entry, current, met: current >= entry.target }
+  })
+  const met = requirements.filter((entry) => entry.met).length
+  const total = requirements.length
+
+  return {
+    met,
+    total,
+    percent: total === 0 ? 0 : Math.floor((met / total) * 100),
+    complete: total > 0 && met === total,
+    requirements,
+  }
+}
+
+/** First playable module, in course order, that still has an unmet requirement. */
+export function nextModule(
+  modules: readonly CurriculumModule[],
+  progressById: Readonly<Record<string, ModuleProgress>>,
+): CurriculumModule | null {
+  for (const module of modules) {
+    if (module.status !== 'playable') {
+      continue
+    }
+    const progress = progressById[module.id]
+    if (!progress || !progress.complete) {
+      return module
+    }
+  }
+  return null
+}

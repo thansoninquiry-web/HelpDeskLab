@@ -5,12 +5,16 @@ import type { Device, Printer, Site, World } from '../environment/types'
 import type { JsonObject } from '../shared/json'
 import { hashSeed, createRng } from '../shared/rng'
 import type { Rng } from '../shared/rng'
+import { deploymentFamily } from './families/deployment'
 import { dhcpFamily } from './families/dhcp'
+import { mailFamily } from './families/mail'
+import { mailSecurityFamily } from './families/mailSecurity'
 import { fileShareFamily } from './families/shares'
 import { identityFamily } from './families/identity'
 import { m365Family } from './families/m365'
 import { networkFamily } from './families/network'
 import { printerFamily } from './families/printer'
+import { remoteDesktopFamily } from './families/remote'
 import type {
   BuildContext,
   GeneratedTicket,
@@ -31,6 +35,10 @@ export const SCENARIO_FAMILIES: readonly ScenarioFamily[] = [
   m365Family,
   fileShareFamily,
   printerFamily,
+  mailFamily,
+  mailSecurityFamily,
+  remoteDesktopFamily,
+  deploymentFamily,
 ]
 
 export function findFamily(familyId: string): ScenarioFamily | undefined {
@@ -61,6 +69,19 @@ function candidatesFor(family: ScenarioFamily, world: World): Candidate[] {
     if (family.category === 'printer') {
       const hasPrinter = world.printers.some((printer) => printer.siteId === site.id)
       if (!hasPrinter) {
+        continue
+      }
+    }
+    // Remote desktop work needs a second user machine at the site to be handed
+    // over; the machine the console runs on can never be its own session target.
+    if (family.id === 'RDP-01') {
+      const other = world.devices.some(
+        (candidate) =>
+          candidate.siteId === site.id &&
+          candidate.id !== device.id &&
+          candidate.kind !== 'server',
+      )
+      if (!other) {
         continue
       }
     }
@@ -126,6 +147,8 @@ function slotValues(
     sharePath: team?.share.path ?? String.raw`\\SRV-FS01\Finance`,
     groupName: team?.group.name ?? 'FS-All-Users',
     tenantName: context.world.m365.name,
+    targetHostname: context.targetHostname ?? context.device.hostname,
+    assetTag: context.targetAssetTag ?? 'the shelf machine',
   }
 }
 
@@ -139,7 +162,15 @@ function buildTicket(seed: number, options: GenerateTicketOptions): GeneratedTic
     throw new Error(`Unknown scenario family: ${options.familyId}`)
   }
   const resolvedFamily = family ?? picked
-  const variant = rng.pick(resolvedFamily.variants)
+  // The draw happens either way, so pinning a variant leaves the rest of the
+  // stream — and therefore the estate this ticket lands on — as it was.
+  const drawnVariant = rng.pick(resolvedFamily.variants)
+  const variant = options.variantId
+    ? resolvedFamily.variants.find((candidate) => candidate.id === options.variantId)
+    : drawnVariant
+  if (!variant) {
+    throw new Error(`Unknown scenario variant: ${resolvedFamily.id}/${options.variantId}`)
+  }
 
   const world = createLarkspurWorld(clock)
   const candidates = candidatesFor(resolvedFamily, world)
@@ -222,6 +253,7 @@ function buildTicket(seed: number, options: GenerateTicketOptions): GeneratedTic
     reference: variant.reference(context),
     expectedOutcome: variant.expectedOutcome,
     expectedCodes: [...variant.expectedCodes],
+    ...(variant.pressure ? { pressure: [...variant.pressure] } : {}),
   }
 }
 

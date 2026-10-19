@@ -1,0 +1,674 @@
+.console {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.85rem;
+  overflow: auto;
+  padding: 0.85rem 0.9rem 1rem;
+  /* The console measures itself rather than the window: in split view it is
+     handed half the tool card, and the layout has to follow that. */
+  container-type: inline-size;
+}
+
+.viewSwitch {
+  display: flex;
+  align-self: flex-start;
+  gap: 0.25rem;
+  padding: 0.15rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+}
+
+.viewButton {
+  cursor: pointer;
+  padding: 0.22rem 0.7rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--type-sm);
+}
+
+.viewButton:hover {
+  color: var(--text);
+}
+
+.viewButtonActive {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.searchRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.search {
+  flex: 1 1 12rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--text);
+  font-size: var(--type-lg);
+}
+
+.search:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.filter {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.filterLabel {
+  color: var(--text-faint);
+  font-size: var(--type-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.filterSelect {
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--text);
+  font-size: var(--type-md);
+}
+
+.filterSelect:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+/* One account's past: a command or a closed ticket, newest first. */
+.historyList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0.15rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.historyItem {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.15rem 0.55rem;
+  padding: 0.45rem 0.55rem;
+  border-left: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+}
+
+.historyItem[data-kind='ticket'] {
+  border-left-color: var(--accent);
+}
+
+.historyTime {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+}
+
+.historyCommand {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+  overflow-wrap: anywhere;
+}
+
+.historyText {
+  color: var(--text);
+  font-size: var(--type-md);
+}
+
+.historyMeta {
+  grid-column: 2;
+  color: var(--text-faint);
+  font-size: var(--type-xs);
+}
+
+.count {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.lower {
+  display: grid;
+  grid-template-columns: minmax(11rem, 15rem) minmax(0, 1fr);
+  gap: 0.9rem;
+  align-items: start;
+}
+
+/* Tiles want the room the rows do not: in grid view the records take whatever
+   the detail does not need, so four or five read across on a wide pane. */
+.lowerGrid {
+  grid-template-columns: minmax(0, 1fr) minmax(14rem, 18rem);
+}
+
+/* A picker is one column: the rows are wide enough to hold the machine, its
+   holder, and the way in, and the record opens underneath them. */
+.lowerPicker {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Nothing is open yet, so the tiles take the pane. The detail column arrives
+   with the record, the way it does in a list. */
+.lowerGridOnly {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (max-width: 780px) {
+  .lower {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* A list beside a detail needs room for both; narrower than this, the detail is
+   the part worth reading, so the list goes above it. */
+@container (max-width: 32rem) {
+  .lower {
+    grid-template-columns: 1fr;
+  }
+}
+
+.list {
+  display: flex;
+  max-height: 22rem;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0.35rem;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  list-style: none;
+}
+
+/* --- Picker consoles --------------------------------------------------- */
+
+.pickerHeader {
+  display: grid;
+  justify-items: center;
+  gap: 0.3rem;
+  padding: 0.5rem 0 0.15rem;
+  text-align: center;
+}
+
+.pickerTitle {
+  margin: 0;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: var(--type-5xl);
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.pickerSubtitle {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--type-sm);
+  line-height: 1.4;
+}
+
+.pickerList {
+  display: flex;
+  max-height: 24rem;
+  flex-direction: column;
+  margin: 0;
+  padding: 0.25rem 0;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  list-style: none;
+}
+
+/* A hairline between machines, the way a list of them reads: the row above is
+   separated from the row below without drawing a box around either. */
+.pickerRowItem + .pickerRowItem {
+  border-top: 1px solid var(--border);
+}
+
+.pickerRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.6rem 0 0;
+}
+
+.pickerEntry {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  cursor: pointer;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem 0.75rem 0.7rem 0.9rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.pickerEntry:hover {
+  background: var(--bg-elevated);
+}
+
+.pickerEntryActive {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+
+.pickerGlyph {
+  flex: none;
+  color: var(--text-muted);
+}
+
+.pickerNames {
+  display: grid;
+  min-width: 0;
+  gap: 0.15rem;
+}
+
+.pickerName {
+  overflow: hidden;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--type-lg);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pickerMeta {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--type-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pickerAction {
+  flex: none;
+  cursor: pointer;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.pickerAction:hover:not(:disabled) {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+
+.pickerAction:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.entryButton {
+  display: flex;
+  width: 100%;
+  cursor: pointer;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.entryButton:hover {
+  border-color: var(--border);
+  background: var(--panel);
+}
+
+.entryButtonActive {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+
+/* The same records as the list, read all at once. A tile keeps the record's
+   title, its identifier line, and the facts its console declared for it. */
+.tileGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 0.4rem;
+  max-height: 22rem;
+  margin: 0;
+  padding: 0.35rem;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  list-style: none;
+}
+
+.tileButton {
+  display: flex;
+  width: 100%;
+  min-height: 4.75rem;
+  cursor: pointer;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.5rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--text);
+  text-align: left;
+}
+
+.tileButton:hover {
+  border-color: var(--accent-border);
+}
+
+.tileButtonActive {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+
+.tileFact {
+  display: flex;
+  min-width: 0;
+  gap: 0.3rem;
+  font-size: var(--type-sm);
+}
+
+.tileFactLabel {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.tileFactValue {
+  overflow: hidden;
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.entryTitle {
+  font-size: var(--type-lg);
+  font-weight: 600;
+}
+
+.entryMeta {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+}
+
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.85rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+}
+
+.detailHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.detailName {
+  font-size: var(--type-2xl);
+  font-weight: 600;
+}
+
+.fieldList {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  border-top: 1px solid var(--border);
+}
+
+.fieldRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 1rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.fieldRow dt {
+  min-width: 8rem;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.fieldRow dd {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--type-lg);
+}
+
+.subheading {
+  color: var(--text-muted);
+  font-size: var(--type-sm);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.groupList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+}
+
+.actionGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 0.5rem;
+}
+
+.actionRow {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.actionRow .actionButton {
+  flex: 1 1 auto;
+}
+
+.actionInputs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0 0.1rem;
+}
+
+.actionInput {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin: 0;
+  color: var(--text-faint);
+  font-size: var(--type-sm);
+}
+
+.actionInput input {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+}
+
+.actionInput input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.actionInputHint {
+  color: var(--text-faint);
+  font-size: var(--type-xs);
+}
+
+/* The values this action could take, offered to pick rather than recall. Nothing
+   here is chosen for the learner: a chip fills the box, the run gate stays shut. */
+.actionChoices {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.2rem;
+}
+
+.actionChoicesLabel {
+  color: var(--text-faint);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.actionChoice {
+  cursor: pointer;
+  padding: 0.1rem 0.45rem;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+}
+
+.actionChoice:hover {
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.actionChoice:focus-visible {
+  border-color: var(--accent);
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.actionChoice[data-chosen='true'] {
+  border-style: solid;
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.actionButton {
+  display: flex;
+  cursor: pointer;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--panel-strong);
+  color: var(--text);
+  text-align: left;
+}
+
+.actionButton:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.actionButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.actionLabel {
+  font-size: var(--type-lg);
+  font-weight: 600;
+}
+
+.actionDetail {
+  color: var(--text-faint);
+  font-size: var(--type-sm);
+}
+
+.output {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  max-height: 14rem;
+  overflow: auto;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+}
+
+.outputCommand {
+  color: var(--accent);
+}
+
+.outputLine {
+  margin: 0;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+}
+
+.outputLine[data-tone='success'] {
+  color: var(--success);
+}
+
+.outputLine[data-tone='error'] {
+  color: var(--danger-text);
+}
+
+.hint {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: var(--type-sm);
+}

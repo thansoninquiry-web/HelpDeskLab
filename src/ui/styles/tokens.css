@@ -1,31 +1,226 @@
+/*
+ * Everything that does not change with the theme: the rail, the terminal's
+ * fixed palette, spacing, type and the page widths. A theme may re-point colour
+ * tokens, never these, so switching looks cannot move the layout.
+ */
+:root {
+  /* The top bar and the icon rail sit a step darker than the workspace. */
+  --rail: #05080d;
+  --rail-text: #e6effa;
+  --rail-muted: #8296ad;
+  --rail-border: #131d29;
+  --rail-hover: rgba(255, 255, 255, 0.05);
+
+  /* The rail's one signal accent, fixed in both themes like the rail itself. */
+  --rail-accent: #22d3ee;
+
+  /*
+   * The terminal's own surface, chosen in Settings. These are the night-shift
+   * values and are never redeclared by the light palette: when the terminal is
+   * set to stay dark, it keeps them even on white paper, and the
+   * theme audit reads them from the light palette just as the pane does. The
+   * alternative is to follow the workspace and read the tokens below.
+   */
+  --terminal-bg: #05090f;
+  --terminal-panel: #080d15;
+  --terminal-panel-strong: #0b121c;
+  --terminal-sunken: #060a11;
+
+  --terminal-border: #16202d;
+  --terminal-border-strong: #263445;
+
+  --terminal-text: #dbe6f2;
+  --terminal-muted: #a3b3c6;
+  --terminal-faint: #75899f;
+
+  --terminal-accent: #38cdea;
+  --terminal-accent-strong: #7be3f7;
+  --terminal-accent-soft: #08222e;
+  --terminal-accent-border: #17505f;
+  --terminal-hover: rgba(155, 190, 225, 0.06);
+
+  --terminal-success: #86efac;
+  --terminal-success-soft: #072518;
+  --terminal-warning: #fcd34d;
+  --terminal-warning-soft: #211a07;
+  --terminal-danger: #fca5a5;
+  --terminal-danger-soft: #210d0d;
+
+  /*
+   * Where the divider between the terminal and a tool sits, as the share of the
+   * card the terminal takes. The workspace sets it as the learner drags; this is
+   * only the default, and it is never redeclared in the light palette because
+   * the two themes must lay out identically.
+   */
+  --split-ratio: 0.5;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+
+  --font-display: 'Barlow Condensed', 'Arial Narrow', 'Roboto Condensed', sans-serif;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', 'SFMono-Regular', Consolas, monospace;
+
+  /*
+   * The type scale. Every font size in the interface is one of these, so a label
+   * or a heading cannot sit a fraction of a pixel away from the text beside it
+   * and call that a decision. Sizes are rem against the 16px root global.css
+   * sets, and the ladder is deliberate: an even 0.05rem step from the
+   * micro-label floor up to body copy, then wider steps (about ×1.14) for
+   * titles, so a heading reads as a heading rather than as large body text.
+   *
+   *   0.7rem    11.2px  --type-2xs  micro-labels: tags, chips, timestamps — the
+   *                                  floor, and nothing smaller is text
+   *   0.75rem   12px    --type-xs   dense labels: table cells, console rows
+   *   0.8rem    12.8px  --type-sm   metadata, hints, secondary copy
+   *   0.85rem   13.6px  --type-md   default UI text: buttons, fields, rows
+   *   0.9rem    14.4px  --type-lg   emphasised copy: values, lede lines
+   *   0.95rem   15.2px  --type-xl   panel titles
+   *   1rem      16px    --type-2xl  body copy — the anchor global.css sets
+   *   1.15rem   18.4px  --type-3xl  section headings
+   *   1.3rem    20.8px  --type-4xl  page headings
+   *   1.5rem    24px    --type-5xl  card titles
+   *   3rem      48px    --type-6xl  statistic numerals
+   *
+   * The last two steps are fluid, so hero text shrinks on a phone instead of
+   * wrapping: --type-display for a hero heading and --type-display-lg for the
+   * headline a page opens with. They are still steps of the scale, not per-page
+   * choices: a size that is not here is a new step and belongs in this comment,
+   * and tests/ui/typeScale.test.ts fails the build for a stylesheet that picks
+   * its own size instead.
+   */
+  --type-2xs: 0.7rem;
+  --type-xs: 0.75rem;
+  --type-sm: 0.8rem;
+  --type-md: 0.85rem;
+  --type-lg: 0.9rem;
+  --type-xl: 0.95rem;
+  --type-2xl: 1rem;
+  --type-3xl: 1.15rem;
+  --type-4xl: 1.3rem;
+  --type-5xl: 1.5rem;
+  --type-6xl: 3rem;
+  --type-display: clamp(1.45rem, 2.2vw, 1.95rem);
+  --type-display-lg: clamp(2rem, 3.4vw, 2.7rem);
+
+  --max-width: 1240px;
+  --workspace-width: 1440px;
+  --gutter: clamp(1rem, 2.4vw, 1.75rem);
+  --header-height: 3.5rem;
+  --rail-width: 2.75rem;
+}
+
+/*
+ * Night-shift service desk. The room is almost black; panels are a shade lighter
+ * and separated by a hairline rather than a heavy border. Cyan is the one signal
+ * colour: links, live states, the active tab, the command prompt.
+ *
+ * The palette is declared on the root and on any element that asks for the dark
+ * look with data-theme, so the Appearance preview can paint a dark workspace
+ * while the app itself is light. Only colours live here; geometry above is
+ * shared by both looks.
+ */
+[data-theme='dark'],
 :root {
   color-scheme: dark;
 
-  --bg: #070b14;
-  --bg-elevated: #0e1524;
-  --panel: #111a2c;
-  --panel-strong: #172238;
-  --border: #22304a;
-  --border-strong: #33466a;
+  --bg: #05070b;
+  --bg-elevated: #080d15;
+  --panel: #080d15;
+  --panel-strong: #0b121c;
+  --surface-sunken: #060a11;
+  --surface-inset: #0b1420;
 
-  --text: #e6edf7;
-  --text-muted: #93a4bd;
-  --text-faint: #6b7c96;
+  --border: #16202d;
+  --border-strong: #263445;
 
-  --accent: #4cc9f0;
-  --accent-strong: #22d3ee;
-  --accent-soft: rgba(76, 201, 240, 0.12);
+  --text: #dbe6f2;
+  --text-muted: #a3b3c6;
+  /* Dimmer than muted, but still AA on the tinted panels it labels. */
+  --text-faint: #75899f;
+
+  --accent: #38cdea;
+  --accent-strong: #7be3f7;
+  --accent-soft: #08222e;
+  --accent-border: #17505f;
+  --accent-contrast: #03141b;
+  --hover: rgba(155, 190, 225, 0.06);
+
   --success: #4ade80;
+  --success-text: #86efac;
+  --success-border: #1f5c3a;
+  --success-soft: #072518;
+
   --warning: #fbbf24;
+  --warning-text: #fcd34d;
+  --warning-border: #5c4614;
+  --warning-soft: #211a07;
 
-  --radius-sm: 8px;
-  --radius-md: 14px;
-  --radius-lg: 20px;
+  --danger: #ef4444;
+  --danger-text: #fca5a5;
+  --danger-border: #5c2424;
+  --danger-soft: #210d0d;
 
-  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: ui-monospace, 'Cascadia Code', 'SFMono-Regular', Consolas, monospace;
+  --severity-high: #ff4d5a;
+  --severity-high-border: #5c1f27;
+  --severity-high-soft: #210b0f;
 
-  --max-width: 1120px;
-  --gutter: clamp(1.25rem, 4vw, 2.5rem);
-  --header-height: 4.5rem;
+  --severity-low: #38bdf8;
+  --severity-low-border: #17475c;
+  --severity-low-soft: #071b24;
+}
+
+/*
+ * Daylight desk. Same geometry and type scale; paper surfaces and ink text.
+ * The rail stays dark in both themes, as it did before. Declared on any element
+ * as well as the root, which is what lets the schedule preview show the paper
+ * workspace inside a dark app.
+ */
+[data-theme='light'] {
+  color-scheme: light;
+
+  --bg: #f1f4f8;
+  --bg-elevated: #ffffff;
+  --panel: #ffffff;
+  --panel-strong: #f7f9fc;
+  --surface-sunken: #eef2f7;
+  --surface-inset: #e9eef5;
+
+  --border: #d9e1eb;
+  --border-strong: #b3c0d0;
+
+  --text: #0d1726;
+  --text-muted: #41536a;
+  --text-faint: #5b6d83;
+
+  --accent: #0a7396;
+  --accent-strong: #065a78;
+  --accent-soft: #e3f4fa;
+  --accent-border: #9fd3e4;
+  --accent-contrast: #ffffff;
+  --hover: rgba(13, 23, 38, 0.045);
+
+  --success: #167a4a;
+  --success-text: #146c43;
+  --success-border: #a9d9c1;
+  --success-soft: #edf9f2;
+
+  --warning: #96600a;
+  --warning-text: #835506;
+  --warning-border: #ebd29b;
+  --warning-soft: #fdf6e8;
+
+  --danger: #b3261e;
+  --danger-text: #9f2620;
+  --danger-border: #efb7b2;
+  --danger-soft: #fdf0ef;
+
+  --severity-high: #a0520e;
+  --severity-high-border: #efc39a;
+  --severity-high-soft: #fdf4ec;
+
+  --severity-low: #0b6a9e;
+  --severity-low-border: #b2d6ea;
+  --severity-low-soft: #eef7fc;
 }

@@ -2,27 +2,31 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
-  margin-top: 1.75rem;
+  margin-top: 1.25rem;
 }
 
 .ctaPrimary,
 .ctaSecondary {
-  padding: 0.6rem 1.2rem;
+  padding: 0.55rem 1.15rem;
   border-radius: var(--radius-sm);
-  font-size: 0.9rem;
+  font-family: var(--font-display);
+  font-size: var(--type-xl);
   font-weight: 600;
+  letter-spacing: 0.08em;
   text-decoration: none;
+  text-transform: uppercase;
 }
 
 .ctaPrimary {
-  border: 1px solid var(--accent);
-  background: var(--accent);
-  color: #04121c;
+  border: 1px solid #0ea5e9;
+  background: linear-gradient(180deg, #0ea5e9, #0284c7);
+  color: #ffffff;
+  box-shadow: 0 8px 22px -12px rgba(14, 165, 233, 0.8);
 }
 
 .ctaPrimary:hover {
-  background: var(--accent-strong);
-  border-color: var(--accent-strong);
+  border-color: #38bdf8;
+  background: linear-gradient(180deg, #38bdf8, #0ea5e9);
 }
 
 .ctaSecondary {
@@ -36,7 +40,12 @@
 }
 
 .section {
-  margin-top: 2rem;
+  margin-top: 1.5rem;
+}
+
+/* Settings sections keep their heading rule and their panel on the same width. */
+.settingsSection {
+  max-width: 720px;
 }
 
 .sectionHeading {
@@ -50,76 +59,365 @@
 }
 
 .sectionHeading h2 {
-  font-size: 1.15rem;
+  font-size: var(--type-sm);
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--text-muted);
 }
 
 .count {
   color: var(--text-faint);
   font-family: var(--font-mono);
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
+  font-size: var(--type-2xs);
+  letter-spacing: 0.06em;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
-.cardGrid {
+/* Curriculum: one row per module, opened in place, course order kept. */
+.curriculumStrip {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem;
-}
-
-@media (max-width: 720px) {
-  .cardGrid {
-    grid-template-columns: 1fr;
-  }
-}
-
-.card {
-  display: flex;
-  min-height: 178px;
-  flex-direction: column;
-  gap: 0.5rem;
-  padding: 1.25rem;
+  gap: 0.4rem;
+  padding: 0.8rem 0.95rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: linear-gradient(180deg, var(--panel), var(--bg-elevated));
+  background: var(--panel);
 }
 
-.card h3 {
-  font-size: 1rem;
+.curriculumTrack {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface-inset);
+  overflow: hidden;
 }
 
-.card p {
-  flex: 1;
+.curriculumFill {
+  height: 100%;
+  background: var(--accent);
+}
+
+.curriculumLine {
+  margin: 0;
   color: var(--text-muted);
-  font-size: 0.88rem;
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: 0.03em;
 }
 
-.status,
-.statusReady {
-  align-self: flex-start;
-  padding: 0.15rem 0.5rem;
-  border-radius: 999px;
-  font-size: 0.66rem;
-  letter-spacing: 0.08em;
+.curriculumFigure {
+  color: var(--text);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.curriculumNext {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: var(--type-sm);
+}
+
+.curriculumNote {
+  margin: 0.5rem 0 0.9rem;
+  color: var(--text-faint);
+  font-size: var(--type-sm);
+}
+
+.moduleList {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  list-style: none;
+  overflow: hidden;
+}
+
+.moduleRow {
+  border-top: 1px solid var(--border);
+}
+
+.moduleRow:first-child {
+  border-top: 0;
+}
+
+.moduleHeading {
+  margin: 0;
+  font: inherit;
+}
+
+.moduleToggle {
+  display: grid;
+  grid-template-columns: 1.9rem minmax(0, 1fr) auto auto 0.7rem;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.65rem 0.9rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.moduleToggle:hover {
+  background: var(--hover);
+}
+
+.moduleToggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.moduleNumber {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+}
+
+.moduleTitle {
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: var(--type-2xl);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  line-height: 1.35;
   text-transform: uppercase;
 }
 
-.status {
-  border: 1px solid rgba(251, 191, 36, 0.35);
-  background: rgba(251, 191, 36, 0.08);
-  color: var(--warning);
+.moduleRow[data-complete='true'] .moduleTitle {
+  color: var(--text-muted);
 }
 
-.statusReady {
-  border: 1px solid rgba(74, 222, 128, 0.35);
-  background: rgba(74, 222, 128, 0.08);
+.moduleChip {
+  justify-self: start;
+  padding: 0.12rem 0.45rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.moduleChip[data-tone='complete'] {
+  border-color: var(--success-border);
+  background: var(--success-soft);
+  color: var(--success-text);
+}
+
+.moduleChip[data-tone='active'] {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.moduleChip[data-tone='planned'] {
+  border-style: dashed;
+  color: var(--text-faint);
+}
+
+.moduleMeta {
+  min-width: 2.3rem;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* The row is a disclosure; the caret is the only affordance for that. */
+.moduleCaret {
+  color: var(--text-muted);
+  font-size: var(--type-xs);
+  line-height: 1;
+  transition: transform 120ms ease;
+}
+
+.moduleToggle[aria-expanded='true'] .moduleCaret {
+  transform: rotate(90deg);
+}
+
+.modulePanel {
+  display: grid;
+  gap: 0.7rem;
+  padding: 0 0.9rem 0.95rem 3.55rem;
+}
+
+.moduleSummary {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--type-md);
+  line-height: 1.5;
+}
+
+.moduleNote {
+  margin: 0;
+  padding: 0.5rem 0.65rem;
+  border-left: 2px solid var(--border-strong);
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  line-height: 1.55;
+}
+
+.requirementList {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0.6rem 0 0;
+  border-top: 1px solid var(--border);
+  list-style: none;
+}
+
+.requirement {
+  display: grid;
+  grid-template-columns: 1rem minmax(0, 1fr);
+  gap: 0.5rem;
+  align-items: start;
+}
+
+.requirementTick {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+  line-height: 1.5;
+}
+
+.requirement[data-met='true'] .requirementTick {
   color: var(--success);
 }
 
-.milestone {
+.requirementBody {
+  display: grid;
+  gap: 0.12rem;
+}
+
+.requirementLabel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.15rem 1rem;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+  line-height: 1.4;
+}
+
+.requirementProgress {
+  color: var(--text-faint);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.requirement[data-met='true'] .requirementProgress {
+  color: var(--success-text);
+}
+
+.requirementDetail {
+  color: var(--text-faint);
+  font-size: var(--type-sm);
+  line-height: 1.45;
+}
+
+.moduleFooter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border);
+}
+
+.moduleXp {
   color: var(--text-faint);
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: var(--type-2xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.moduleAction {
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+
+.moduleAction:hover {
+  text-decoration: underline;
+}
+
+/* A lesson link and a Practise button sit in the same row, so the button keeps
+   the link's type and drops only the browser's button chrome. */
+.moduleActionButton {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.moduleActionButton:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+.moduleError {
+  margin: 0.5rem 0 0;
+  color: var(--danger-text);
+  font-size: var(--type-sm);
+  line-height: 1.5;
+}
+
+@media (max-width: 560px) {
+  .moduleToggle {
+    grid-template-columns: 1.75rem minmax(0, 1fr) auto 0.7rem;
+    grid-template-areas:
+      'number title meta caret'
+      'number chip chip chip';
+    row-gap: 0.35rem;
+    padding: 0.65rem 0.75rem;
+  }
+
+  .moduleNumber {
+    grid-area: number;
+    align-self: start;
+    margin-top: 0.12rem;
+  }
+
+  .moduleTitle {
+    grid-area: title;
+  }
+
+  .moduleChip {
+    grid-area: chip;
+  }
+
+  .moduleMeta {
+    grid-area: meta;
+  }
+
+  .moduleCaret {
+    grid-area: caret;
+  }
+
+  .modulePanel {
+    padding: 0 0.75rem 0.95rem 0.75rem;
+  }
 }
 
 .notice {
@@ -128,9 +426,9 @@
   border: 1px solid var(--border);
   border-left: 3px solid var(--accent);
   border-radius: var(--radius-sm);
-  background: rgba(76, 201, 240, 0.05);
+  background: var(--accent-soft);
   color: var(--text-muted);
-  font-size: 0.9rem;
+  font-size: var(--type-xl);
 }
 
 .notice strong {
@@ -144,14 +442,16 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   overflow: hidden;
-  background: rgba(14, 21, 36, 0.6);
+  background: var(--panel);
 }
 
+/* One row per fact: label left, value beside it, a hairline between rows. */
 .statusRow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem 1.5rem;
-  padding: 0.85rem 1.15rem;
+  display: grid;
+  grid-template-columns: minmax(8.5rem, 11rem) minmax(0, 1fr);
+  gap: 0.25rem 1rem;
+  align-items: baseline;
+  padding: 0.5rem 0.75rem;
   border-top: 1px solid var(--border);
 }
 
@@ -160,34 +460,44 @@
 }
 
 .statusRow dt {
-  min-width: 11rem;
   color: var(--text-faint);
   font-family: var(--font-mono);
-  font-size: 0.74rem;
-  letter-spacing: 0.06em;
+  font-size: var(--type-2xs);
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .statusRow dd {
   margin: 0;
   color: var(--text);
-  font-size: 0.92rem;
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+  overflow-wrap: anywhere;
 }
 
 .statusMessage {
   color: var(--text-muted);
-  font-size: 0.95rem;
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+}
+
+@media (max-width: 560px) {
+  .statusRow {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.15rem;
+  }
 }
 
 .statusError {
   max-width: 640px;
-  padding: 1rem 1.15rem;
-  border: 1px solid rgba(248, 113, 113, 0.35);
-  border-left: 3px solid #f87171;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--danger-border);
+  border-left: 3px solid var(--danger);
   border-radius: var(--radius-sm);
-  background: rgba(248, 113, 113, 0.08);
-  color: #fecaca;
-  font-size: 0.92rem;
+  background: var(--danger-soft);
+  color: var(--danger-text);
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
 }
 
 .placeholder {
@@ -199,14 +509,626 @@
   padding: 1.5rem;
   border: 1px dashed var(--border-strong);
   border-radius: var(--radius-md);
-  background: rgba(14, 21, 36, 0.5);
+  background: var(--surface-sunken);
   color: var(--text-muted);
 }
 
 .placeholderTitle {
   color: var(--text-faint);
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: var(--type-sm);
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.backupPanel {
+  display: flex;
+  max-width: 720px;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+
+.sectionText {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--type-md);
+  line-height: 1.55;
+}
+
+.buttonRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.fieldRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.9rem 1rem;
+}
+
+.field {
+  display: grid;
+  gap: 0.3rem;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.field input,
+.field select {
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--type-md);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: normal;
+}
+
+.field input:disabled,
+.field select:disabled {
+  opacity: 0.5;
+}
+
+.fieldHint {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.freeRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  align-self: flex-start;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+  letter-spacing: 0.04em;
+}
+
+.freeRow input {
+  accent-color: var(--accent);
+}
+
+/* Theme choices: the whole tile is the target, the radio itself is hidden. */
+.themeRow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.themeChoice {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  cursor: pointer;
+}
+
+.themeChoice:hover {
+  border-color: var(--accent);
+}
+
+.themeChoice[data-selected='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.themeChoice:has(input:focus-visible) {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
+}
+
+.themeChoice input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.themeChoiceLabel {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.themeChoiceDetail {
+  color: var(--text-faint);
+  font-size: var(--type-xs);
+  line-height: 1.4;
+}
+
+@media (max-width: 560px) {
+  .themeRow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* A setting that belongs to Appearance but has its own surface and choice. */
+.subgroup {
+  margin-top: 1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--border);
+}
+
+.subgroupHeading {
+  margin: 0 0 0.5rem;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: var(--type-2xl);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.themeRowTwo {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 560px) {
+  .themeRowTwo {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* The sentence describing the current price, held like a note in the panel. */
+.hintEffect {
+  margin: 0;
+  padding: 0.5rem 0.65rem;
+  border-left: 2px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--text-muted);
+  font-size: var(--type-sm);
+  line-height: 1.5;
+}
+
+.primaryButton,
+.secondaryButton,
+.dangerButton {
+  cursor: pointer;
+  padding: 0.5rem 0.9rem;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.primaryButton {
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.primaryButton:hover:not(:disabled) {
+  border-color: var(--accent-strong);
+  background: var(--accent-strong);
+}
+
+.secondaryButton {
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text);
+}
+
+.secondaryButton:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.dangerButton {
+  border: 1px solid var(--danger-border);
+  background: var(--danger-soft);
+  color: var(--danger-text);
+}
+
+.dangerButton:hover:not(:disabled) {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled,
+.dangerButton:disabled {
+  cursor: not-allowed;
+  border-color: var(--border);
+  background: var(--surface-sunken);
+  color: var(--text-faint);
+}
+
+.fileLabel {
+  display: inline-flex;
+  cursor: pointer;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.fileLabel:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.fileInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.resetRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+/* Armed, the row becomes the warning: it is the one irreversible control here. */
+.resetRow[data-confirming='true'] {
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--danger-border);
+  border-left: 3px solid var(--danger);
+  border-top: 1px solid var(--danger-border);
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
+}
+
+.resetWarning {
+  flex: 1 1 16rem;
+  color: var(--danger-text);
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+  letter-spacing: 0.02em;
+}
+
+.actionSuccess {
+  margin: 0;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--success-border);
+  border-left: 3px solid var(--success);
+  border-radius: var(--radius-sm);
+  background: var(--success-soft);
+  color: var(--success-text);
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+}
+
+/*
+ * Lessons: the idea, one worked example, then the way into the tickets the
+ * module is judged on. A single reading column, so a paragraph is never wider
+ * than the eye can follow.
+ */
+.lessonBackRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin: 1.1rem 0 0;
+}
+
+.lessonBack {
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+
+.lessonBack:hover {
+  text-decoration: underline;
+}
+
+.lessonPanel {
+  display: flex;
+  max-width: 760px;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.95rem 1.05rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+
+.lessonParagraph {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--type-md);
+  line-height: 1.65;
+}
+
+.exampleCard {
+  display: flex;
+  max-width: 760px;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 0.95rem 1.05rem;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent-border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+
+.exampleTitle {
+  margin: 0;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: var(--type-3xl);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.exampleScenario {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--type-md);
+  line-height: 1.6;
+}
+
+.stepList {
+  display: grid;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  display: grid;
+  grid-template-columns: 1.6rem minmax(0, 1fr);
+  gap: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border);
+}
+
+.stepNumber {
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 1.5;
+}
+
+.stepBody {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.stepAction {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+  line-height: 1.5;
+}
+
+.stepNote {
+  color: var(--text-muted);
+  font-size: var(--type-sm);
+  line-height: 1.55;
+}
+
+.flowCard {
+  display: flex;
+  max-width: 760px;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.95rem 1.05rem;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent-border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+
+.flowIntro {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--type-md);
+  line-height: 1.65;
+}
+
+.flowList {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.flowStep {
+  border-top: 1px solid var(--border);
+}
+
+.flowStep:first-child {
+  border-top: 0;
+}
+
+.flowCheck {
+  display: grid;
+  grid-template-columns: 1rem 1.6rem minmax(0, 1fr);
+  align-items: start;
+  gap: 0.2rem 0.55rem;
+  padding: 0.6rem 0;
+  cursor: pointer;
+}
+
+.flowCheckInput {
+  width: 0.95rem;
+  height: 0.95rem;
+  margin: 0.18rem 0 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.flowNumber {
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 1.5;
+}
+
+.flowBody {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.flowAction {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+  line-height: 1.5;
+}
+
+.flowStepDone .flowAction {
+  color: var(--text-muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--text-faint);
+}
+
+.flowEvidence {
+  color: var(--text-muted);
+  font-size: var(--type-sm);
+  line-height: 1.55;
+}
+
+.flowEvidenceLabel {
+  margin-right: 0.4rem;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.exampleResult {
+  display: grid;
+  gap: 0.2rem;
+  margin: 0;
+  padding: 0.6rem 0.7rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  font-size: var(--type-sm);
+  line-height: 1.55;
+}
+
+.exampleResultLabel {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.practiceRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.practiceLink,
+.practiceWhole {
+  padding: 0.42rem 0.7rem;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+}
+
+.practiceLink:hover,
+.practiceWhole:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.practiceWhole {
+  border-color: var(--border-strong);
+  color: var(--text-muted);
+}
+
+.lessonRequirements {
+  display: grid;
+  gap: 0.4rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.lessonSubheading {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.moduleActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+}
+
+.curriculumNextLink {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.curriculumNextLink:hover {
+  text-decoration: underline;
+}
+
+/* A command inside a lesson step, set apart from the sentence around it. */
+.stepCode {
+  padding: 0 0.25rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--type-xl);
 }

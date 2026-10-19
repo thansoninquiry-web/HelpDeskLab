@@ -61,6 +61,7 @@ export const fileShareFamily: ScenarioFamily = {
             weight: 10,
             critical: true,
             checks: [ordered(verifyCaller(), effect('group_member_added', `${groupName}/${sam}`))],
+            hints: ['Adding someone to a finance group grants write access, so prove who is asking.', 'Send a code to the caller and have them read it back before changing membership.', 'Without a code read-back, add-group-member is a scored unverified change.'],
           }),
           makeItem({
             id: 'inspect-share',
@@ -69,7 +70,7 @@ export const fileShareFamily: ScenarioFamily = {
             category: 'diagnosis',
             weight: 20,
             checks: [ran('get-share-access')],
-            hint: 'get-share-access <share> <account> shows effective access, the groups behind it, and every entry.',
+            hints: ['get-share-access <share> <account> shows effective access, the groups behind it, and every entry.', 'Compare effective access with the group list: read-only through FS-All-Users means the write group is missing.', 'Expect effective access Read via FS-All-Users, with the write group absent from the entries.'],
           }),
           makeItem({
             id: 'add-member',
@@ -79,6 +80,7 @@ export const fileShareFamily: ScenarioFamily = {
             weight: 25,
             critical: true,
             checks: [effect('group_member_added', `${groupName}/${sam}`)],
+            hints: ['Restore the missing group membership; do not edit individual files.', 'add-group-member <group> <sam> is the exact fix for this share.', 'Run add-group-member FS-Finance-RW <sam>; group membership is the grant, not file permissions.'],
           }),
           makeItem({
             id: 'verify-access',
@@ -92,6 +94,7 @@ export const fileShareFamily: ScenarioFamily = {
                 ran('get-share-access'),
               ),
             ],
+            hints: ['Recheck effective access after adding the membership.', 'The next get-share-access should report Change, not Read.', 'The next get-share-access should report Change, with the write group listed.'],
           }),
           makeItem({
             id: 'no-deny-removal',
@@ -100,6 +103,7 @@ export const fileShareFamily: ScenarioFamily = {
             category: 'safety',
             weight: 5,
             checks: [absent(effect('share_deny_removed'))],
+            hints: ['There is no deny entry in this scenario.', 'Removing a deny you did not diagnose creates a second, worse problem.', 'Do not run remove-share-deny; there is no deny entry in this scenario to remove.'],
           }),
           makeItem({
             id: 'note-troubleshooting',
@@ -108,6 +112,7 @@ export const fileShareFamily: ScenarioFamily = {
             category: 'documentation',
             weight: 10,
             checks: [note('troubleshooting', 20)],
+            hints: ['Record the group that was missing and when access last worked.', 'Name the group and the user so the next access request starts with context.', 'Example: “User missing from FS-Finance-RW; effective access Read; restored membership.”'],
           }),
           makeItem({
             id: 'note-customer',
@@ -116,6 +121,7 @@ export const fileShareFamily: ScenarioFamily = {
             category: 'documentation',
             weight: 5,
             checks: [note('customer', 15)],
+            hints: ['Tell the user to close and reopen the folder.', 'Windows keeps the old token until the share is reopened or the session refreshes.', 'Tell them to close and reopen the folder so the new token is used.'],
           }),
           makeItem({
             id: 'decision',
@@ -125,6 +131,7 @@ export const fileShareFamily: ScenarioFamily = {
             weight: 10,
             critical: true,
             checks: [decision('resolved', ['resolved-remote', 'resolved-user-guidance'])],
+            hints: ['Restoring a group membership is service desk work after verification.', 'Resolve it; no escalation is needed.', 'Resolve it; membership restoration is within Tier 1 after verification.'],
           }),
         ])
       },
@@ -137,7 +144,11 @@ export const fileShareFamily: ScenarioFamily = {
           { type: 'verify-caller' },
           { type: 'command', input: `get-share-access ${share.name} ${sam}` },
           { type: 'command', input: `add-group-member ${groupName} ${sam}` },
-          { type: 'command', input: `get-share-access ${share.name} ${sam}` },
+          {
+            type: 'command',
+            input: `get-share-access ${share.name} ${sam}`,
+            label: 'Read effective access again now the group is restored',
+          },
           {
             type: 'note',
             noteKind: 'troubleshooting',
@@ -190,6 +201,7 @@ export const fileShareFamily: ScenarioFamily = {
             weight: 10,
             critical: true,
             checks: [verifyCaller()],
+            hints: ['The share holds finance data under a hold; confirm the caller first.', 'Send a code to the person on the ticket before describing the permissions.', 'Verify before you even describe the deny; the share is finance data under a hold.'],
           }),
           makeItem({
             id: 'inspect-share',
@@ -198,7 +210,7 @@ export const fileShareFamily: ScenarioFamily = {
             category: 'diagnosis',
             weight: 20,
             checks: [ran('get-share-access')],
-            hint: 'The effective access line reports the deny and names the principal it applies to.',
+            hints: ['The effective access line reports the deny and names the principal it applies to.', 'An explicit Deny outranks the team’s allow, so membership is not the problem.', 'Expect “Effective: Denied” with an explicit user Deny above the group allow entries.'],
           }),
           makeItem({
             id: 'no-group-add',
@@ -208,6 +220,7 @@ export const fileShareFamily: ScenarioFamily = {
             weight: 10,
             critical: true,
             checks: [absent(effect('group_member_added'))],
+            hints: ['Adding another group cannot beat an explicit deny.', 'More memberships widen access without fixing the block.', 'Any add-group-member here is a scored violation; the deny outranks every allow.'],
           }),
           makeItem({
             id: 'no-deny-removal',
@@ -217,6 +230,7 @@ export const fileShareFamily: ScenarioFamily = {
             weight: 10,
             critical: true,
             checks: [absent(effect('share_deny_removed'))],
+            hints: ['A deny on finance material usually enforces a retention hold.', 'Only the data owner can release it; do not remove it yourself.', 'Do not run remove-share-deny; the hold is not yours to lift.'],
           }),
           makeItem({
             id: 'note-troubleshooting',
@@ -225,6 +239,7 @@ export const fileShareFamily: ScenarioFamily = {
             category: 'documentation',
             weight: 10,
             checks: [note('troubleshooting', 25)],
+            hints: ['Record the deny and prove group membership is unchanged.', 'That evidence is what makes this an escalation rather than a permissions request.', 'Example: “Explicit user deny on the Finance share; team group still grants Change; no changes made.”'],
           }),
           makeItem({
             id: 'escalation-note',
@@ -234,7 +249,7 @@ export const fileShareFamily: ScenarioFamily = {
             weight: 20,
             critical: true,
             checks: [handoffNote()],
-            hint: 'Use the handoff note on close: what the user reported, what you checked, and what the next team should do.',
+            hints: ['Use the handoff note on close: what the user reported, what you checked, and what the next team should do.', 'The handoff needs the report, the deny evidence, and the decision the data owner must make.', 'Name the data owner and ask them to confirm whether the retention hold still applies.'],
           }),
           makeItem({
             id: 'decision',
@@ -244,6 +259,7 @@ export const fileShareFamily: ScenarioFamily = {
             weight: 20,
             critical: true,
             checks: [decision('escalated', ['escalated-tier2'])],
+            hints: ['Releasing a deny needs the data owner.', 'Escalate to Tier 2; the service desk should not remove it.', 'Escalate to Tier 2; only the data owner can release this deny.'],
           }),
         ])
       },

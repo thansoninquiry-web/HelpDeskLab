@@ -3,6 +3,7 @@ import { AppShell } from '../components/AppShell'
 import { DashboardPage } from './DashboardPage'
 import { DebriefPage } from './DebriefPage'
 import { JobTargetsPage } from './JobTargetsPage'
+import { ModuleLessonPage } from './ModuleLessonPage'
 import { NotFoundPage } from './PlaceholderPages'
 import { PracticePage } from './PracticePage'
 import { ProgressPage } from './ProgressPage'
@@ -14,6 +15,7 @@ export function AppRoutes() {
     <Routes>
       <Route element={<AppShell />}>
         <Route index element={<DashboardPage />} />
+        <Route path="modules/:moduleId" element={<ModuleLessonPage />} />
         <Route path="practice" element={<PracticePage />} />
         <Route path="ticket/:sessionId" element={<TicketWorkspacePage />} />
         <Route path="debrief/:sessionId" element={<DebriefPage />} />

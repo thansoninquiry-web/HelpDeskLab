@@ -1,34 +1,73 @@
 import { errorLine, line, mutedLine } from '../output'
+import { parseCommandLine } from '../parser'
 import type { OutputLine } from '../types'
+import { assetCommands } from './assets'
+import { deploymentCommands } from './deployment'
 import { dhcpCommands } from './dhcp'
 import { identityCommands } from './identity'
 import { m365Commands } from './m365'
+import { mailCommands } from './mail'
 import { networkCommands } from './network'
 import { printerCommands } from './printer'
-import { sessionCommands } from './session'
+import { remoteCommands } from './remote'
 import { shareCommands } from './shares'
-import type { CommandContext, CommandDefinition } from './types'
+import { shelfCommands } from './shelf'
+import { shippingCommands } from './shipping'
+import { workstationCommands } from './workstation'
+import type { CommandAccess, CommandContext, CommandDefinition } from './types'
 import { failed, succeeded } from './types'
 
-function helpOverview(): OutputLine[] {
-  const groups: Array<{ label: string; group: CommandDefinition['group'] }> = [
-    { label: 'Network', group: 'network' },
-    { label: 'DHCP', group: 'dhcp' },
-    { label: 'Identity', group: 'identity' },
-    { label: 'Microsoft 365', group: 'm365' },
-    { label: 'File shares', group: 'shares' },
-    { label: 'Printing', group: 'printer' },
-    { label: 'Session', group: 'session' },
-  ]
+/**
+ * The groups the reference is organised by, in the order it lists them. The
+ * terminal's `help` and the workspace cheat sheet both read this list, so a
+ * group is never named in one and missing from the other.
+ */
+export type CommandGroupId = CommandDefinition['group']
 
+export const COMMAND_GROUPS: ReadonlyArray<{
+  id: CommandGroupId
+  label: string
+}> = [
+  { id: 'workstation', label: 'Workstation' },
+  { id: 'network', label: 'Network' },
+  { id: 'dhcp', label: 'DHCP' },
+  { id: 'identity', label: 'Identity' },
+  { id: 'm365', label: 'Microsoft 365' },
+  { id: 'mail', label: 'Mail' },
+  { id: 'remote', label: 'Remote desktop' },
+  { id: 'deployment', label: 'Computer deployment' },
+  { id: 'shelf', label: 'PC shelf' },
+  { id: 'shipping', label: 'Shipping' },
+  { id: 'assets', label: 'Asset management' },
+  { id: 'shares', label: 'File shares' },
+  { id: 'printer', label: 'Printing' },
+]
+
+/**
+ * The commands a learner can run, grouped for display. `session` commands are
+ * left out: `help` is how the reference is asked for, not something it lists.
+ */
+export function commandGroups(): Array<{
+  id: CommandGroupId
+  label: string
+  commands: CommandDefinition[]
+}> {
+  return COMMAND_GROUPS.map(({ id, label }) => ({
+    id,
+    label,
+    commands: COMMANDS.filter((command) => command.group === id),
+  })).filter((entry) => entry.commands.length > 0)
+}
+
+function helpOverview(): OutputLine[] {
   const output: OutputLine[] = [
     line('HelpDeskLab simulated tools'),
     line(),
   ]
 
-  for (const { label, group } of groups) {
+  for (const { label, commands } of commandGroups()) {
     output.push(line(label))
-    for (const command of COMMANDS.filter((candidate) => candidate.group === group)) {
+    for (const command of commands) {
       output.push(line(`  ${command.usage.padEnd(48)}${command.summary}`))
     }
     output.push(line())
@@ -73,17 +112,24 @@ const helpDefinition: CommandDefinition = {
   group: 'session',
   usage: 'help [command]',
   summary: 'List available simulated tools',
+  access: 'read',
   run: help,
 }
 
 export const COMMANDS: readonly CommandDefinition[] = [
+  ...workstationCommands,
   ...networkCommands,
   ...dhcpCommands,
   ...identityCommands,
   ...m365Commands,
+  ...mailCommands,
+  ...remoteCommands,
+  ...deploymentCommands,
+  ...shelfCommands,
+  ...shippingCommands,
+  ...assetCommands,
   ...shareCommands,
   ...printerCommands,
-  ...sessionCommands,
   helpDefinition,
 ]
 
@@ -97,4 +143,27 @@ for (const command of COMMANDS) {
 
 export function findCommand(name: string): CommandDefinition | undefined {
   return byName.get(name.toLowerCase().replace(/\.exe$/, ''))
+}
+
+/**
+ * What a typed command line does: `read` looks, `change` alters. A command the
+ * registry does not know, or a line that cannot be parsed, answers null — it
+ * never ran, so it is neither. Argument-sensitive reads are answered here too,
+ * so `ipconfig /renew` is a change while `ipconfig /all` is a look.
+ */
+export function commandAccess(line: string): CommandAccess | null {
+  const parsed = parseCommandLine(line)
+  if (!parsed.ok) {
+    return null
+  }
+  const definition = findCommand(parsed.command.name)
+  if (!definition) {
+    return null
+  }
+  if (definition.access === 'change') {
+    return 'change'
+  }
+  const args = parsed.command.args.map((arg) => arg.toLowerCase())
+  const changes = definition.changingArgs?.some((flag) => args.includes(flag.toLowerCase()))
+  return changes ? 'change' : 'read'
 }

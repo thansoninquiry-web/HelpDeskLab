@@ -1,5 +1,5 @@
 import type { JsonValue } from './shared/json'
-import type { ScenarioStats, ScoreHistoryEntry } from './progress/types'
+import type { ScenarioStats, ScoreHistoryEntry, ScoredStep, TakenHint } from './progress/types'
 import type { Score } from './scoring/types'
 import type { JobStatus, JobTarget } from './targets/types'
 import type {
@@ -26,7 +26,14 @@ export interface SessionRepository {
   findById(id: SessionId): Promise<Session | null>
   findActive(): Promise<Session | null>
   listByTicket(ticketId: TicketId): Promise<Session[]>
+  /** Most recent first. Used by the curriculum, which scans lifetime history. */
+  listRecent(limit: number): Promise<Session[]>
   saveWorld(id: SessionId, world: Session['world']): Promise<void>
+  /**
+   * Saves the close being written — the chosen code and the handoff note — so a
+   * reload restores it. Null clears it; a closed session is not writable.
+   */
+  saveClosureDraft(id: SessionId, draft: Session['closureDraft']): Promise<void>
   finish(
     id: SessionId,
     ending: { endedAt: number; resolution: string; outcome: SessionOutcome },
@@ -35,7 +42,39 @@ export interface SessionRepository {
 
 export interface ActionRepository {
   append(action: NewSessionAction): Promise<SessionAction>
+  /**
+   * Un-runs an attempt from `fromSeq`: the tail of the log goes, `marker` takes
+   * its place, and the world that prefix folds to is written with them in one
+   * transaction. The log and the world it describes have to move together —
+   * half a rewind would leave an attempt whose history and machines disagree.
+   */
+  rewind(
+    sessionId: SessionId,
+    fromSeq: number,
+    marker: NewSessionAction,
+    world: Session['world'],
+  ): Promise<void>
+  /**
+   * Puts back the steps a rewind dropped: the marker at `seq` goes, the steps it
+   * held take its place, and the world their log folds to is written with them
+   * in one transaction. `tail` is conversation the log recorded after the cut —
+   * caller lines, never work — and it follows the restored steps.
+   */
+  reapply(
+    sessionId: SessionId,
+    seq: number,
+    steps: readonly NewSessionAction[],
+    tail: readonly NewSessionAction[],
+    world: Session['world'],
+  ): Promise<void>
   listBySession(sessionId: SessionId): Promise<SessionAction[]>
+  /** Most recent first. Used by the curriculum, which scans lifetime history. */
+  listRecent(limit: number): Promise<SessionAction[]>
+  /**
+   * Every hint the logs recorded, oldest first, reduced to the step and rung it
+   * named. Used by the Progress page, which reads habits across all attempts.
+   */
+  listHints(): Promise<TakenHint[]>
 }
 
 export interface ScoreRepository {
@@ -44,6 +83,11 @@ export interface ScoreRepository {
   listRecent(limit: number): Promise<Score[]>
   /** Every scored attempt with its scenario and category breakdown, oldest first. */
   listHistory(): Promise<ScoreHistoryEntry[]>
+  /**
+   * The rubric steps of every scored attempt, oldest first. A hint is logged
+   * against one of these ids, so the label comes from the score it belongs to.
+   */
+  listScoredSteps(): Promise<ScoredStep[]>
 }
 
 export interface ProgressRepository {

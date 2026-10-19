@@ -3,9 +3,13 @@ import type { Session, SessionId, SessionOutcome, TicketId } from '../../domain/
 import { NotFoundError } from '../errors'
 import type { RepositoryContext } from './context'
 import { mapSession } from './mappers'
-import { assertNonEmpty } from './validation'
+import { assertLimit, assertNonEmpty } from './validation'
 
-const COLUMNS = 'id, ticket_id, started_at, ended_at, world_json, resolution, outcome'
+/** Reflection scans the whole history, so the ceiling is far above the queue's. */
+const MAX_HISTORY_LIMIT = 5_000
+
+const COLUMNS =
+  'id, ticket_id, started_at, ended_at, world_json, hint_policy_json, closure_draft_json, exam_mode, resolution, outcome'
 
 export class SqliteSessionRepository implements SessionRepository {
   private readonly context: RepositoryContext
@@ -17,12 +21,15 @@ export class SqliteSessionRepository implements SessionRepository {
   async create(session: Session): Promise<void> {
     assertNonEmpty(session.id, 'session.id')
     await this.context.write((db) => {
-      db.run(`INSERT INTO sessions (${COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?)`, [
+      db.run(`INSERT INTO sessions (${COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
         session.id,
         session.ticketId,
         session.startedAt,
         session.endedAt,
         JSON.stringify(session.world),
+        session.hintPolicy === null ? null : JSON.stringify(session.hintPolicy),
+        session.closureDraft === null ? null : JSON.stringify(session.closureDraft),
+        session.examMode ? 1 : 0,
         session.resolution,
         session.outcome,
       ])
@@ -43,6 +50,18 @@ export class SqliteSessionRepository implements SessionRepository {
       )[0]
       return row ? mapSession(row) : null
     })
+  }
+
+  async listRecent(limit: number): Promise<Session[]> {
+    assertLimit(limit, MAX_HISTORY_LIMIT)
+    return this.context.read((db) =>
+      db
+        .exec(
+          `SELECT ${COLUMNS} FROM sessions ORDER BY started_at DESC, id DESC LIMIT ?`,
+          [limit],
+        )
+        .map(mapSession),
+    )
   }
 
   listByTicket(ticketId: TicketId): Promise<Session[]> {
@@ -67,6 +86,18 @@ export class SqliteSessionRepository implements SessionRepository {
     })
   }
 
+  async saveClosureDraft(id: SessionId, draft: Session['closureDraft']): Promise<void> {
+    await this.context.write((db) => {
+      const changed = db.run(
+        'UPDATE sessions SET closure_draft_json = ? WHERE id = ? AND ended_at IS NULL',
+        [draft === null ? null : JSON.stringify(draft), id],
+      )
+      if (changed === 0) {
+        throw new NotFoundError(`Active session not found: ${id}`)
+      }
+    })
+  }
+
   async finish(
     id: SessionId,
     ending: { endedAt: number; resolution: string; outcome: SessionOutcome },
@@ -74,7 +105,7 @@ export class SqliteSessionRepository implements SessionRepository {
     assertNonEmpty(ending.resolution, 'ending.resolution')
     await this.context.write((db) => {
       const changed = db.run(
-        'UPDATE sessions SET ended_at = ?, resolution = ?, outcome = ? WHERE id = ? AND ended_at IS NULL',
+        'UPDATE sessions SET ended_at = ?, resolution = ?, outcome = ?, closure_draft_json = NULL WHERE id = ? AND ended_at IS NULL',
         [ending.endedAt, ending.resolution, ending.outcome, id],
       )
       if (changed === 0) {

@@ -1,11 +1,85 @@
+@font-face {
+  font-family: 'Barlow Condensed';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/barlow-condensed-500.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Barlow Condensed';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/barlow-condensed-600.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Barlow Condensed';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/barlow-condensed-700.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/inter-400.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/inter-500.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/inter-600.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-400.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-600.woff2') format('woff2');
+}
+
 *,
 *::before,
 *::after {
   box-sizing: border-box;
 }
 
+/*
+ * The type scale is anchored here, at 16px. Every step of the ladder is a rem
+ * against it — the steps themselves are declared and documented in tokens.css as
+ * `--type-2xs` through `--type-display-lg` — so the whole interface grows
+ * together rather than a few labels drifting apart. Nothing below 0.7rem
+ * (`--type-2xs`) is used for text, and body copy is 1rem (`--type-2xl`), with no
+ * size in between for long-form text to shrink into. No stylesheet writes its own
+ * size: tests/ui/typeScale.test.ts fails the build if one tries.
+ */
 html {
   min-width: 320px;
+  font-size: 16px;
   background: var(--bg);
 }
 
@@ -13,21 +87,22 @@ body {
   margin: 0;
   min-height: 100vh;
   font-family: var(--font-sans);
+  font-size: var(--type-2xl);
   line-height: 1.6;
   color: var(--text);
-  background:
-    radial-gradient(circle at 15% -10%, rgba(76, 201, 240, 0.12), transparent 40%),
-    radial-gradient(circle at 95% 0%, rgba(99, 102, 241, 0.1), transparent 35%),
-    var(--bg);
+  background: var(--bg);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 h1,
 h2,
 h3 {
   margin: 0;
-  line-height: 1.2;
-  letter-spacing: -0.02em;
+  font-family: var(--font-display);
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: 0.015em;
 }
 
 p {
@@ -59,13 +134,24 @@ textarea {
   font: inherit;
 }
 
+code {
+  font-family: var(--font-mono);
+}
+
 :focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: 3px;
+  outline-offset: 2px;
 }
 
 ::selection {
-  background: rgba(76, 201, 240, 0.3);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+/* Scrollbars follow the panels instead of the operating system default. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
 }
 
 @media (prefers-reduced-motion: reduce) {

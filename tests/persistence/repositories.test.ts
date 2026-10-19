@@ -85,6 +85,51 @@ describe('repositories', () => {
     ).rejects.toBeInstanceOf(NotFoundError)
   })
 
+  it('keeps a close draft on the session and drops it when the ticket closes', async () => {
+    const { persistence } = env
+    await persistence.tickets.create(makeTicket())
+    await persistence.sessions.create(makeSession())
+
+    await persistence.sessions.saveClosureDraft('session-1', {
+      code: 'escalated-tier2',
+      note: 'Repeat lockout: the identity team needs the report.',
+    })
+
+    const loaded = await persistence.sessions.findById('session-1')
+    expect(loaded?.closureDraft).toEqual({
+      code: 'escalated-tier2',
+      note: 'Repeat lockout: the identity team needs the report.',
+    })
+
+    await persistence.sessions.finish('session-1', {
+      endedAt: 1_760_000_400_000,
+      resolution: 'escalated-tier2',
+      outcome: 'resolved',
+    })
+
+    expect((await persistence.sessions.findById('session-1'))?.closureDraft).toBeNull()
+    await expect(
+      persistence.sessions.saveClosureDraft('session-1', { code: null, note: 'too late' }),
+    ).rejects.toBeInstanceOf(NotFoundError)
+  })
+
+  it('remembers which attempts were sat as exams', async () => {
+    const { persistence } = env
+    await persistence.tickets.create(makeTicket())
+    await persistence.tickets.create(makeTicket({ id: 'ticket-2' }))
+    await persistence.sessions.create(makeSession('ticket-1', { examMode: true }))
+    await persistence.sessions.create(makeSession('ticket-2', { id: 'session-2' }))
+
+    expect((await persistence.sessions.findById('session-1'))?.examMode).toBe(true)
+    // A practice attempt — and a row written before the mode existed — reads false.
+    expect((await persistence.sessions.findById('session-2'))?.examMode).toBe(false)
+    // Both rows start at the same moment, so the newer id comes first.
+    expect((await persistence.sessions.listRecent(10)).map((row) => row.examMode)).toEqual([
+      false,
+      true,
+    ])
+  })
+
   it('appends actions with contiguous sequence numbers', async () => {
     const { persistence } = env
     await persistence.tickets.create(makeTicket())
@@ -158,6 +203,56 @@ describe('repositories', () => {
     expect(history[0]?.categoryScores?.documentation).toEqual({ earned: 6, possible: 20 })
     // Scores written before categories were stored simply report null.
     expect(history[1]?.categoryScores).toBeNull()
+  })
+
+  it('reads the rubric steps and hints a habit summary is built from', async () => {
+    const { persistence } = env
+    await persistence.tickets.create(makeTicket())
+    await persistence.sessions.create(makeSession())
+    await persistence.sessions.create(makeSession('ticket-1', { id: 'session-2' }))
+    await persistence.scores.save(
+      makeScore('session-1', {
+        computedAt: 10,
+        rubric: {
+          items: [
+            { id: 'verify-caller', label: 'Verify the caller', category: 'safety' },
+            // A step without a label cannot be named, so it is left out rather
+            // than guessed at.
+            { id: 'unlock' },
+          ],
+        },
+      }),
+    )
+    await persistence.scores.save(
+      makeScore('session-2', {
+        computedAt: 20,
+        rubric: { items: [{ id: 'unlock', label: 'Unlock the account' }] },
+      }),
+    )
+
+    await persistence.actions.append(
+      makeAction('session-1', {
+        kind: 'hint',
+        input: { itemId: 'verify-caller', hintIndex: 1 },
+      }),
+    )
+    await persistence.actions.append(
+      makeAction('session-1', { kind: 'hint', input: { itemId: 'unlock' } }),
+    )
+    await persistence.actions.append(makeAction('session-1'))
+    // A hint row that names no step is not attributed to a rubric step.
+    await persistence.actions.append(
+      makeAction('session-2', { kind: 'hint', input: { text: 'no step here' } }),
+    )
+
+    expect(await persistence.scores.listScoredSteps()).toEqual([
+      { sessionId: 'session-1', itemId: 'verify-caller', label: 'Verify the caller' },
+      { sessionId: 'session-2', itemId: 'unlock', label: 'Unlock the account' },
+    ])
+    expect(await persistence.actions.listHints()).toEqual([
+      { sessionId: 'session-1', itemId: 'verify-caller', hintIndex: 1 },
+      { sessionId: 'session-1', itemId: 'unlock', hintIndex: 0 },
+    ])
   })
 
   it('upserts scenario progress and settings values', async () => {

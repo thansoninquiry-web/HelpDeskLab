@@ -13,8 +13,8 @@ export default defineConfig({
         name: 'HelpDeskLab',
         short_name: 'HelpDeskLab',
         description: 'Local-first Tier 1 IT help desk practice lab',
-        theme_color: '#070b14',
-        background_color: '#070b14',
+        theme_color: '#0d1a30',
+        background_color: '#f3f5f9',
         display: 'standalone',
         start_url: '/',
         icons: [

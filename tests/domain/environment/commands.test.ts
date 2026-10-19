@@ -177,6 +177,64 @@ describe('set-dns and Test-NetConnection', () => {
   })
 })
 
+describe('a refused request', () => {
+  function refusedWorld(): World {
+    return {
+      ...createLarkspurWorld(),
+      refusal: { reason: 'third-party-request', label: 'Asked for someone else’s account', atMs: BASE_CLOCK },
+    }
+  }
+
+  it('will not change an account once the desk has refused the request', () => {
+    const world = refusedWorld()
+    const before = world.users.find((user) => user.samAccountName === 'mchen')?.status
+    const result = applyCommand(world, 'unlock-account mchen')
+
+    expect(result.ok).toBe(false)
+    expect(result.effects).toEqual([])
+    expect(text(result)).toMatch(/refused on this ticket/i)
+    expect(text(result)).toMatch(/asked for someone else’s account/i)
+    // Nothing moved, and the world it was handed is untouched.
+    expect(result.world.users.find((user) => user.samAccountName === 'mchen')?.status).toBe(before)
+    expect(world.users.find((user) => user.samAccountName === 'mchen')?.status).toBe(before)
+  })
+
+  it('holds back every account-changing tool, not just the one the request named', () => {
+    const refused = refusedWorld()
+
+    for (const input of [
+      'reset-password asingh',
+      'reset-mfa asingh',
+      'unblock-signin asingh',
+      'add-group-member Operations mchen',
+      'remove-share-deny Operations mchen',
+    ]) {
+      const result = applyCommand(refused, input)
+      expect(result.ok, input).toBe(false)
+      expect(result.effects, input).toEqual([])
+    }
+  })
+
+  it('still lets the desk read, and still runs the commands a refusal does not cover', () => {
+    const refused = refusedWorld()
+
+    const lookup = applyCommand(refused, 'get-account mchen')
+    expect(lookup.ok).toBe(true)
+    expect(text(lookup)).toMatch(/samAccountName\s+: mchen/)
+
+    // A printer or a lease has nothing to do with the refused account work.
+    const spooler = applyCommand(refused, 'restart-spooler')
+    expect(spooler.ok).toBe(true)
+  })
+
+  it('runs the same commands when no refusal is recorded', () => {
+    const allowed = applyCommand(createLarkspurWorld(), 'unlock-account mchen')
+
+    expect(allowed.ok).toBe(true)
+    expect(allowed.effects).toEqual([{ type: 'account_unlocked', target: 'mchen' }])
+  })
+})
+
 describe('identity commands', () => {
   it('unlocks a locked account and reports repeats', () => {
     const first = applyCommand(createLarkspurWorld(), 'unlock-account mchen')
@@ -473,5 +531,242 @@ describe('file share commands', () => {
     expect(applyCommand(world, 'add-group-member FS-Nope dwhitfield').ok).toBe(false)
     expect(applyCommand(world, 'add-group-member FS-All-Users ghost').ok).toBe(false)
     expect(applyCommand(world, 'remove-share-deny Finance ghost').ok).toBe(false)
+  })
+})
+
+describe('asset lookup', () => {
+  it('reads an in-service machine by hostname with its holder and state', () => {
+    const result = applyCommand(createLarkspurWorld(), 'get-asset LT-4471')
+    const output = text(result)
+
+    expect(result.ok).toBe(true)
+    expect(output).toContain('Asset tag       : LT-4471')
+    expect(output).toContain('State           : In service')
+    expect(output).toContain('Dana Whitfield · Finance (dwhitfield)')
+    expect(output).toContain('Domain joined   : Yes')
+    expect(output).toContain('10.20.4.57 (DHCP)')
+    expect(result.effects).toEqual([])
+  })
+
+  it('accepts the register id as well as the hostname', () => {
+    const byId = applyCommand(createLarkspurWorld(), 'get-asset lt-4471')
+    expect(byId.ok).toBe(true)
+    expect(text(byId)).toContain('LT-4471')
+  })
+
+  it('reads a shelf machine with its run, its note, and any open shipment', () => {
+    const world = createLarkspurWorld()
+    const queued = applyCommand(world, 'get-asset SHELF-DT-0102')
+    const output = text(queued)
+
+    expect(queued.ok).toBe(true)
+    expect(output).toContain('State           : On a spare shelf')
+    expect(output).toContain('Shelf state     : Needs imaging')
+    expect(output).toContain('Deployment      : queued')
+    expect(output).toContain('Shipment        : Not on any open shipment')
+    expect(output).toContain('Wiped, waiting for an imaging slot.')
+
+    const shipped = text(applyCommand(world, 'get-asset SHELF-DT-0101'))
+    expect(shipped).toContain('LSP-8845 · outbound · preparing')
+  })
+
+  it('fails on a tag the register does not hold, and on a missing argument', () => {
+    const missing = applyCommand(createLarkspurWorld(), 'get-asset SHELF-9999')
+    expect(missing.ok).toBe(false)
+    expect(text(missing)).toMatch(/no machine in the register matches/i)
+    expect(text(missing)).toContain('SHELF-DT-0101')
+
+    expect(applyCommand(createLarkspurWorld(), 'get-asset').ok).toBe(false)
+    expect(applyCommand(createLarkspurWorld(), 'get-asset LT-4471 extra').ok).toBe(false)
+  })
+})
+
+describe('pc shelf commands', () => {
+  it('reads a bay by state, with the note behind each machine', () => {
+    const result = applyCommand(createLarkspurWorld(), 'get-shelf hq')
+    const output = text(result)
+
+    expect(result.ok).toBe(true)
+    expect(output).toContain('Larkspur HQ')
+    expect(output).toContain('Machines held : 4')
+    expect(output).toMatch(/Ready to go out\s+: 2/)
+    expect(output).toContain('SHELF-LT-0117')
+    expect(output).toContain('Battery replaced when it came back.')
+    expect(output).toContain('SHELF-LT-0118')
+    expect(output).toMatch(/Waiting on parts/)
+
+    expect(applyCommand(createLarkspurWorld(), 'get-shelf nowhere').ok).toBe(false)
+    expect(applyCommand(createLarkspurWorld(), 'get-shelf').ok).toBe(false)
+  })
+
+  it('issues a ready machine and puts it on the register under its holder', () => {
+    const world = createLarkspurWorld()
+    const starter = world.users.find((user) => user.id.startsWith('u-staff-'))
+    if (!starter) {
+      throw new Error('missing staff account')
+    }
+
+    const result = applyCommand(world, `book-shelf-machine SHELF-LT-0203 ${starter.samAccountName}`)
+
+    expect(result.ok).toBe(true)
+    expect(result.effects).toEqual([
+      {
+        type: 'machine_issued',
+        target: 'SHELF-LT-0203',
+        details: { hostname: 'LT-0203', samAccountName: starter.samAccountName },
+      },
+    ])
+    const issued = result.world.devices.find((device) => device.hostname === 'LT-0203')
+    expect(issued).toMatchObject({
+      id: 'lt-0203',
+      siteId: 'depot',
+      kind: 'laptop',
+      assignedUserId: starter.id,
+      domainJoined: true,
+    })
+    expect(issued?.macAddress).toMatch(/^00-1A-2B-3F-[0-9A-F]{2}$/)
+    expect(result.world.stock.some((item) => item.id === 'SHELF-LT-0203')).toBe(false)
+    // The source world is untouched.
+    expect(world.stock.some((item) => item.id === 'SHELF-LT-0203')).toBe(true)
+  })
+
+  it('refuses a machine that is not ready, unknown holders, and second machines', () => {
+    const world = createLarkspurWorld()
+    const starter = world.users.find((user) => user.id.startsWith('u-staff-'))
+    if (!starter) {
+      throw new Error('missing staff account')
+    }
+
+    const needsImage = applyCommand(world, `book-shelf-machine SHELF-DT-0102 ${starter.samAccountName}`)
+    expect(needsImage.ok).toBe(false)
+    expect(text(needsImage)).toMatch(/needs imaging/i)
+
+    const held = applyCommand(world, `book-shelf-machine SHELF-LT-0204 ${starter.samAccountName}`)
+    expect(held.ok).toBe(false)
+    expect(text(held)).toMatch(/held, do not issue|cannot be issued/i)
+
+    const unknown = applyCommand(world, 'book-shelf-machine SHELF-LT-0203 ghost')
+    expect(unknown.ok).toBe(false)
+
+    // A return in transit does not hold the machine back; the holder does.
+    const second = applyCommand(world, 'book-shelf-machine SHELF-DT-0301 dwhitfield')
+    expect(second.ok).toBe(false)
+    expect(text(second)).toMatch(/already holds/i)
+  })
+
+  it('refuses a machine that is out on an outbound shipment', () => {
+    const world = createLarkspurWorld()
+    const starter = world.users.find((user) => user.id.startsWith('u-staff-'))
+    if (!starter) {
+      throw new Error('missing staff account')
+    }
+
+    const result = applyCommand(world, `book-shelf-machine SHELF-DT-0101 ${starter.samAccountName}`)
+
+    expect(result.ok).toBe(false)
+    expect(text(result)).toContain('LSP-8845')
+  })
+
+  it('holds a machine so it cannot be issued, once', () => {
+    const result = applyCommand(createLarkspurWorld(), 'hold-shelf-machine SHELF-LT-0118 damage')
+
+    expect(result.ok).toBe(true)
+    expect(result.effects).toEqual([
+      { type: 'shelf_held', target: 'SHELF-LT-0118', details: { reason: 'damage' } },
+    ])
+    const held = result.world.stock.find((item) => item.id === 'SHELF-LT-0118')
+    expect(held?.state).toBe('quarantined')
+    expect(held?.notes).toContain('damage')
+
+    const repeat = applyCommand(result.world, 'hold-shelf-machine SHELF-LT-0118 damage')
+    expect(repeat.ok).toBe(true)
+    expect(repeat.effects).toEqual([])
+
+    expect(applyCommand(createLarkspurWorld(), 'hold-shelf-machine SHELF-LT-0118').ok).toBe(false)
+  })
+})
+
+describe('shipping commands', () => {
+  it('reads the board with the late movements first', () => {
+    const result = applyCommand(createLarkspurWorld(), 'get-shipments')
+    const output = text(result)
+
+    expect(result.ok).toBe(true)
+    expect(output).toContain('Shipments : 5')
+    expect(output).toContain('Delayed    : 1')
+    const delayed = output.indexOf('LSP-8830')
+    const preparing = output.indexOf('LSP-8845')
+    expect(delayed).toBeGreaterThan(0)
+    expect(delayed).toBeLessThan(preparing)
+
+    const one = applyCommand(createLarkspurWorld(), 'get-shipment LSP-8830')
+    expect(text(one)).toContain('Ridgeway Couriers')
+    expect(text(one)).toMatch(/Shelf state : quarantined/)
+    expect(applyCommand(createLarkspurWorld(), 'get-shipment LSP-0000').ok).toBe(false)
+  })
+
+  it('prints a return label without moving the shipment', () => {
+    const world = createLarkspurWorld()
+    const result = applyCommand(world, 'print-shipping-label LSP-8830')
+
+    expect(result.ok).toBe(true)
+    expect(text(result)).toContain('RETURN  LSP-8830')
+    expect(text(result)).toMatch(/moves nothing/i)
+    expect(result.effects).toEqual([])
+    expect(result.world.shipments.find((entry) => entry.id === 'LSP-8830')?.state).toBe('delayed')
+
+    const delivered = applyCommand(world, 'print-shipping-label LSP-8831')
+    expect(text(delivered)).toMatch(/already delivered/i)
+  })
+
+  it('dispatches a prepared shipment but not a delayed one', () => {
+    const result = applyCommand(createLarkspurWorld(), 'dispatch-shipment LSP-8845')
+
+    expect(result.ok).toBe(true)
+    expect(result.effects[0]).toMatchObject({ type: 'shipment_dispatched', target: 'LSP-8845' })
+    const shipped = result.world.shipments.find((entry) => entry.id === 'LSP-8845')
+    expect(shipped?.state).toBe('in-transit')
+    expect(shipped?.lastEvent).toMatch(/Collected by Northwind Freight/)
+
+    const delayed = applyCommand(createLarkspurWorld(), 'dispatch-shipment LSP-8830')
+    expect(delayed.ok).toBe(false)
+    expect(text(delayed)).toMatch(/rebook it first/i)
+
+    const again = applyCommand(result.world, 'dispatch-shipment LSP-8845')
+    expect(again.ok).toBe(true)
+    expect(again.effects).toEqual([])
+  })
+
+  it('records delivery only for a shipment that left the building', () => {
+    const result = applyCommand(createLarkspurWorld(), 'deliver-shipment LSP-8842')
+
+    expect(result.ok).toBe(true)
+    expect(result.effects[0]).toMatchObject({ type: 'shipment_delivered', target: 'LSP-8842' })
+    expect(result.world.shipments.find((entry) => entry.id === 'LSP-8842')?.state).toBe('delivered')
+
+    const preparing = applyCommand(createLarkspurWorld(), 'deliver-shipment LSP-8845')
+    expect(preparing.ok).toBe(false)
+    expect(text(preparing)).toMatch(/has not been collected/i)
+
+    const delayed = applyCommand(createLarkspurWorld(), 'deliver-shipment LSP-8830')
+    expect(delayed.ok).toBe(false)
+    expect(text(delayed)).toMatch(/never left/i)
+  })
+
+  it('rebooks a missed collection with a new due date', () => {
+    const result = applyCommand(createLarkspurWorld(), 'rebook-shipment LSP-8830 2')
+
+    expect(result.ok).toBe(true)
+    expect(result.effects).toEqual([
+      { type: 'shipment_rebooked', target: 'LSP-8830', details: { days: 2 } },
+    ])
+    const rebooked = result.world.shipments.find((entry) => entry.id === 'LSP-8830')
+    expect(rebooked?.state).toBe('preparing')
+    expect(rebooked?.dueOn).toBe(BASE_CLOCK + CLOCK_STEP_MS + 2 * 24 * 60 * 60 * 1000)
+    expect(rebooked?.lastEvent).toMatch(/Rebooked with Ridgeway Couriers/)
+
+    expect(applyCommand(createLarkspurWorld(), 'rebook-shipment LSP-8842 2').ok).toBe(false)
+    expect(applyCommand(createLarkspurWorld(), 'rebook-shipment LSP-8830 0').ok).toBe(false)
+    expect(applyCommand(createLarkspurWorld(), 'rebook-shipment LSP-8830 soon').ok).toBe(false)
   })
 })

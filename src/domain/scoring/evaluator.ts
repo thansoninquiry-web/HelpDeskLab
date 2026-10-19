@@ -1,19 +1,30 @@
 import type { JsonObject, JsonValue } from '../shared/json'
 import { findCommand } from '../environment/commands'
 import { parseCommandLine } from '../environment/parser'
-import type { Effect, World } from '../environment/types'
+import { usableCallerVerificationMethods } from '../environment/verification'
+import type { Effect, EffectType, VerificationMethod, World } from '../environment/types'
+import type { TopologyCheck, TopologyView } from '../environment/topology'
 import type { ActionKind } from '../tickets/types'
+import {
+  hintsAreFree,
+  normalizeHintPolicy,
+  totalHintCost,
+  type HintPolicy,
+} from './policy'
 import type {
   CategoryScore,
   CheckSpec,
   EvaluationResult,
   NoteCoveragePart,
+  ProcedureViolation,
   Rubric,
   RubricCategory,
   RubricItem,
   RubricItemResult,
   ScoreBand,
   SessionDecision,
+  TopologyCoverage,
+  TopologyLinkReport,
 } from './types'
 
 export interface EvaluatorAction {
@@ -28,7 +39,136 @@ export interface EvaluationInput {
   world: World
   decision: SessionDecision
   difficulty: 1 | 2 | 3
+  /**
+   * What this attempt pays for a hint. The caller pins it when the attempt
+   * starts; the default is the standard price the Settings control starts from.
+   */
+  hints?: HintPolicy
+  /** True only when the ticket is a network fault. */
+  networkTicket?: boolean
+  /** The map as the log left it, used for the proof bonus and its debrief. */
+  topology?: TopologyView
+  /** The bonus belongs to a closed ticket, not to a hint preview. */
+  closing?: boolean
 }
+
+/**
+ * A hint is a priced shortcut to the next step, capped so a hint-heavy attempt
+ * still gets a readable score. Process mistakes are priced separately.
+ */
+export {
+  DEFAULT_HINT_POLICY,
+  HINT_CAP_LIMIT,
+  HINT_COST_LIMIT,
+  HINT_PENALTY_PER_HINT,
+  MAX_HINT_PENALTY,
+  hintPolicyError,
+  hintsAreFree,
+  normalizeHintPolicy,
+  rungCost,
+  totalHintCost,
+  type HintPolicy,
+} from './policy'
+export const UNVERIFIED_CHANGE_PENALTY = 10
+export const FIX_BEFORE_EVIDENCE_PENALTY = 5
+
+/**
+ * How strong each way of proving a caller is. The live code and a walk-up with
+ * photo ID reach the person themselves; a badge proves whoever presented it; a
+ * callback reaches whoever answers a line; the printed PIN is a fixed secret
+ * that could have been read by someone else.
+ *
+ * The rank decides whether a check was the best one available, and the penalty
+ * is what the weaker choice costs when a stronger one was on the table.
+ */
+export const VERIFICATION_METHOD_RANK: Record<VerificationMethod, number> = {
+  'in-person': 0,
+  'verification-code': 0,
+  'badge-scan': 3,
+  callback: 5,
+  'letter-pin': 8,
+}
+
+export const WEAKER_METHOD_PENALTY: Record<VerificationMethod, number> = {
+  'in-person': 0,
+  'verification-code': 0,
+  'badge-scan': 3,
+  callback: 5,
+  'letter-pin': 8,
+}
+
+const METHOD_LABELS: Record<VerificationMethod, string> = {
+  'in-person': 'a walk-up with photo ID',
+  'verification-code': 'a live code read back',
+  'badge-scan': 'a badge scan at the desk',
+  callback: 'a callback',
+  'letter-pin': 'the PIN from the letter',
+}
+
+/**
+ * What a check costs when a stronger one was available, and zero otherwise. The
+ * gate still clears — this is a process cost, not a failed proof.
+ */
+export function weakerVerificationCost(
+  method: VerificationMethod,
+  available: readonly VerificationMethod[],
+): number {
+  if (available.length === 0) {
+    return 0
+  }
+  const best = Math.min(...available.map((candidate) => VERIFICATION_METHOD_RANK[candidate]))
+  return VERIFICATION_METHOD_RANK[method] > best ? WEAKER_METHOD_PENALTY[method] : 0
+}
+/**
+ * What a callback costs when the caller's phone could have taken a code.
+ *
+ * The callback still clears the gate — it is a real check, and the only one
+ * available when the handset is out of action — but it reaches whoever answers
+ * the line on file, while a read-back proves the person on the call holds the
+ * handset the code was sent to. Choosing the weaker check while the stronger
+ * one was available is a process cost, not a failed gate.
+ */
+export const CALLBACK_OVER_CODE_PENALTY = 5
+/** Paid once, on a closed network ticket whose map has no unproved link. */
+export const TOPOLOGY_BONUS_XP = 25
+
+/** Changes that only a verified caller can authorise. */
+const VERIFICATION_SENSITIVE_EFFECTS: readonly EffectType[] = [
+  'account_unlocked',
+  'password_reset',
+  'mfa_reset',
+  'signin_unblocked',
+  'group_member_added',
+  'share_deny_removed',
+]
+
+/**
+ * Opening or closing a support session moves the session record, not the
+ * machine: it is how the desk reaches a machine, so it is not a fix made before
+ * the evidence and does not count as one here.
+ */
+const SESSION_EFFECTS: ReadonlySet<EffectType> = new Set(['remote_connected', 'remote_ended'])
+
+/** Read-only commands: seeing one of these means the evidence came first. */
+const EVIDENCE_COMMANDS: ReadonlySet<string> = new Set([
+  'ipconfig',
+  'ping',
+  'nslookup',
+  'test-netconnection',
+  'get-account',
+  'get-signin-log',
+  'get-dhcp-scope',
+  'get-printers',
+  'get-printqueue',
+  'get-share-access',
+  'get-mailbox',
+  'get-quarantine',
+  'trace-message',
+  'get-remote-machine',
+  'get-sessions',
+  'get-deployment',
+  'get-deployment-queue',
+])
 
 const CATEGORIES: readonly RubricCategory[] = [
   'diagnosis',
@@ -36,6 +176,18 @@ const CATEGORIES: readonly RubricCategory[] = [
   'resolution',
   'safety',
 ]
+
+/**
+ * The categories in the learner's words. The debrief, the feedback lines and the
+ * penalty notices all read from here, so a category is never printed as the key
+ * the scorer stores it under.
+ */
+export const CATEGORY_LABELS: Record<RubricCategory, string> = {
+  diagnosis: 'Diagnostic reasoning',
+  documentation: 'Documentation',
+  resolution: 'Resolution',
+  safety: 'Safety',
+}
 
 function effectsOf(action: EvaluatorAction): Effect[] {
   const effects = action.output.effects
@@ -60,6 +212,21 @@ function effectsOf(action: EvaluatorAction): Effect[] {
 function commandText(action: EvaluatorAction): string {
   const command = action.input.command
   return typeof command === 'string' ? command : ''
+}
+
+/**
+ * Which verification method a recorded action used, or null when the log does
+ * not say. An action that names no method cannot stand in for a named one.
+ */
+function verificationMethodOf(action: EvaluatorAction): VerificationMethod | null {
+  const method = action.input.method
+  return method === 'verification-code' ||
+    method === 'callback' ||
+    method === 'badge-scan' ||
+    method === 'letter-pin' ||
+    method === 'in-person'
+    ? method
+    : null
 }
 
 function ranCommand(action: EvaluatorAction, command: string, argsInclude?: string): boolean {
@@ -91,7 +258,17 @@ function actionSatisfies(spec: CheckSpec, action: EvaluatorAction): boolean {
         (effect) => effect.type === spec.effect && (!spec.target || effect.target === spec.target),
       )
     case 'verify-caller':
-      return action.kind === 'verify-caller'
+      // A recorded verification only counts when it actually verified someone,
+      // and, when the item names a method, when it was that method: a code read
+      // back is not a call placed, and the log has to say which one happened.
+      return (
+        action.kind === 'verify-caller' &&
+        action.output.verified !== false &&
+        (!spec.method || verificationMethodOf(action) === spec.method)
+      )
+    case 'deny-caller':
+      // Only a recorded refusal counts; a note that says "denied" is not an action.
+      return action.kind === 'deny-caller' && action.output.denied !== false
     case 'ask':
       return action.kind === 'ask-user' && (!spec.intent || action.input.intent === spec.intent)
     case 'note': {
@@ -106,6 +283,117 @@ function actionSatisfies(spec: CheckSpec, action: EvaluatorAction): boolean {
   }
 }
 
+function commandName(action: EvaluatorAction): string | null {
+  if (action.kind !== 'command') {
+    return null
+  }
+  const parsed = parseCommandLine(commandText(action))
+  return parsed.ok ? (findCommand(parsed.command.name)?.name ?? null) : null
+}
+
+/**
+ * Reads the attempt once and prices each process mistake at most once, so
+ * repeating an error cannot inflate the penalty.
+ *
+ * `availableMethods` is what the caller could actually offer on this ticket,
+ * with a code sent to a dead handset already filtered out. A check that cleared
+ * the gate still counts; it is only priced when a stronger check was on the
+ * table and the desk took the weaker one.
+ */
+export function detectProcedureViolations(
+  actions: readonly EvaluatorAction[],
+  options: { availableMethods: readonly VerificationMethod[] },
+): ProcedureViolation[] {
+  let verified = false
+  let verifiedBy: VerificationMethod | null = null
+  let evidenceSeen = false
+  let unverifiedChange = false
+  let fixBeforeEvidence = false
+
+  for (const action of actions) {
+    if (action.kind === 'verify-caller') {
+      if (action.output.verified === false) {
+        continue
+      }
+      if (!verified) {
+        verified = true
+        // The check that actually cleared the gate is the one that counted: a
+        // weaker check after a stronger one cannot undo the stronger proof.
+        verifiedBy = verificationMethodOf(action)
+      }
+      continue
+    }
+    if (action.kind !== 'command') {
+      continue
+    }
+
+    const effects = effectsOf(action)
+    if (!evidenceSeen && effects.length === 0) {
+      const name = commandName(action)
+      if (name && EVIDENCE_COMMANDS.has(name)) {
+        evidenceSeen = true
+      }
+    }
+
+    for (const effect of effects) {
+      if (!verified && VERIFICATION_SENSITIVE_EFFECTS.includes(effect.type)) {
+        unverifiedChange = true
+      }
+      if (!evidenceSeen && !SESSION_EFFECTS.has(effect.type)) {
+        fixBeforeEvidence = true
+      }
+    }
+  }
+
+  const violations: ProcedureViolation[] = []
+  if (unverifiedChange) {
+    violations.push({
+      id: 'unverified-change',
+      label: 'Changed the account before verifying the caller',
+      detail:
+        'An account change was made before anyone proved they were the person on the ticket.',
+      points: UNVERIFIED_CHANGE_PENALTY,
+      category: 'safety',
+    })
+  }
+  if (fixBeforeEvidence) {
+    violations.push({
+      id: 'fix-before-evidence',
+      label: 'Changed something before reading any evidence',
+      detail: 'No read-only check came before the fix, so the change was not justified by its state.',
+      points: FIX_BEFORE_EVIDENCE_PENALTY,
+      category: 'diagnosis',
+    })
+  }
+  if (verifiedBy) {
+    const cost = weakerVerificationCost(verifiedBy, options.availableMethods)
+    if (cost > 0) {
+      const best = options.availableMethods.reduce((left, right) =>
+        VERIFICATION_METHOD_RANK[left] <= VERIFICATION_METHOD_RANK[right] ? left : right,
+      )
+      violations.push(
+        verifiedBy === 'callback'
+          ? {
+              id: 'callback-instead-of-code',
+              label: 'Rang back instead of having a code read back',
+              detail:
+                'The caller’s phone could take a code, so the read-back was the check to make. A callback only proves that somebody on that line answered.',
+              points: cost,
+              category: 'safety',
+            }
+          : {
+              id: 'weaker-verification',
+              label: `Proved the caller with ${METHOD_LABELS[verifiedBy]}`,
+              detail: `A stronger check was available: ${METHOD_LABELS[best]}. ${METHOD_LABELS[verifiedBy]} is still a real proof, but it leaves more room for someone else to answer for the employee.`,
+              points: cost,
+              category: 'safety',
+            },
+      )
+    }
+  }
+  return violations
+}
+
 function notesOfKind(
   actions: readonly EvaluatorAction[],
   spec: Extract<CheckSpec, { kind: 'note-covers' }>,
@@ -116,6 +404,19 @@ function notesOfKind(
     }
     const text = typeof action.input.text === 'string' ? action.input.text.trim() : ''
     return text.length >= (spec.minLength ?? 1) ? [text] : []
+  })
+}
+
+function hasNoteOfKind(
+  actions: readonly EvaluatorAction[],
+  spec: { noteKind: 'troubleshooting' | 'customer' | 'resolution' },
+): boolean {
+  return actions.some((action) => {
+    if (action.kind !== 'note' || action.input.noteKind !== spec.noteKind) {
+      return false
+    }
+    const text = typeof action.input.text === 'string' ? action.input.text.trim() : ''
+    return text.length > 0
   })
 }
 
@@ -201,48 +502,317 @@ function isSatisfiedAnywhere(
   }
 }
 
-function describe(spec: CheckSpec): string {
+/**
+ * `matchSequence`, but it keeps the actions that matched as well as the verdict,
+ * so credit can be given to the sequence that actually proved the check.
+ */
+function sequenceIndices(
+  specs: readonly CheckSpec[],
+  actions: readonly EvaluatorAction[],
+  start: number,
+): number[] | null {
+  let cursor = start
+  const matched: number[] = []
+  for (const spec of specs) {
+    let found = false
+    for (let index = cursor; index < actions.length; index += 1) {
+      const action = actions[index]
+      if (!action) {
+        continue
+      }
+      if (spec.kind === 'ordered') {
+        const nested = sequenceIndices(spec.of, actions, index)
+        if (nested) {
+          matched.push(...nested)
+          found = true
+          cursor = index + 1
+          break
+        }
+      } else if (actionSatisfies(spec, action)) {
+        matched.push(index)
+        found = true
+        cursor = index + 1
+        break
+      }
+    }
+    if (!found) {
+      return null
+    }
+  }
+  return matched
+}
+
+/**
+ * The actions that proved a check. A command check is proved by the first action
+ * that met it: running the same read again adds to the log but proves nothing
+ * the attempt did not already have, so the repeat earns nothing. A check no
+ * action can satisfy — an absence, a note's coverage, the closure decision, the
+ * world left behind — names no command, and the debrief does not pretend a typed
+ * line earned what a sentence or a closure code did.
+ */
+function provingIndices(spec: CheckSpec, actions: readonly EvaluatorAction[]): number[] {
+  if (spec.kind === 'ordered') {
+    return sequenceIndices(spec.of, actions, 0) ?? []
+  }
+  if (spec.kind !== 'ran' && spec.kind !== 'effect') {
+    return []
+  }
+  for (let index = 0; index < actions.length; index += 1) {
+    const action = actions[index]
+    if (action && actionSatisfies(spec, action)) {
+      return [index]
+    }
+  }
+  return []
+}
+
+/**
+ * Which steps of the rubric each recorded action earned, by index into the log.
+ * A step is credited only to the actions that proved it on an attempt that went
+ * on to earn its points, so a command that proved part of a step which still
+ * fell short is not dressed up as credit.
+ */
+export function commandCreditLedger(
+  actions: readonly EvaluatorAction[],
+  rubric: Rubric,
+  world: World,
+  decision: SessionDecision,
+): Map<number, string[]> {
+  const ledger = new Map<number, string[]>()
+
+  for (const item of rubric.items) {
+    const passed = item.checks.every((spec) =>
+      isSatisfiedAnywhere(actions, spec, world, decision),
+    )
+    if (!passed) {
+      continue
+    }
+
+    const credited = new Set<number>()
+    for (const spec of item.checks) {
+      for (const index of provingIndices(spec, actions)) {
+        if (credited.has(index)) {
+          continue
+        }
+        credited.add(index)
+
+        const labels = ledger.get(index) ?? []
+        ledger.set(index, labels)
+        if (!labels.includes(item.label)) {
+          labels.push(item.label)
+        }
+      }
+    }
+  }
+
+  return ledger
+}
+
+/*
+ * The debrief is written for the person who worked the ticket. Every finding
+ * starts from what they did ("You unlocked the account") or from the silence
+ * ("No record that you ..."), never from the evaluator's vocabulary of check
+ * kinds, effect names, and boolean flags.
+ */
+/**
+ * How each change reads in a sentence. The target is placed where the sentence
+ * wants it — "unlocked tbrooks’ account", "restarted the spooler on LT-4471" —
+ * rather than appended in brackets, which reads like a query result instead of
+ * something the learner did.
+ */
+const EFFECT_PHRASES: Record<EffectType, (target?: string) => string> = {
+  account_unlocked: (target) =>
+    target ? `unlocked ${target}’s account` : 'unlocked the account',
+  password_reset: (target) => (target ? `reset ${target}’s password` : 'reset the password'),
+  dns_changed: (target) =>
+    target ? `corrected the DNS servers on ${target}` : 'corrected the DNS servers',
+  dns_cache_flushed: () => 'flushed the DNS cache',
+  lease_renewed: (target) =>
+    target ? `renewed the DHCP lease on ${target}` : 'renewed the DHCP lease',
+  spooler_restarted: (target) =>
+    target ? `restarted the print spooler on ${target}` : 'restarted the print spooler',
+  print_queue_cleared: (target) =>
+    target ? `cleared the stuck print jobs on ${target}` : 'cleared the stuck print jobs',
+  default_printer_changed: (target) =>
+    target ? `made ${target} the default printer` : 'changed the default printer',
+  dhcp_lease_removed: (target) =>
+    target ? `removed the stale lease ${target}` : 'removed the stale DHCP lease',
+  mfa_reset: (target) =>
+    target ? `cleared the MFA methods registered for ${target}` : 'cleared the MFA methods',
+  signin_unblocked: (target) =>
+    target ? `cleared the sign-in block on ${target}` : 'cleared the sign-in block',
+  group_member_added: (target) => {
+    const [group, member] = (target ?? '').split('/')
+    return group && member ? `restored ${member} to ${group}` : 'restored group membership'
+  },
+  share_deny_removed: (target) =>
+    target ? `removed the explicit share deny on ${target}` : 'removed the explicit share deny',
+  mail_released: (target) =>
+    target ? `released the held message ${target}` : 'released the held message',
+  sender_blocked: (target) => (target ? `blocked ${target}` : 'blocked the sender'),
+  forwarding_cleared: (target) =>
+    target ? `removed the mailbox forwarding on ${target}` : 'removed the mailbox forwarding',
+  remote_connected: (target) => (target ? `connected to ${target}` : 'connected to the machine'),
+  remote_ended: (target) =>
+    target ? `ended the remote session on ${target}` : 'ended the remote session',
+  machine_rebooted: (target) => (target ? `restarted ${target}` : 'restarted the machine'),
+  updates_installed: (target) =>
+    target ? `installed the missing updates on ${target}` : 'installed the missing updates',
+  disk_cleaned: (target) =>
+    target ? `freed up disk space on ${target}` : 'freed up disk space',
+  user_signed_out: (target) =>
+    target ? `signed the user out of ${target}` : 'signed the user out',
+  deployment_started: (target) =>
+    target ? `started the imaging run on ${target}` : 'started the imaging run',
+  deployment_completed: (target) =>
+    target ? `completed the imaging run on ${target}` : 'completed the imaging run',
+  machine_issued: (target) =>
+    target ? `issued ${target} to its new holder` : 'issued the machine',
+  shelf_held: (target) =>
+    target ? `held ${target} on the shelf` : 'held the machine on the shelf',
+  shipment_dispatched: (target) =>
+    target ? `dispatched shipment ${target}` : 'dispatched the shipment',
+  shipment_delivered: (target) =>
+    target ? `recorded shipment ${target} as delivered` : 'recorded the shipment as delivered',
+  shipment_rebooked: (target) =>
+    target ? `rebooked shipment ${target}` : 'rebooked the shipment',
+}
+
+const ASK_PHRASES: Record<string, string> = {
+  'what-error': 'what the error message said',
+  'when-start': 'when the problem started',
+  'what-changed': 'what had changed',
+  'other-users': 'whether anyone else was affected',
+  'already-tried': 'what they had already tried',
+}
+
+const NOTE_PHRASES = {
+  troubleshooting: 'left a troubleshooting note',
+  customer: 'sent the customer a plain-language update',
+  resolution: 'wrote the handoff note',
+} as const
+
+const NOTE_NOUNS = {
+  troubleshooting: 'troubleshooting note',
+  customer: 'customer update',
+  resolution: 'handoff note',
+} as const
+
+/** The verb phrase for one check, with no person and no ending punctuation. */
+function actionPhrase(spec: CheckSpec): string {
   switch (spec.kind) {
     case 'ran':
-      return `run "${spec.command}${spec.argsInclude ? ` ${spec.argsInclude}` : ''}"`
+      return `ran ${spec.command}${spec.argsInclude ? ` ${spec.argsInclude}` : ''}`
     case 'effect':
-      return `perform ${spec.effect}${spec.target ? ` on ${spec.target}` : ''}`
+      return EFFECT_PHRASES[spec.effect](spec.target)
     case 'verify-caller':
-      return 'verify the caller before changing anything'
+      if (spec.method === 'callback') {
+        return 'rang the caller back on a number on file'
+      }
+      if (spec.method === 'verification-code') {
+        return 'verified the caller with a verification code'
+      }
+      if (spec.method === 'badge-scan') {
+        return 'scanned the caller’s badge at the desk'
+      }
+      if (spec.method === 'letter-pin') {
+        return 'verified the PIN from the onboarding letter'
+      }
+      if (spec.method === 'in-person') {
+        return 'checked photo ID at the desk'
+      }
+      return 'verified the caller before changing anything'
+    case 'deny-caller':
+      return 'refused the request and reported it to Security'
     case 'ask':
-      return 'ask the user a diagnostic question'
+      return `asked the caller ${ASK_PHRASES[spec.intent ?? ''] ?? 'a diagnostic question'}`
     case 'note':
-      return `write a ${spec.noteKind} note${spec.minLength ? ` of at least ${spec.minLength} characters` : ''}`
+      return NOTE_PHRASES[spec.noteKind]
     case 'note-covers':
-      return `write a ${spec.noteKind} note that covers ${spec.parts.map((part) => part.label).join(', ')}`
+      return `wrote a ${NOTE_NOUNS[spec.noteKind]} that covered ${spec.parts.map((part) => part.label).join(', ')}`
     case 'ordered':
-      return spec.of.map(describe).join(', then ')
+      // "and then", not "then": the phrase is read inside a sentence about what
+      // the learner did, and a comma-joined list reads like a machine log.
+      return spec.of.map(actionPhrase).join(' and then ')
     case 'absent':
-      return `avoid ${describe(spec.of)}`
+      return `did not ${actionPhrase(spec.of)}`
     case 'decision':
-      return `choose "${spec.outcome}"${spec.codes ? ` with a matching closure code` : ''}`
+      if (spec.codes?.includes('denied-social-engineering')) {
+        return 'closed the ticket as a security denial'
+      }
+      return spec.outcome === 'resolved'
+        ? 'closed the ticket as resolved'
+        : 'closed the ticket as an escalation'
     case 'world':
-      return `leave ${spec.path} as ${JSON.stringify(spec.equals)}`
+      return 'left the machine in the required state'
   }
 }
 
-function evidenceFor(spec: CheckSpec, passed: boolean): string {
-  return passed ? `met: ${describe(spec)}` : `missing: ${describe(spec)}`
-}
-
-/** A handoff check reports each coverage part separately so the debrief is specific. */
-function evidenceForSpec(
+function findingFor(
   spec: CheckSpec,
   passed: boolean,
   actions: readonly EvaluatorAction[],
+): string {
+  if (spec.kind === 'absent') {
+    return passed
+      ? `You ${actionPhrase(spec)}.`
+      : `You ${actionPhrase(spec.of)}, which this ticket did not call for.`
+  }
+
+  if (spec.kind === 'note') {
+    if (passed) {
+      return `You ${NOTE_PHRASES[spec.noteKind]}.`
+    }
+    const attempted = hasNoteOfKind(actions, spec)
+    return attempted
+      ? `Your ${NOTE_NOUNS[spec.noteKind]} was too short to count as a usable record.`
+      : `No ${NOTE_NOUNS[spec.noteKind]} was left.`
+  }
+
+  // The decision the learner made and the one the ticket needed are two
+  // different things; saying only "no record" hides which way it went wrong.
+  if (spec.kind === 'decision' && !passed) {
+    return spec.outcome === 'resolved'
+      ? 'You escalated the ticket, but this one was yours to resolve.'
+      : 'You closed the ticket as resolved, but it needed another team.'
+  }
+
+  return passed
+    ? `You ${actionPhrase(spec)}.`
+    : `No record that you ${actionPhrase(spec)}.`
+}
+
+/** A handoff check reports each coverage part separately so the debrief is specific. */
+function findingsForSpec(
+  spec: CheckSpec,
+  passed: boolean,
+  actions: readonly EvaluatorAction[],
+  gapsOnly = false,
 ): string[] {
   if (spec.kind !== 'note-covers') {
-    return [evidenceFor(spec, passed)]
+    return [findingFor(spec, passed, actions)]
   }
+  // A note that is too short to use is not judged on coverage: the learner
+  // needs to know it did not count, not that its words missed a heading.
+  if (!passed && hasNoteOfKind(actions, spec) && notesOfKind(actions, spec).length === 0) {
+    return [`Your ${NOTE_NOUNS[spec.noteKind]} was too short to hand over.`]
+  }
+
   const missing = new Set(missingNoteParts(actions, spec).map((part) => part.id))
-  return spec.parts.map((part) =>
-    missing.has(part.id) ? `missing: ${part.label}` : `met: ${part.label}`,
-  )
+  const findings = spec.parts
+    .filter((part) => !gapsOnly || missing.has(part.id))
+    .map((part) =>
+      missing.has(part.id)
+        ? `Your ${NOTE_NOUNS[spec.noteKind]} did not cover ${part.label}.`
+        : `Your ${NOTE_NOUNS[spec.noteKind]} covered ${part.label}.`,
+    )
+
+  // A handoff can cover every part and still fail for being too short.
+  if (!passed && missing.size === 0) {
+    const tooShort = `Your ${NOTE_NOUNS[spec.noteKind]} was too short to hand over.`
+    return gapsOnly ? [tooShort] : [...findings, tooShort]
+  }
+  return findings
 }
 
 function evaluateItem(item: RubricItem, input: EvaluationInput): RubricItemResult {
@@ -251,6 +821,17 @@ function evaluateItem(item: RubricItem, input: EvaluationInput): RubricItemResul
     passed: isSatisfiedAnywhere(input.actions, spec, input.world, input.decision),
   }))
   const passed = checks.every((check) => check.passed)
+  const evidence: string[] = []
+  const gaps: string[] = []
+
+  for (const check of checks) {
+    evidence.push(...findingsForSpec(check.spec, check.passed, input.actions))
+    if (!check.passed) {
+      // A handoff that covered two parts still owes only the third; the parts
+      // that passed are findings, not gaps.
+      gaps.push(...findingsForSpec(check.spec, check.passed, input.actions, true))
+    }
+  }
 
   return {
     id: item.id,
@@ -260,8 +841,41 @@ function evaluateItem(item: RubricItem, input: EvaluationInput): RubricItemResul
     critical: item.critical,
     passed,
     why: item.why,
-    hint: item.hint,
-    evidence: checks.flatMap((check) => evidenceForSpec(check.spec, check.passed, input.actions)),
+    hints: item.hints,
+    evidence,
+    gaps,
+  }
+}
+
+function linkReport(groupTitle: string, check: TopologyCheck): TopologyLinkReport {
+  return { label: `${groupTitle} · ${check.label}`, command: check.command }
+}
+
+/**
+ * The map is read once at close. A link that was never tested is reported as
+ * untested; one that was tested and failed keeps that distinction.
+ */
+function summarizeTopology(topology: TopologyView): TopologyCoverage {
+  const untested: TopologyLinkReport[] = []
+  const failed: TopologyLinkReport[] = []
+
+  for (const group of topology.groups) {
+    for (const check of group.checks) {
+      if (check.state === 'unknown') {
+        untested.push(linkReport(group.title, check))
+      } else if (check.state === 'failed') {
+        failed.push(linkReport(group.title, check))
+      }
+    }
+  }
+
+  const allProved = topology.total > 0 && topology.proved === topology.total
+  return {
+    totalLinks: topology.total,
+    provedLinks: topology.proved,
+    bonusXp: allProved ? TOPOLOGY_BONUS_XP : 0,
+    untested,
+    failed,
   }
 }
 
@@ -288,11 +902,55 @@ export function evaluateSession(input: EvaluationInput): EvaluationResult {
 
   const possible = items.reduce((total, item) => total + item.weight, 0)
   const earned = items.reduce((total, item) => total + (item.passed ? item.weight : 0), 0)
-  const total = possible === 0 ? 0 : Math.round((earned / possible) * 100)
+  const rawTotal = possible === 0 ? 0 : Math.round((earned / possible) * 100)
 
-  const criticalFailures = items
-    .filter((item) => item.critical && !item.passed)
-    .map((item) => item.label)
+  // Both are read from the recorded attempt, not from anything the interface
+  // claims. Each hint is priced by the attempt's own policy, up to its cap; a
+  // process violation is priced in the category it damages, and only once
+  // however often it is repeated.
+  const hintPolicy = normalizeHintPolicy(input.hints ?? null)
+  const hintsUsed = input.actions.filter((action) => action.kind === 'hint').length
+  const hintPenalty = totalHintCost(hintPolicy, hintsUsed)
+  const violations = detectProcedureViolations(input.actions, {
+    availableMethods: usableCallerVerificationMethods({
+      mobileInService: input.world.mobileOutOfAction !== true,
+      onSite: input.world.callerOnSite === true,
+      letterPinOnFile: input.world.letterPinOnFile === true,
+    }),
+  })
+  const procedurePenalty = violations.reduce((sum, violation) => sum + violation.points, 0)
+  const total = Math.max(0, rawTotal - procedurePenalty - hintPenalty)
+
+  for (const violation of violations) {
+    const category = categoryScores[violation.category]
+    category.earned = Math.max(0, category.earned - violation.points)
+  }
+
+  if (hintPenalty > 0) {
+    const diagnosis = categoryScores.diagnosis
+    diagnosis.earned = Math.max(0, diagnosis.earned - hintPenalty)
+  }
+
+  // The findings, not the item labels: a step that was never done cannot be
+  // listed as "Unlocked tbrooks", and a label is rubric authoring vocabulary the
+  // learner has never seen. A critical item always has at least one gap.
+  const failedCritical = items.filter((item) => item.critical && !item.passed)
+  const criticalFailures: string[] = []
+  for (const item of failedCritical) {
+    const gaps = item.gaps && item.gaps.length > 0 ? item.gaps : [item.label]
+    for (const gap of gaps) {
+      // The same missing action is reported once on its own and once inside the
+      // sequence it belonged to. Keep the fuller sentence instead of reading
+      // the same absence twice.
+      if (criticalFailures.some((said) => gap.includes(said))) continue
+      const covered = criticalFailures.findIndex((said) => said.includes(gap))
+      if (covered >= 0) {
+        criticalFailures[covered] = gap
+        continue
+      }
+      criticalFailures.push(gap)
+    }
+  }
   const passed = criticalFailures.length === 0 && total >= input.rubric.passThreshold
 
   let band: ScoreBand = 'fail'
@@ -301,33 +959,73 @@ export function evaluateSession(input: EvaluationInput): EvaluationResult {
   }
 
   const feedback: string[] = []
+  // A finding is said once. The critical summary quotes the same sentences the
+  // step list below would, so the list would otherwise open by repeating itself.
+  const said = new Set<string>()
+  const add = (line: string) => {
+    if (!said.has(line)) {
+      said.add(line)
+      feedback.push(line)
+    }
+  }
+
   if (criticalFailures.length > 0) {
-    feedback.push(
-      `Critical step missed: ${criticalFailures.join('; ')}. This attempt cannot pass until those are done.`,
+    add(`This attempt cannot pass yet. ${criticalFailures.join(' ')}`)
+  }
+
+  for (const violation of violations) {
+    add(
+      `Procedure cost: −${violation.points} from ${CATEGORY_LABELS[violation.category]} — ${violation.label}. ${violation.detail}`,
+    )
+  }
+
+  if (hintsUsed > 0) {
+    const cost = hintsAreFree(hintPolicy)
+      ? 'they were free on this device'
+      : `${hintPolicy.perHint} per hint, capped at ${hintPolicy.cap}`
+    add(
+      `${hintsUsed} hint${hintsUsed === 1 ? '' : 's'} revealed, costing ${hintPenalty} point${hintPenalty === 1 ? '' : 's'} of diagnostic reasoning (${cost}).`,
     )
   }
 
   for (const item of items) {
     if (item.passed) {
       if (item.category === 'resolution' || item.critical) {
-        feedback.push(`Good: ${item.label}.`)
+        // What the attempt did, in the same words as the finding above it.
+        add(item.evidence[0] ?? `${item.label}.`)
       }
       continue
     }
-    const missing = item.evidence.filter((entry) => entry.startsWith('missing:'))
-    feedback.push(`Missed ${item.label}: ${missing.join('; ')}.`)
+    // A critical step's findings are already in the summary line above; saying
+    // them again is the repetition this whole list is supposed to avoid.
+    if (failedCritical.includes(item)) {
+      continue
+    }
+    const gaps = item.gaps ?? item.evidence.filter((entry) => entry.startsWith('missing:'))
+    const plain = gaps.map((entry) => entry.replace(/^(met|missing): /, ''))
+    add(plain.length > 0 ? plain.join(' ') : 'This step was not met.')
   }
 
   const categorySummary = CATEGORIES.filter((category) => categoryScores[category].possible > 0)
     .map(
       (category) =>
-        `${category} ${categoryScores[category].earned}/${categoryScores[category].possible}`,
+        `${CATEGORY_LABELS[category]} ${categoryScores[category].earned}/${categoryScores[category].possible}`,
     )
-    .join(', ')
-  feedback.push(`Breakdown: ${categorySummary}.`)
+    .join(' · ')
+  feedback.push(`Where the points went: ${categorySummary}.`)
 
+  // The proof bonus is a property of the closed network ticket, not of the
+  // pass mark: a thorough map still earns it on an attempt that fell short.
+  const topologyMap =
+    input.closing && input.networkTicket ? (input.topology ?? null) : null
+  // The summary and the picture are kept together: the debrief reworks the
+  // counts, but only the snapshot says which link each one was.
+  const topology = topologyMap ? summarizeTopology(topologyMap) : null
   const xp =
-    input.difficulty * 30 + (passed ? 40 : 10) + (band === 'strong' ? 30 : 0)
+    input.difficulty * 30 +
+    (passed ? 40 : 10) +
+    (band === 'strong' ? 30 : 0) +
+    (topology?.bonusXp ?? 0)
 
   return {
     total,
@@ -338,5 +1036,12 @@ export function evaluateSession(input: EvaluationInput): EvaluationResult {
     criticalFailures,
     feedback,
     xp,
+    hintsUsed,
+    hintPenalty,
+    hintPolicy,
+    violations,
+    procedurePenalty,
+    topology,
+    topologyMap,
   }
 }

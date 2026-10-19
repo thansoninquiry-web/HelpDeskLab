@@ -9,6 +9,7 @@ import {
   type TargetRecommendation,
   type TicketView,
 } from '../../app/practiceService'
+import { familyLabel } from '../components/familyLabels'
 import { PageHeader } from '../components/PageHeader'
 import styles from './practice.module.css'
 
@@ -25,15 +26,6 @@ const STATUS_LABELS: Record<TicketView['status'], string> = {
   completed: 'Closed',
 }
 
-const FAMILY_LABELS: Record<string, string> = {
-  'PWD-01': 'Accounts',
-  'NET-01': 'Network',
-  'DHCP-01': 'DHCP',
-  'M365-01': 'Microsoft 365',
-  'FS-01': 'File shares',
-  'PRN-01': 'Printing',
-}
-
 function formatWhen(ms: number): string {
   return new Date(ms).toLocaleString(undefined, {
     month: 'short',
@@ -47,7 +39,7 @@ export function PracticePage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const familyFilter = searchParams.get('family')
-  const focusTitle = familyFilter ? (FAMILY_LABELS[familyFilter] ?? familyFilter) : null
+  const focusTitle = familyFilter ? familyLabel(familyFilter) : null
   const [tickets, setTickets] = useState<TicketView[]>([])
   const [recommendations, setRecommendations] = useState<TargetRecommendation[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
@@ -198,7 +190,7 @@ export function PracticePage() {
             <li key={ticket.id} className={styles.queueRow} data-status={ticket.status}>
               <div className={styles.queueMain}>
                 <div className={styles.queueMeta}>
-                  <span className={styles.family}>{FAMILY_LABELS[ticket.scenarioId] ?? ticket.scenarioId}</span>
+                  <span className={styles.family}>{familyLabel(ticket.scenarioId)}</span>
                   <span className={styles[`severity_${ticket.severity}`]}>
                     {SEVERITY_LABELS[ticket.severity]}
                   </span>

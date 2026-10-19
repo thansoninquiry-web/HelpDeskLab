@@ -1,0 +1,233 @@
+.preview {
+  display: grid;
+  gap: 0.7rem;
+  margin-top: 0.9rem;
+  padding: 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-strong);
+}
+
+.previewHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+}
+
+.previewCopy {
+  min-width: 0;
+}
+
+.previewTitle {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--type-xl);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.previewLead {
+  margin: 0.15rem 0 0;
+  font-size: var(--type-sm);
+  color: var(--text-muted);
+}
+
+.previewReadout {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.previewClock {
+  font-family: var(--font-mono);
+  font-size: var(--type-2xl);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.previewLook {
+  font-size: var(--type-2xs);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.stage {
+  padding: 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+}
+
+.window {
+  display: flex;
+  min-height: 9.5rem;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+}
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  width: 2.1rem;
+  padding: 0.55rem 0.35rem;
+  border-right: 1px solid var(--rail-border);
+  background: var(--rail);
+}
+
+.railMark {
+  width: 0.85rem;
+  height: 0.85rem;
+  margin-bottom: 0.25rem;
+  border-radius: 3px;
+  background: var(--rail-accent);
+}
+
+.railDot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 2px;
+  background: var(--rail-muted);
+  opacity: 0.55;
+}
+
+.canvas {
+  flex: 1;
+  min-width: 0;
+  padding: 0.6rem 0.7rem;
+  background: var(--bg-elevated);
+}
+
+.bar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.barTitle {
+  font-family: var(--font-display);
+  font-size: var(--type-lg);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.barMeta {
+  font-size: var(--type-2xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.panels {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+  gap: 0.5rem;
+  margin-top: 0.55rem;
+}
+
+.ticket {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.5rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+}
+
+.ticketTag {
+  font-size: var(--type-2xs);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.ticketSubject {
+  font-size: var(--type-sm);
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--text);
+}
+
+.ticketLine,
+.ticketLineShort {
+  display: block;
+  height: 0.3rem;
+  border-radius: 2px;
+  background: var(--border-strong);
+}
+
+.ticketLineShort {
+  width: 62%;
+}
+
+.terminal {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  min-width: 0;
+  padding: 0.5rem 0.55rem;
+  border: 1px solid var(--terminal-border);
+  border-radius: var(--radius-sm);
+  background: var(--terminal-bg);
+}
+
+.terminalLine,
+.terminalDim,
+.terminalPrompt {
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.terminalLine {
+  color: var(--terminal-text);
+}
+
+.terminalDim {
+  color: var(--terminal-muted);
+}
+
+.terminalPrompt {
+  color: var(--terminal-accent);
+}
+
+.scrubber {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.scrubberLabel {
+  font-size: var(--type-xs);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.slider {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+@media (max-width: 520px) {
+  .panels {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

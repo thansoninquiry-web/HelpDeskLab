@@ -1,9 +1,9 @@
 import type { ScoreRepository } from '../../domain/ports'
-import type { ScoreHistoryEntry } from '../../domain/progress/types'
+import type { ScoreHistoryEntry, ScoredStep } from '../../domain/progress/types'
 import type { Score } from '../../domain/scoring/types'
 import type { SessionId } from '../../domain/tickets/types'
 import type { RepositoryContext } from './context'
-import { mapScore, mapScoreHistory } from './mappers'
+import { mapScore, mapScoreHistory, mapScoredSteps } from './mappers'
 import { assertLimit, rethrowUniqueViolation } from './validation'
 
 const COLUMNS = 'session_id, total, passed, band, rubric_json, computed_at'
@@ -55,6 +55,22 @@ export class SqliteScoreRepository implements ScoreRepository {
            ORDER BY s.computed_at ASC, s.session_id ASC`,
         )
         .map(mapScoreHistory),
+    )
+  }
+
+  /**
+   * The rubric steps of every scored attempt, oldest first. Only the columns the
+   * habit summary reads are touched: the rest of a stored evaluation is large
+   * and stays where it is.
+   */
+  listScoredSteps(): Promise<ScoredStep[]> {
+    return this.context.read((db) =>
+      db
+        .exec(
+          `SELECT session_id, rubric_json FROM scores
+           ORDER BY computed_at ASC, session_id ASC`,
+        )
+        .flatMap(mapScoredSteps),
     )
   }
 

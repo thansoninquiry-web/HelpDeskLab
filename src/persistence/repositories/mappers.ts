@@ -1,5 +1,12 @@
 import { isJsonObject, type JsonObject, type JsonValue } from '../../domain/shared/json'
-import type { LeitnerBox, ScenarioStats, ScoreHistoryEntry } from '../../domain/progress/types'
+import type {
+  LeitnerBox,
+  ScenarioStats,
+  ScoreHistoryEntry,
+  ScoredStep,
+  TakenHint,
+} from '../../domain/progress/types'
+import { hintPricingJson, normalizeHintPricing } from '../../domain/scoring/policy'
 import type { Score, ScoreBand } from '../../domain/scoring/types'
 import { JOB_STATUSES, type JobStatus, type JobTarget } from '../../domain/targets/types'
 import type {
@@ -113,12 +120,29 @@ export function mapTicket(row: Row): Ticket {
 
 export function mapSession(row: Row): Session {
   const rawOutcome = expectNullableText(row, 'outcome', 'sessions')
+  const rawPolicy = expectNullableText(row, 'hint_policy_json', 'sessions')
+  const rawDraft = expectNullableText(row, 'closure_draft_json', 'sessions')
   return {
     id: expectText(row, 'id', 'sessions'),
     ticketId: expectText(row, 'ticket_id', 'sessions'),
     startedAt: expectInteger(row, 'started_at', 'sessions'),
     endedAt: expectNullableInteger(row, 'ended_at', 'sessions'),
     world: parseJsonObject(row.world_json ?? null, 'sessions.world_json'),
+    // The column holds the pricing, not only the numbers: the price this
+    // attempt paid and where it came from, so a debrief months later can say a
+    // family price applied rather than the default. A row written before that
+    // was recorded holds the bare policy and reads as the default price.
+    hintPolicy:
+      rawPolicy === null
+        ? null
+        : hintPricingJson(
+            normalizeHintPricing(parseJsonValue(rawPolicy, 'sessions.hint_policy_json')),
+          ),
+    closureDraft:
+      rawDraft === null
+        ? null
+        : parseJsonObject(rawDraft, 'sessions.closure_draft_json'),
+    examMode: expectBoolean(row, 'exam_mode', 'sessions'),
     resolution: expectNullableText(row, 'resolution', 'sessions'),
     outcome: rawOutcome === null
       ? null
@@ -134,7 +158,16 @@ export function mapAction(row: Row): SessionAction {
     atMs: expectInteger(row, 'at_ms', 'actions'),
     kind: oneOf(
       expectText(row, 'kind', 'actions'),
-      ['command', 'ask-user', 'verify-caller', 'note'] as const,
+      [
+        'command',
+        'ask-user',
+        'verify-caller',
+        'deny-caller',
+        'note',
+        'hint',
+        'code-sent',
+        'rewind',
+      ] as const,
       'actions.kind',
     ) satisfies ActionKind,
     input: parseJsonObject(row.input_json ?? null, 'actions.input_json'),
@@ -186,14 +219,63 @@ function parseCategoryScores(
 
 export function mapScoreHistory(row: Row): ScoreHistoryEntry {
   const rubric = parseJsonObject(row.rubric_json ?? null, 'scores.rubric_json')
+  const storedXp = rubric.xp
   return {
     scenarioId: expectText(row, 'scenario_id', 'tickets'),
     variantId: expectText(row, 'variant_id', 'tickets'),
     total: expectInteger(row, 'total', 'scores'),
     passed: expectBoolean(row, 'passed', 'scores'),
     computedAt: expectInteger(row, 'computed_at', 'scores'),
+    xp:
+      typeof storedXp === 'number' && Number.isFinite(storedXp)
+        ? Math.max(0, Math.round(storedXp))
+        : 0,
     categoryScores: parseCategoryScores(rubric.categoryScores),
   }
+}
+
+/**
+ * The rubric steps a score kept, in the order its rubric listed them. A score
+ * written before the rubric was stored has none, and simply contributes no
+ * steps rather than failing the whole Progress page.
+ */
+export function mapScoredSteps(row: Row): ScoredStep[] {
+  const sessionId = expectText(row, 'session_id', 'scores')
+  const rubric = parseJsonObject(row.rubric_json ?? null, 'scores.rubric_json')
+  const items = rubric.items
+  if (!Array.isArray(items)) {
+    return []
+  }
+
+  return items.flatMap((item) => {
+    if (!isJsonObject(item)) {
+      return []
+    }
+    const id = item.id
+    const label = item.label
+    return typeof id === 'string' && id.length > 0 && typeof label === 'string' && label.length > 0
+      ? [{ sessionId, itemId: id, label }]
+      : []
+  })
+}
+
+/**
+ * One logged hint, reduced to the step and rung it named. Null when the row
+ * names no step: that hint cannot be attributed to a rubric item, so it is left
+ * out of the habit rather than guessed at.
+ */
+export function mapTakenHint(row: Row): TakenHint | null {
+  const sessionId = expectText(row, 'session_id', 'actions')
+  const input = parseJsonObject(row.input_json ?? null, 'actions.input_json')
+  const itemId = input.itemId
+  if (typeof itemId !== 'string' || itemId.length === 0) {
+    return null
+  }
+
+  const rawIndex = input.hintIndex
+  const hintIndex =
+    typeof rawIndex === 'number' && Number.isInteger(rawIndex) && rawIndex >= 0 ? rawIndex : 0
+  return { sessionId, itemId, hintIndex }
 }
 
 export function mapJobTarget(row: Row): JobTarget {

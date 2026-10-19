@@ -2,7 +2,7 @@
 
 **Status:** M0–M4, M6, and the M7 job-targets surface built · M5 and R1 sign-off still open
 **Last updated:** 2026-10-17
-**Companion:** [architecture.md](architecture.md)
+**Companion:** [architecture-helpdesklab.md](architecture-helpdesklab.md)
 
 ## 1. Goal and audience
 
@@ -75,22 +75,28 @@ and their history survives restarts.
 
 | Family | Variants | What the learner practises |
 |--------|----------|----------------------------|
-| **PWD-01** Password reset | account lockout · expired password | Verify the caller, distinguish lockout from expiry, reset safely, set expectations for next sign-in |
+| **PWD-01** Password reset | account lockout · expired password · disabled account · reset requested for someone else · urgent caller pushing for a fix · reset relayed in chat by a colleague | Verify the caller, distinguish lockout from expiry or disablement, reset safely, refuse a relayed request, read the mailbox behind an internal ask, and hold the diagnostic order when a caller demands a fix first |
 | **NET-01** No internet | bad static DNS · stale DHCP lease | Read `ipconfig /all`, separate link/DNS/DHCP faults, apply the correct fix, avoid shotgun changes |
-| **PRN-01** Printer problems | spooler stopped · job stuck offline | Check printer vs queue vs default device, restart/clear in the correct order |
+| **PRN-01** Printer problems | spooler stopped · angry caller, printer down · job stuck offline | Check printer vs queue vs default device, restart/clear in the correct order, and hold the diagnostic sequence under a caller who is already angry |
 | **DHCP-01** DHCP scopes and addresses | scope hands out a dead DNS server · scope exhausted | Read scope options and leases, tell a scope-wide fault from a device fault, clear only stale leases, know when the network team owns the fix |
-| **M365-01** Microsoft 365 sign-in | MFA method lost · smart lockout | Read a sign-in log and its AADSTS code, separate an MFA problem from a block, verify the caller before an MFA reset |
+| **M365-01** Microsoft 365 sign-in | MFA method lost · smart lockout | Read a sign-in log and its AADSTS code, separate an MFA problem from a block, prove the caller by callback when the replaced handset cannot take a code, and reset MFA only after that call |
 | **FS-01** Shared drives and permissions | missing group membership · explicit deny | Distinguish denied from read-only, read effective access and its entries, restore a group membership, recognise a data-owner hold |
+| **MAIL-01** Mailboxes and delivery | external forwarding · message already delivered | Read a mailbox record, remove an external forward only after verifying the caller, trace one message and tell a delivery from a hold |
+| **MAILSEC-01** Mail security and quarantine | phishing release request · carrier’s note held by an attachment rule | Read the filter’s verdict, refuse a release that is an impersonation, block the sender, and release expected mail without blocking a supplier |
+| **RDP-01** Remote desktop support | handover machine out of space and updates · previous user still signed in | Read a machine before changing it, open a session, free disk and finish updates, sign out a previous holder, and close the session |
+| **DEP-01** Imaging and deployment | failed imaging run · shelf hold blocks handover | Read a run and its shelf record, rerun a failed sequence, and escalate a damage hold instead of imaging over it |
 
 Variation comes from **context** (fictional site, requester, hostname, OS build,
 subnet, printer model, share, tenant state), **phrasing**, and **distractors**,
-not just the two variants. Two variants across six families with context
-permutation yields hundreds of distinct, non-repeating tickets.
+not just the variants listed. Twenty-seven variants across ten families with
+context permutation yields hundreds of distinct, non-repeating tickets.
 
 M365 sign-in and DHCP operations were planned for Release 2; M6 pulled one
 variant of each forward because the identity and network faults were already
-visible in the world model. They are part of R1 now, which is why the release
-has six families and twelve variants. [architecture.md §11](architecture.md#11-forward-design-not-release-1)
+visible in the world model. The four console-backed families arrived with the
+Mail Admin, Mail Security, Remote Desktop and Computer Deployment tools, so the
+release now carries ten families and twenty-seven variants, eight of them in
+PWD-01. [architecture-helpdesklab.md §11](architecture-helpdesklab.md#11-forward-design-not-release-1)
 tracks what is still deferred (tenant administration, DHCP server changes,
 conditional access).
 
@@ -195,8 +201,14 @@ were proven, and M5/M7 close the release around it.
 - **DHCP depth beyond M6:** relay misconfiguration, reservations, and lease
   duration faults. M6 already ships scope inspection, stale-lease cleanup, and
   the scope-wide DNS fault.
-- **Hints that teach:** one nudge per rubric item, costs professionalism, logged
-  for progress; never reveals hidden state directly.
+- **Hints that teach:** a three-rung chain per rubric item, 5 points of
+  diagnostic reasoning per rung (cap 15) with the remaining count shown before
+  the click; logged for progress, never revealing hidden state directly. Both
+  numbers are a setting — a learner can price hints higher, lower, or free — and
+  the attempt records the policy it started under. Hints can also be rationed
+  without re-pricing them: a per-attempt budget caps how many one attempt may
+  reveal, counted separately from the price and still enforced when hints are
+  free.
 - **Adaptive selection:** Leitner plus per-skill mastery; difficulty rises only
   after two passes at the current level, and learners can pin a family or level.
 - **Installable polish:** install prompt, service-worker update flow, storage
@@ -390,7 +402,7 @@ handling, M11 can move ahead of M10 without touching the engine.
 ## 10. Approval requested
 
 Confirm the four choices listed in
-[architecture.md §13](architecture.md#13-decisions-requested-at-approval):
+[architecture-helpdesklab.md §13](architecture-helpdesklab.md#13-decisions-requested-at-approval):
 
 1. Browser-first PWA with WASM SQLite for R1 (recommended).
 2. Hybrid terminal + quick actions + caller chat interaction model (recommended).

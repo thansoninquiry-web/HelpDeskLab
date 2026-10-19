@@ -50,7 +50,7 @@ export const dhcpFamily: ScenarioFamily = {
             category: 'diagnosis',
             weight: 10,
             checks: [ran('ipconfig', '/all')],
-            hint: 'ipconfig /all shows the DNS servers and which DHCP server issued the lease.',
+            hints: ['ipconfig /all shows the DNS servers and which DHCP server issued the lease.', 'Note the DNS server and the DHCP server that handed it over: that pair points at the scope.', 'Expect DNS 10.20.4.99 and a lease issued by the site’s DHCP server; both facts point at the scope.'],
           }),
           makeItem({
             id: 'reproduce-name-failure',
@@ -59,6 +59,7 @@ export const dhcpFamily: ScenarioFamily = {
             category: 'diagnosis',
             weight: 10,
             checks: [ran('nslookup')],
+            hints: ['Run nslookup to prove names fail while addresses still work.', 'The failure should reproduce for every user at the site, not just this device.', 'Run nslookup fileserver and record the exact failure for the handoff.'],
           }),
           makeItem({
             id: 'inspect-scope',
@@ -67,7 +68,7 @@ export const dhcpFamily: ScenarioFamily = {
             category: 'diagnosis',
             weight: 20,
             checks: [ran('get-dhcp-scope')],
-            hint: 'get-dhcp-scope <site> shows option 006, the DNS servers handed to clients.',
+            hints: ['get-dhcp-scope <site> shows option 006, the DNS servers handed to clients.', 'Option 006 is the DNS list every client receives; compare it with the site’s real DNS servers.', 'get-dhcp-scope hq should show option 006 = 10.20.4.99, not the site’s real DNS servers.'],
           }),
           makeItem({
             id: 'no-blind-dns-change',
@@ -76,6 +77,7 @@ export const dhcpFamily: ScenarioFamily = {
             category: 'safety',
             weight: 10,
             checks: [absent(effect('dns_changed'))],
+            hints: ['Do not “fix” this laptop: the scope is the source, so a local change hides the fault.', 'Leave the adapter alone; other devices at the site would stay broken.', 'Any set-dns or ipconfig /renew here is a local patch that hides a site-wide scope error.'],
           }),
           makeItem({
             id: 'note-troubleshooting',
@@ -84,6 +86,7 @@ export const dhcpFamily: ScenarioFamily = {
             category: 'documentation',
             weight: 10,
             checks: [note('troubleshooting', 25)],
+            hints: ['Record the scope name and the bad option value.', 'Name the devices affected so the network team sees the blast radius.', 'Example: “Scope Larkspur-HQ option 006 = 10.20.4.99; every renewed device inherits it.”'],
           }),
           makeItem({
             id: 'escalation-note',
@@ -93,7 +96,7 @@ export const dhcpFamily: ScenarioFamily = {
             weight: 20,
             critical: true,
             checks: [handoffNote()],
-            hint: 'Put it in the handoff note when you close the ticket: what the user reported, what you checked, and what the next team should do.',
+            hints: ['Put it in the handoff note when you close the ticket: what the user reported, what you checked, and what the next team should do.', 'A handoff needs the report, the scope evidence, and the exact option change requested.', 'The handoff must name the scope, the bad option, and the option change the network team should make.'],
           }),
           makeItem({
             id: 'decision',
@@ -103,6 +106,7 @@ export const dhcpFamily: ScenarioFamily = {
             weight: 20,
             critical: true,
             checks: [decision('escalated', ['escalated-tier2'])],
+            hints: ['Scope options belong to the network team.', 'Escalate to Tier 2; the service desk cannot edit the scope.', 'Pick “Escalated to Tier 2”; the network team owns scope options.'],
           }),
         ])
       },
@@ -188,6 +192,7 @@ export const dhcpFamily: ScenarioFamily = {
             category: 'diagnosis',
             weight: 5,
             checks: [ran('ipconfig', '/all')],
+            hints: ['Check the address: 169.254 means the device asked for a lease and got nothing.', 'An empty gateway and DNS list confirm no lease was issued.', 'The adapter shows 169.254.x.x, no gateway, no DNS — a failed DHCP request, not a broken link.'],
           }),
           makeItem({
             id: 'inspect-scope',
@@ -196,7 +201,7 @@ export const dhcpFamily: ScenarioFamily = {
             category: 'diagnosis',
             weight: 15,
             checks: [ran('get-dhcp-scope')],
-            hint: 'get-dhcp-scope <site> reports how many addresses are available and lists stale leases.',
+            hints: ['get-dhcp-scope <site> reports how many addresses are available and lists stale leases.', 'Count available addresses and look for leases marked stale; zero free addresses is the fault.', 'The scope output should report zero available addresses and a long list of stale leases.'],
           }),
           makeItem({
             id: 'remove-stale',
@@ -206,6 +211,7 @@ export const dhcpFamily: ScenarioFamily = {
             weight: 25,
             critical: true,
             checks: [effect('dhcp_lease_removed')],
+            hints: ['Free an address by removing a stale lease, not an active one.', 'remove-dhcp-lease <site> <address> is safe only for a lease nobody is using.', 'Run remove-dhcp-lease hq <address> only on a lease whose hostname starts with the loaner prefix.'],
           }),
           makeItem({
             id: 'renew',
@@ -215,6 +221,7 @@ export const dhcpFamily: ScenarioFamily = {
             weight: 20,
             critical: true,
             checks: [effect('lease_renewed', context.device.hostname)],
+            hints: ['Renew this device after freeing an address.', 'ipconfig /renew should now return a site address, gateway, and DNS servers.', 'After freeing one address, run ipconfig /renew and check ipconfig /all for a real lease.'],
           }),
           makeItem({
             id: 'verify-fix',
@@ -223,6 +230,7 @@ export const dhcpFamily: ScenarioFamily = {
             category: 'diagnosis',
             weight: 10,
             checks: [ordered(effect('lease_renewed', context.device.hostname), ran('nslookup'))],
+            hints: ['Look up a name after the renewal.', 'A new address with no DNS still leaves the user stuck; nslookup is the proof.', 'The final nslookup must resolve; otherwise the device still has no DNS servers.'],
           }),
           makeItem({
             id: 'note-troubleshooting',
@@ -231,6 +239,7 @@ export const dhcpFamily: ScenarioFamily = {
             category: 'documentation',
             weight: 10,
             checks: [note('troubleshooting', 20)],
+            hints: ['Record the exhausted scope and which lease you cleared.', 'Note how many addresses remain so the next shift can watch the scope.', 'Example: “Scope full of stale LT-LOAN leases; cleared one address and renewed the loaner.”'],
           }),
           makeItem({
             id: 'note-customer',
@@ -239,6 +248,7 @@ export const dhcpFamily: ScenarioFamily = {
             category: 'documentation',
             weight: 5,
             checks: [note('customer', 15)],
+            hints: ['Tell the user the laptop is usable again.', 'Ask them to retry the stock count page now.', 'Tell the user the stock count page should load now that the laptop has a lease.'],
           }),
           makeItem({
             id: 'decision',
@@ -248,6 +258,7 @@ export const dhcpFamily: ScenarioFamily = {
             weight: 10,
             critical: true,
             checks: [decision('resolved', ['resolved-remote'])],
+            hints: ['Clearing stale leases is a first-line fix.', 'Resolve remotely; escalate only if the scope stays exhausted.', 'Resolve remotely; only an exhausted scope that stays full after cleanup deserves escalation.'],
           }),
         ])
       },

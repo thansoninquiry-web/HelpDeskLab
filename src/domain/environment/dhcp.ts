@@ -1,3 +1,6 @@
+import type { ConsoleEvidence } from './console'
+import { isIPv4 } from './network'
+import { parseCommandLine } from './parser'
 import type { DhcpScope, SiteId, World } from './types'
 
 /** The fixture scopes are all /24, so the last octet is enough to count addresses. */
@@ -91,6 +94,54 @@ export function recordLease(
     return
   }
   scope.leases.push({ address, hostname, state: 'active', expiresAt })
+}
+
+/**
+ * The addresses a scope check has already reported for this site, read back from
+ * the recorded output — at most the rows the report itself printed.
+ *
+ * This is what lets the console offer the addresses a scope is holding without
+ * handing them over: until the learner runs `get-dhcp-scope <site>`, nothing has
+ * named an address, so there is nothing to offer. Even once there is, the list
+ * is values only — the report's state and hostname columns stay where the
+ * evidence belongs, and the learner still has to read them to know which lease
+ * is safe to release.
+ */
+export function evidencedScopeAddresses(commands: ConsoleEvidence, siteId: SiteId): string[] {
+  // The most recent report for this site is the one the console reads, so a
+  // retest supersedes an earlier look.
+  for (let index = commands.length - 1; index >= 0; index -= 1) {
+    const entry = commands[index]
+    if (!entry) {
+      continue
+    }
+    const parsed = parseCommandLine(entry.command)
+    if (!parsed.ok || parsed.command.name.toLowerCase() !== 'get-dhcp-scope') {
+      continue
+    }
+    if ((parsed.command.args[0] ?? '').trim().toLowerCase() !== siteId.toLowerCase()) {
+      continue
+    }
+    return leaseAddressesIn(entry.lines.map((record) => record.text))
+  }
+  return []
+}
+
+/**
+ * The lease table, in the order the report prints it. Only leases: an excluded
+ * address is not held by anyone, so there is no lease on it to release.
+ */
+function leaseAddressesIn(lines: readonly string[]): string[] {
+  const addresses: string[] = []
+  for (const text of lines) {
+    // A lease row begins with its own address, then the hostname and state
+    // columns; nothing else in the report starts with an address.
+    const lease = /^(\d{1,3}(?:\.\d{1,3}){3})\s{2,}/.exec(text)
+    if (lease?.[1] && isIPv4(lease[1])) {
+      addresses.push(lease[1])
+    }
+  }
+  return addresses
 }
 
 export function removeLease(scope: DhcpScope, address: string): DhcpScope['leases'][number] | null {

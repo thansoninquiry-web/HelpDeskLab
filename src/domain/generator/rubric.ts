@@ -1,4 +1,4 @@
-import type { EffectType } from '../environment/types'
+import type { EffectType, VerificationMethod } from '../environment/types'
 import type {
   CheckSpec,
   DecisionOutcome,
@@ -22,6 +22,11 @@ export const CLOSURE_CODES: readonly ClosureCode[] = [
   { code: 'escalated-tier2', label: 'Escalated to Tier 2', outcome: 'escalated' },
   { code: 'escalated-identity', label: 'Escalated to the Identity team', outcome: 'escalated' },
   {
+    code: 'denied-social-engineering',
+    label: 'Denied (social engineering) — reported to Security',
+    outcome: 'escalated',
+  },
+  {
     code: 'escalated-field-services',
     label: 'Escalated to Field Services',
     outcome: 'escalated',
@@ -40,7 +45,8 @@ export interface ItemInput {
   weight: number
   critical?: boolean
   checks: CheckSpec[]
-  hint?: string
+  /** At least two, so a second nudge is available when the first is not enough. */
+  hints: readonly [string, string, ...string[]]
 }
 
 export function makeItem(input: ItemInput): RubricItem {
@@ -52,7 +58,7 @@ export function makeItem(input: ItemInput): RubricItem {
     weight: input.weight,
     critical: input.critical ?? false,
     checks: input.checks,
-    hint: input.hint,
+    hints: [...input.hints],
   }
 }
 
@@ -91,7 +97,13 @@ export const note = (
   minLength = 20,
 ): CheckSpec => ({ kind: 'note', noteKind, minLength })
 
-export const verifyCaller = (): CheckSpec => ({ kind: 'verify-caller' })
+export const verifyCaller = (method?: VerificationMethod): CheckSpec => ({
+  kind: 'verify-caller',
+  method,
+})
+
+/** A refusal the learner actually recorded, not a note that mentions refusing. */
+export const denyCaller = (): CheckSpec => ({ kind: 'deny-caller' })
 
 /**
  * The handoff note is scored on its content, not its length: the next person
