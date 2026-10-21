@@ -33,4 +33,8 @@ export default defineConfig({
       },
     }),
   ],
+  // Reachable from other devices on the network, not just loopback.
+  server: {
+    host: true,
+  },
 })

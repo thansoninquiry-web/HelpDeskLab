@@ -17,6 +17,7 @@ import { JOB_STATUSES } from '../domain/targets/types'
 
 export type { JobStatus, TargetRecommendation } from '../domain/targets/types'
 export { JOB_STATUSES } from '../domain/targets/types'
+import { createId } from './ids'
 import { getLocalDatabase } from './persistenceService'
 
 export interface JobTargetSkillView {
@@ -178,7 +179,7 @@ export async function createJobTarget(input: JobTargetInput): Promise<JobTargetV
 
   const now = Date.now()
   const target: JobTarget = {
-    id: crypto.randomUUID(),
+    id: createId(),
     company,
     title,
     url,

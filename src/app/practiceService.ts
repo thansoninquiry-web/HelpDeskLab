@@ -141,6 +141,7 @@ import type { JsonObject, JsonValue } from '../domain/shared/json'
 import { ACTION_KINDS, type ActionKind, type Session, type SessionAction, type Ticket } from '../domain/tickets/types'
 import type { TicketStatus } from '../domain/tickets/types'
 import type { Persistence } from '../persistence/database'
+import { createId } from './ids'
 import { getLocalDatabase } from './persistenceService'
 import { loadTargetRecommendations } from './targetsService'
 
@@ -758,7 +759,7 @@ export async function createTickets(
     avoidSignatures.push(generated.signature)
 
     const ticket: Ticket = {
-      id: crypto.randomUUID(),
+      id: createId(),
       scenarioId: generated.scenarioId,
       variantId: generated.variantId,
       difficulty: generated.difficulty,
@@ -851,7 +852,7 @@ export async function startAttempt(ticketId: string): Promise<WorkspaceView> {
   const hintPricing = await resolveHintPricing(ticket.scenarioId, exam)
   const hintPolicy = hintPricing.policy
   const session: Session = {
-    id: crypto.randomUUID(),
+    id: createId(),
     ticketId: ticket.id,
     startedAt: Date.now(),
     endedAt: null,
