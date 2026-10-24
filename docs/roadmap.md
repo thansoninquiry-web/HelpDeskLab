@@ -63,7 +63,7 @@ timers, authoring) — never both at once.
   §11 records the scope and evidence. This does not replace the R1 sign-off slot
   below; the same M7 label covers both, and sign-off is still open.
 - **M8 — service consoles, curriculum, theming and the type scale: done
-  (checkpoint `9c7af49`).** The module curriculum and the evidence checks behind
+  (checkpoint `9bc10ad`).** The module curriculum and the evidence checks behind
   it, with a lesson for every playable module; progress ranks, streaks and hint
   budgets; the theme service with scheduled light/dark switching and its preview;
   the service-desk consoles — directory, tool console, fake desktop, topology —
