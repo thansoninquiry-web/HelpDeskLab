@@ -3,16 +3,18 @@
 A local-first Tier 1 IT help desk training lab: procedurally generated tickets,
 a simulated IT environment, and explained scoring — all on your machine.
 
-**Status:** Milestones 0–4, M6, and the M7 job-targets surface are complete. The
-app shell, local SQLite persistence (sql.js with IndexedDB snapshots, migrations,
-export/import/reset), the simulated IT environment core, the seeded ticket
-generator across six families, the ticket workspace, the explaining scoring
-engine, and the job target tracker with skills coverage and interview prep are
-all in place. Remaining Release 1 work is the fairness lint and per-variant
-fixtures (M5) plus the R1 sign-off pass.
+**Status:** the practice lab is built end to end. Local SQLite persistence (sql.js
+with IndexedDB snapshots, migrations, export/import/reset), the simulated IT
+environment and its consoles, the seeded ticket generator across ten families,
+the ticket workspace, the explaining scoring engine, the sixteen-module course
+with a lesson for every playable module, job targets with skills coverage and
+interview prep, the workspace theme and text scale, phone layouts for the
+workspace and both consoles, and the device-management console at `/intune` are
+all in place. There is no hosted instance yet — it runs on your machine. Release
+scope and the open questions are tracked in [docs/roadmap.md](docs/roadmap.md).
 
 See [docs/architecture-helpdesklab.md](docs/architecture-helpdesklab.md) for the module design and
-[docs/roadmap.md](docs/roadmap.md) for release scope.
+[docs/intune-module.md](docs/intune-module.md) for the device console.
 
 ## Run it
 
@@ -89,8 +91,13 @@ Individual commands: `npm run typecheck`, `npm run lint`, `npm run test:run`.
   evaluator that explains every deduction.
 - `src/persistence/` — SQLite driver, schema, migrations, IndexedDB snapshots,
   repositories, and backup/import/reset.
-- `src/app/` — database, backup, practice, and settings services (queue,
-  workspace actions, scoring, progress, hint prices).
+- `src/app/` — database, backup, practice, settings and Intune services (queue,
+  workspace actions, scoring, progress, hint prices, the console's published
+  history).
+- `src/modules/intune/` — the device-management console at `/intune`: its own
+  types, seeded estate, compliance and action engines, eight practice tickets,
+  scoring, `intune_*` tables and pages. It imports the app only for the scoring
+  thresholds, and the app reaches it through two functions.
 - `src/ui/` — app shell, dashboard, ticket queue, ticket workspace, debrief,
   job targets, progress, and Settings (workspace theme, hint prices per family,
   and a live database panel).
@@ -414,6 +421,40 @@ colleague answered reads as a check you made, not a proof you got.
 All data in the simulator is fictional. There is no backend, account, or
 telemetry.
 
+## The device console
+
+**Intune practice** is the second simulator, at `/intune`: device management
+rather than service desk. The estate is fictional and seeded on first run —
+fifteen devices across Windows, iOS and Android, twelve people, two compliance
+policies and four apps — and every action changes it.
+
+Compliance is computed from the device's own settings (BitLocker, passcode,
+encryption, OS build) rather than stored as a verdict. A device that has never
+reported, has been silent for fourteen days, or is holding a verdict from before
+its policy changed reads **not evaluated** rather than non-compliant, which is
+the difference between a machine that needs fixing and one that needs to be
+found. **Sync**, **restart**, **assign apps**, **reassign the primary user**,
+**remove from a group**, **retire** and **wipe** all move the estate and write an
+event, and the console records the two things it refuses — installing an OS
+update, and acting on a device that is already retired or wiped — instead of
+doing nothing quietly.
+
+Eight practice tickets each name one seeded device and the end state that
+resolves them, so any path that reaches that state counts. They are scored out of
+100: 10 for reading the device record before the first fix, 55 for the expected
+actions in order (half credit out of order), 20 for the end state, and 15 for not
+damaging a device the ticket did not ask to destroy — a wipe nobody asked for
+costs 40 points. The split lands in the app's own rubric categories — diagnosis,
+resolution, safety — so console attempts join the weak-topic ranking and the
+category breakdown beside service desk ones, tagged with the simulator they came
+from and filterable on **Progress**. A finished attempt earns XP by the same
+formula as a ticket and counts toward Asset Management.
+
+The console is deliberately liftable: its own `intune_*` tables from one
+migration, its own routes and pages, and two functions as the only seam into the
+rest of the app. [docs/intune-module.md](docs/intune-module.md) describes the
+data model, the actions and how to add a ticket template.
+
 ## Job targets and listing text
 
 **Job targets** stores the listings you are chasing so the practice queue can
@@ -432,3 +473,13 @@ personal data:
   is gitignored; the app itself stores them in IndexedDB, not in files.
 - Share the generated JSON export, not the database file, when showing the
   feature to someone else.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+The app, its wording and both consoles are original: no vendor interface or
+screenshot is reproduced. Everything inside the simulators — tenants, people,
+devices, tickets — is invented. Real product names appear only to say what is
+being practised; they belong to their owners, and this project is not
+affiliated with or endorsed by them.
