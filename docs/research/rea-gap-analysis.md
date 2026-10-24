@@ -5,8 +5,9 @@
 `https://servicedesk-simulator.com/` (one accessibility snapshot, storage keys,
 and the module-preload list). Companion to
 [website-audit.md](../website-audit.md) and [workflow-spec.md](../workflow-spec.md).
-**Baseline compared:** this repo at `6a0ffbb` — M0–M4, M6, and the M7 job-targets
-surface shipped.
+**Baseline compared:** this repository as it stood on 2026-10-17 — M0–M4, M6, and
+the M7 job-targets surface shipped. (The commit id is omitted: the history was
+rewritten on 2026-10-24, so older ids no longer resolve.)
 
 ---
 
