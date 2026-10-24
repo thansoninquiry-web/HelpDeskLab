@@ -6,7 +6,7 @@ a simulated IT environment, and explained scoring — all on your machine.
 **Status:** the practice lab is built end to end. Local SQLite persistence (sql.js
 with IndexedDB snapshots, migrations, export/import/reset), the simulated IT
 environment and its consoles, the seeded ticket generator across ten families,
-the ticket workspace, the explaining scoring engine, the sixteen-module course
+the ticket workspace, the explaining scoring engine, the nineteen-module course
 with a lesson for every playable module, job targets with skills coverage and
 interview prep, the workspace theme and text scale, phone layouts for the
 workspace and both consoles, and the device-management console at `/intune` are
@@ -79,7 +79,7 @@ Individual commands: `npm run typecheck`, `npm run lint`, `npm run test:run`.
 - `src/domain/generator/` — seeded ticket generation and ten scenario families
   (PWD-01, NET-01, DHCP-01, M365-01, FS-01, PRN-01, MAIL-01, MAILSEC-01, RDP-01,
   DEP-01) with rubrics and reference paths.
-- `src/domain/curriculum/` — the sixteen-module course, its exit criteria, the
+- `src/domain/curriculum/` — the nineteen-module course, its exit criteria, the
   lesson written for each playable module, and the evidence folding that turns
   stored history into requirement progress.
 - `src/domain/appearance/` — the workspace theme preference, the dawn-to-dusk
@@ -145,12 +145,15 @@ are in the middle of a ticket.
 
 ## The course
 
-The dashboard lists the sixteen modules the app is built around, in course order.
-Each one names two or three requirements — pass a ticket in two families, write
+The dashboard lists the nineteen modules the app is built around, in course order.
+Each one names two to five requirements — pass a ticket in two families, write
 three troubleshooting notes, verify before your first command, hand off an
-outage — and shows how much of that your history already covers. All sixteen
-modules are playable; the catalog keeps the `planned` status for a module that
-has to be listed before it can be worked, and a note says what is missing.
+outage — and shows how much of that your history already covers. Modules 17–19
+are worked in the Intune console rather than the ticket queue: compliance,
+app deployment, and device lifecycle, each judged on the decisions taken and the
+state they leave a device in. All nineteen modules are playable; the catalog
+keeps the `planned` status for a module that has to be listed before it can be
+worked, and a note says what is missing.
 
 Module 5 is the voicemail. One ticket in three arrives as a message rather than a
 conversation: the queue marks it before you open it, and the ticket card shows

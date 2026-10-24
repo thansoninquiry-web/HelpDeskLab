@@ -80,17 +80,19 @@ beforeEach(async () => {
 })
 
 describe('Dashboard modules', () => {
-  it('lists the sixteen course modules in order', async () => {
+  it('lists the nineteen course modules in order', async () => {
     renderPage()
 
-    expect(await screen.findByText('16 playable · 16 total')).toBeInTheDocument()
+    expect(await screen.findByText('19 playable · 19 total')).toBeInTheDocument()
 
     const items = await screen.findAllByRole('listitem')
     const moduleItems = items.filter((item) => item.querySelector('h3'))
-    expect(moduleItems).toHaveLength(16)
+    expect(moduleItems).toHaveLength(19)
     expect(moduleItems[0]).toHaveTextContent('Your First Shift')
     expect(moduleItems[6]).toHaveTextContent('Directory (Active Directory)')
     expect(moduleItems[15]).toHaveTextContent('Mock Interview')
+    expect(moduleItems[16]).toHaveTextContent('Intune: Device Compliance')
+    expect(moduleItems[18]).toHaveTextContent('Intune: Device Lifecycle')
   })
 
   it('shows Remote Desktop as a module to work through, with its own requirements', async () => {

@@ -27,6 +27,9 @@ const COURSE_TITLES = [
   'PC Shelf',
   'Ship Manager',
   'Mock Interview',
+  'Intune: Device Compliance',
+  'Intune: App Deployment',
+  'Intune: Device Lifecycle',
 ]
 
 const FAMILIES = SCENARIO_FAMILIES.map((family) => family.id)
@@ -44,11 +47,11 @@ function moduleByNumber(number: number): CurriculumModule {
 }
 
 describe('curriculum catalog', () => {
-  it('lists the sixteen course modules in order', () => {
-    expect(CURRICULUM).toHaveLength(16)
+  it('lists the nineteen course modules in order', () => {
+    expect(CURRICULUM).toHaveLength(19)
     expect(CURRICULUM.map((module) => module.title)).toEqual(COURSE_TITLES)
     expect(CURRICULUM.map((module) => module.number)).toEqual(
-      Array.from({ length: 16 }, (_, index) => index + 1),
+      Array.from({ length: 19 }, (_, index) => index + 1),
     )
   })
 
@@ -89,7 +92,7 @@ describe('curriculum catalog', () => {
   })
 
   it('builds every module in the course', () => {
-    expect(CURRICULUM.filter((module) => module.status === 'playable')).toHaveLength(16)
+    expect(CURRICULUM.filter((module) => module.status === 'playable')).toHaveLength(19)
     expect(CURRICULUM.filter((module) => module.status === 'planned')).toHaveLength(0)
   })
 
@@ -175,6 +178,53 @@ describe('curriculum catalog', () => {
       'remoteWorkDocumented',
     ])
     expect(remote.requirements.every((entry) => entry.target === 1)).toBe(true)
+  })
+
+  it('makes the device console a three-module course of its own', () => {
+    const compliance = moduleByNumber(17)
+    expect(compliance.status).toBe('playable')
+    expect(compliance.scope).toEqual([])
+    expect(compliance.intuneTemplates).toEqual([
+      'tpl-bitlocker-off',
+      'tpl-policy-not-evaluated',
+    ])
+    expect(compliance.requirements.map((entry) => entry.measure)).toEqual([
+      'intuneReadBeforeFix',
+      'intuneComplianceFixes',
+      'intuneVerdictRefreshed',
+      'intunePerfectDiagnosis',
+    ])
+
+    const apps = moduleByNumber(18)
+    expect(apps.scope).toEqual([])
+    expect(apps.requirements.map((entry) => entry.measure)).toEqual([
+      'intuneAppInstallFixes',
+      'intuneAppSetsInstalled',
+      'intunePerfectSafety',
+    ])
+
+    const lifecycle = moduleByNumber(19)
+    expect(lifecycle.scope).toEqual([])
+    expect(lifecycle.requirements.map((entry) => entry.measure)).toEqual([
+      'intuneLeaverRetires',
+      'intuneWipePasses',
+      'intuneStaleCleared',
+      'intuneOwnershipPasses',
+      'intuneLifecycleDecisions',
+    ])
+    // The capstone is the only requirement that asks for more than one pass.
+    expect(lifecycle.requirements.at(-1)?.target).toBe(3)
+  })
+
+  it('keeps the console requirements apart from the service-desk families', () => {
+    const consoleModules = CURRICULUM.filter((module) => module.intuneTemplates !== undefined)
+    expect(consoleModules.map((module) => module.number)).toEqual([17, 18, 19])
+    for (const module of consoleModules) {
+      // An Intune template is not a scenario family, so neither scope may claim
+      // the other's work.
+      expect(module.scope).toEqual([])
+      expect(module.intuneTemplates?.length ?? 0).toBeGreaterThan(0)
+    }
   })
 })
 
@@ -291,6 +341,46 @@ describe('module progress', () => {
       moduleProgress(
         voicemails,
         evidence({ voicemailPasses: 1, voicemailCallbacks: 1, voicemailNotes: 1 }),
+      ).complete,
+    ).toBe(true)
+  })
+
+  it('completes the console modules only when the decisions are on file', () => {
+    const compliance = moduleByNumber(17)
+    const lifecycle = moduleByNumber(19)
+
+    expect(
+      moduleProgress(compliance, evidence({ intuneReadBeforeFix: 1, intuneComplianceFixes: 1 })).met,
+    ).toBe(2)
+    expect(
+      moduleProgress(
+        compliance,
+        evidence({
+          intuneReadBeforeFix: 1,
+          intuneComplianceFixes: 1,
+          intuneVerdictRefreshed: 1,
+          intunePerfectDiagnosis: 1,
+        }),
+      ).complete,
+    ).toBe(true)
+
+    // Three passes in one lifecycle decision are one decision, not three.
+    expect(
+      moduleProgress(
+        lifecycle,
+        evidence({ intuneLeaverRetires: 1, intuneLifecycleDecisions: 1 }),
+      ).met,
+    ).toBe(1)
+    expect(
+      moduleProgress(
+        lifecycle,
+        evidence({
+          intuneLeaverRetires: 1,
+          intuneWipePasses: 1,
+          intuneStaleCleared: 1,
+          intuneOwnershipPasses: 1,
+          intuneLifecycleDecisions: 3,
+        }),
       ).complete,
     ).toBe(true)
   })

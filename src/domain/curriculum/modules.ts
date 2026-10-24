@@ -2,9 +2,10 @@ import { SCENARIO_FAMILIES } from '../generator'
 import type { ScenarioId } from '../tickets/types'
 
 /**
- * The course the app is organised around: sixteen support-desk modules, each
- * with its own scope and exit criteria. Copy, scope and targets are our own;
- * nothing here is borrowed from the reference product.
+ * The course the app is organised around: nineteen modules, sixteen on the
+ * service desk and three in the device console. Each has its own scope and exit
+ * criteria. Copy, scope and targets are our own; nothing here is borrowed from
+ * the reference product.
  */
 
 export type ModuleStatus = 'playable' | 'planned'
@@ -64,6 +65,23 @@ export const MODULE_MEASURES = {
   /** Device work done in the Intune console, which never opens a ticket session. */
   intuneTicketsResolved: 0,
   intunePasses: 0,
+  /** Intune attempts that read the record before the first fix. */
+  intuneReadBeforeFix: 0,
+  /** Intune attempts that took every diagnostic mark. */
+  intunePerfectDiagnosis: 0,
+  /** Intune attempts that destroyed nothing the ticket did not ask for. */
+  intunePerfectSafety: 0,
+  /** One template each, named for the decision it teaches. */
+  intuneComplianceFixes: 0,
+  intuneVerdictRefreshed: 0,
+  intuneAppInstallFixes: 0,
+  intuneAppSetsInstalled: 0,
+  intuneLeaverRetires: 0,
+  intuneWipePasses: 0,
+  intuneStaleCleared: 0,
+  intuneOwnershipPasses: 0,
+  /** Distinct lifecycle decisions passed, for the module's capstone. */
+  intuneLifecycleDecisions: 0,
 } as const
 
 export type ModuleMeasure = keyof typeof MODULE_MEASURES
@@ -95,6 +113,12 @@ export interface CurriculumModule {
    * module is judged on behaviour alone (interview practice) or is not built.
    */
   scope: readonly ScenarioId[]
+  /**
+   * Intune templates whose attempts earn XP for this module. The console is a
+   * separate simulator with its own tickets, so they are named here rather than
+   * in `scope`, which is the service-desk generator's families.
+   */
+  intuneTemplates?: readonly string[]
   status: ModuleStatus
   requirements: readonly ModuleRequirement[]
   /** Only set while a module has no lessons. */
@@ -653,6 +677,128 @@ export const CURRICULUM: readonly CurriculumModule[] = [
         'Coverage only counts once the family behind the skill has a passing attempt.',
         'demandedFamiliesPassed',
         1,
+      ),
+    ],
+  },
+  {
+    id: 'intune-compliance',
+    number: 17,
+    title: 'Intune: Device Compliance',
+    summary: 'Why a device is judged non-compliant, and what makes the verdict current.',
+    scope: [],
+    intuneTemplates: ['tpl-bitlocker-off', 'tpl-policy-not-evaluated'],
+    status: 'playable',
+    requirements: [
+      requirement(
+        'read-record',
+        'Read the device record before changing anything',
+        'Compliance has one reason list, and it names the rule that failed. The console records the read, so diagnosis is scored from what you looked at before the first fix.',
+        'intuneReadBeforeFix',
+        1,
+      ),
+      requirement(
+        'restore-compliance',
+        'Bring a non-compliant laptop back into compliance',
+        'A failed encryption rule is a setting the policy can apply. A sync applies it and re-evaluates the verdict on the same check-in, which is cheaper than escalating a device that is merely behind.',
+        'intuneComplianceFixes',
+        1,
+      ),
+      requirement(
+        'refresh-verdict',
+        'Get a device off “not evaluated”',
+        'A device that is checking in but has no verdict has not gone quiet. The service needs to judge it again, and a sync is the step that asks.',
+        'intuneVerdictRefreshed',
+        1,
+      ),
+      requirement(
+        'diagnose',
+        'Take every diagnostic mark on a compliance ticket',
+        'The read has to come before the fix, and the fix has to be the one the failing rule asks for. Reading afterwards is a note, not a diagnosis.',
+        'intunePerfectDiagnosis',
+        1,
+      ),
+    ],
+  },
+  {
+    id: 'intune-apps',
+    number: 18,
+    title: 'Intune: App Deployment',
+    summary: 'Assignments, failed installs, and the set a device needs to be useful.',
+    scope: [],
+    intuneTemplates: ['tpl-app-install-failed', 'tpl-new-hire-apps'],
+    status: 'playable',
+    requirements: [
+      requirement(
+        'fix-install',
+        'Get a failed install onto a device',
+        'A failed install keeps its verdict until something requeues it. Read the app list on the device, restart the machine so the install is queued again, then sync to collect it.',
+        'intuneAppInstallFixes',
+        1,
+      ),
+      requirement(
+        'install-required-set',
+        'Install every app a device group requires',
+        'The required set comes from the group, not from the catalogue. A new phone with the portal but no VPN client is an incomplete handover, and the ticket stays open.',
+        'intuneAppSetsInstalled',
+        1,
+      ),
+      requirement(
+        'no-collateral',
+        'Ship an app fix without destroying a device',
+        'Nothing on an app ticket justifies a wipe or a retire. The safety mark is lost as soon as one is tried, and the machine is gone whether the install worked or not.',
+        'intunePerfectSafety',
+        1,
+      ),
+    ],
+  },
+  {
+    id: 'intune-lifecycle',
+    number: 19,
+    title: 'Intune: Device Lifecycle',
+    summary: 'Retire, wipe, stale enrolments, and records that name the wrong owner.',
+    scope: [],
+    intuneTemplates: [
+      'tpl-leaver-retire',
+      'tpl-lost-phone-wipe',
+      'tpl-stale-device',
+      'tpl-wrong-owner',
+    ],
+    status: 'playable',
+    requirements: [
+      requirement(
+        'retire-leaver',
+        'Retire a device that has left the business',
+        'Retiring removes company data and assignments from a device its owner still holds, and it can be reversed if they come back. Wiping their own photos is not the same decision.',
+        'intuneLeaverRetires',
+        1,
+      ),
+      requirement(
+        'wipe-lost',
+        'Wipe a phone that was reported lost',
+        'A device nobody holds cannot be retired into usefulness. The wipe is the close, and it is the only destructive action that ticket calls for.',
+        'intuneWipePasses',
+        1,
+      ),
+      requirement(
+        'clear-stale',
+        'Clear an enrolment that stopped reporting',
+        'A device silent for weeks cannot be commanded, so a sync only proves it. Retiring the record lets the machine be enrolled again without fighting a policy it never received.',
+        'intuneStaleCleared',
+        1,
+      ),
+      requirement(
+        'fix-owner',
+        'Put a device on the right person without touching it',
+        'Ownership is a record, not a machine. Changing the primary user fixes the alerts and the assignments; wiping a working laptop to correct a bookkeeping error destroys the evidence of the mistake.',
+        'intuneOwnershipPasses',
+        1,
+      ),
+      requirement(
+        'three-decisions',
+        'Finish three different lifecycle decisions',
+        'Retire, wipe and stale are three answers to three questions. Each one is passed on its own ticket, and the capstone asks for all three rather than one repeated.',
+        'intuneLifecycleDecisions',
+        3,
       ),
     ],
   },

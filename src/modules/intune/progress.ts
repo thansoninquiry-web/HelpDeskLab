@@ -26,6 +26,8 @@ interface StoredScore {
   passed?: boolean
   resolved?: boolean
   categoryScores?: Record<RubricCategory, CategoryScore>
+  /** The scored steps, as the score panel prints them. */
+  items?: readonly { id?: unknown; passed?: unknown }[]
 }
 
 const CATEGORIES: readonly RubricCategory[] = [
@@ -124,23 +126,78 @@ export function intuneStats(attempts: readonly IntuneAttemptRecord[]): ScenarioS
   return [...byScenario.values()]
 }
 
+/** A category the attempt took every mark in, and one that offered marks at all. */
+function isFull(score: CategoryScore | undefined): boolean {
+  return score !== undefined && score.possible > 0 && score.earned >= score.possible
+}
+
 export interface IntuneEvidence {
   /** Attempts where the estate agreed the ticket was actually resolved. */
   resolved: number
   passed: number
+  /** Attempts that read the record before the first fix. */
+  readBeforeFix: number
+  /**
+   * Distinct lifecycle templates passed, not attempts: the course's capstone
+   * asks for three different decisions, and re-passing one ticket is not three.
+   */
+  lifecycleDecisions: number
+  /** Passes split by template, for a requirement that is one particular ticket. */
+  passesByTemplate: Record<string, number>
+  /** Attempts with every diagnostic mark, which means a read before the fix. */
+  perfectDiagnosis: number
+  /** Attempts that destroyed nothing the ticket did not ask for. */
+  perfectSafety: number
 }
 
+/**
+ * Everything the coursework can be judged on, folded from the stored scores.
+ * The attempt row keeps the score panel's own JSON, so a requirement can read the
+ * work the learner actually did — the read step, the category split, the safety
+ * mark — rather than counting attempts at the module's door.
+ */
 export function intuneEvidence(attempts: readonly IntuneAttemptRecord[]): IntuneEvidence {
+  const lifecycleTemplates = new Set<string>()
+  const passesByTemplate: Record<string, number> = {}
   let resolved = 0
   let passed = 0
+  let readBeforeFix = 0
+  let perfectDiagnosis = 0
+  let perfectSafety = 0
+
   for (const attempt of finished(attempts)) {
     const score = parseScore(attempt.scoreJson)
     if (score.resolved === true) {
       resolved += 1
     }
+    if (score.items?.some((item) => item.id === 'read-first' && item.passed === true)) {
+      readBeforeFix += 1
+    }
+
+    const categories = categoryScoresOf(score.categoryScores)
+    if (isFull(categories?.diagnosis)) {
+      perfectDiagnosis += 1
+    }
+    if (isFull(categories?.safety)) {
+      perfectSafety += 1
+    }
+
     if (score.passed === true) {
       passed += 1
+      passesByTemplate[attempt.templateId] = (passesByTemplate[attempt.templateId] ?? 0) + 1
+      if (findIntuneTemplate(attempt.templateId)?.category === 'lifecycle') {
+        lifecycleTemplates.add(attempt.templateId)
+      }
     }
   }
-  return { resolved, passed }
+
+  return {
+    resolved,
+    passed,
+    readBeforeFix,
+    lifecycleDecisions: lifecycleTemplates.size,
+    passesByTemplate,
+    perfectDiagnosis,
+    perfectSafety,
+  }
 }

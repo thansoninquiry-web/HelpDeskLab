@@ -735,6 +735,8 @@
   border: 1px solid var(--accent);
   background: var(--accent);
   color: var(--accent-contrast);
+  /* A lesson's start control is a link, not a button: keep the label clean. */
+  text-decoration: none;
 }
 
 .primaryButton:hover:not(:disabled) {

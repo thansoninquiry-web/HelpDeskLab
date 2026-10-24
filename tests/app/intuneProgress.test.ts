@@ -97,6 +97,36 @@ describe('Intune work on Progress', () => {
     expect(stats?.dueAt).toBe(NOW + 2 * 24 * 60 * 60 * 1000)
   })
 
+  it('publishes the read step and the decisions the console course reads', async () => {
+    await resolveBitlockerTicket()
+
+    const feed = await loadIntuneProgress()
+    expect(feed.evidence.readBeforeFix).toBe(1)
+    expect(feed.evidence.perfectDiagnosis).toBe(1)
+    expect(feed.evidence.perfectSafety).toBe(1)
+    expect(feed.evidence.passesByTemplate['tpl-bitlocker-off']).toBe(1)
+
+    const view = await loadCurriculum()
+    const compliance = view.modules.find((module) => module.id === 'intune-compliance')
+    expect(compliance?.requirements.map((entry) => entry.current)).toEqual([1, 1, 0, 1])
+    // Refreshing a stale verdict is the other compliance ticket, so it is open.
+    expect(compliance?.complete).toBe(false)
+    // XP follows the templates the module names, as ticket modules follow scope.
+    expect(compliance?.xp).toBe(100)
+  })
+
+  it('reads one passed wipe as one lifecycle decision, not all of them', async () => {
+    await service.review('dev-iph-3390')
+    await service.act({ deviceId: 'dev-iph-3390', action: 'wipe' })
+    await service.score('tpl-lost-phone-wipe', NOW - 60_000)
+
+    const view = await loadCurriculum()
+    const lifecycle = view.modules.find((module) => module.id === 'intune-lifecycle')
+    // The lost phone is wiped; no leaver was retired, no record cleared, no
+    // owner corrected, and one of the three lifecycle decisions is on file.
+    expect(lifecycle?.requirements.map((entry) => entry.current)).toEqual([0, 1, 0, 0, 1])
+  })
+
   it('adds the attempt XP to the header summary', async () => {
     const before = await loadProgressSummary()
     await resolveBitlockerTicket()

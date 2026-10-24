@@ -267,7 +267,11 @@ export function ModuleLessonPage() {
         <div className={styles.sectionHeading}>
           <h2 id="lesson-practice-heading">Practise it</h2>
           <span className={styles.count}>
-            {practice.kind === 'tickets' ? 'Matching tickets' : 'Job targets'}
+            {practice.kind === 'tickets'
+              ? 'Matching tickets'
+              : practice.kind === 'intune'
+                ? 'Intune console'
+                : 'Job targets'}
           </span>
         </div>
 
@@ -306,6 +310,29 @@ export function ModuleLessonPage() {
                   {practiceError}
                 </p>
               ) : null}
+            </>
+          ) : practice.kind === 'intune' ? (
+            <>
+              <p className={styles.sectionText}>
+                This module is worked in the Intune console rather than the ticket queue. The button
+                opens the console ticket this lesson follows; the estate it acts on is the next link.
+                A ticket counts once the device state agrees it is finished, not when the last action
+                has been pressed.
+              </p>
+              <div className={styles.practiceRow}>
+                <Link
+                  className={styles.primaryButton}
+                  to={`/intune/tickets?template=${practice.templateId}`}
+                >
+                  Practise this module
+                </Link>
+                <Link className={styles.practiceLink} to="/intune/tickets">
+                  All Intune tickets
+                </Link>
+                <Link className={styles.practiceWhole} to="/intune">
+                  Open the console
+                </Link>
+              </div>
             </>
           ) : (
             <>

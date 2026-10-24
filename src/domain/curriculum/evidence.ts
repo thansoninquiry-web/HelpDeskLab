@@ -52,6 +52,21 @@ const SESSION_COMMANDS = new Set([
 const SESSION_OPENER = 'connect-remote'
 /** The effect `connect-remote` reports when it opens a session. */
 const REMOTE_OPENED_EFFECT = 'remote_connected'
+/**
+ * The Intune ticket behind each requirement that names one decision. The ids
+ * are stable, and a template that is renamed simply stops counting until this
+ * table is updated — which is why the module tests read the same ids.
+ */
+const INTUNE_TEMPLATE = {
+  compliance: 'tpl-bitlocker-off',
+  verdict: 'tpl-policy-not-evaluated',
+  install: 'tpl-app-install-failed',
+  appSet: 'tpl-new-hire-apps',
+  leaver: 'tpl-leaver-retire',
+  wipe: 'tpl-lost-phone-wipe',
+  stale: 'tpl-stale-device',
+  owner: 'tpl-wrong-owner',
+} as const
 
 function commandLine(action: SessionAction): string {
   const command = action.input.command
@@ -231,12 +246,39 @@ export function evidenceFrom(input: {
    * in rather than derived from `history` because an Intune attempt keeps no
    * action log and no world for this reader to fold.
    */
-  intune?: { resolved: number; passed: number }
+  intune?: {
+    resolved: number
+    passed: number
+    /** Attempts that read the record before their first fix. */
+    readBeforeFix?: number
+    perfectDiagnosis?: number
+    perfectSafety?: number
+    /** Distinct lifecycle decisions passed: retire, wipe and stale are separate. */
+    lifecycleDecisions?: number
+    /** Passes split by template, for a requirement that names one ticket. */
+    passesByTemplate?: Readonly<Record<string, number>>
+  }
 }): ModuleEvidence {
   const evidence = emptyEvidence()
   const { history, sessions, actions, listings } = input
-  evidence.intuneTicketsResolved = input.intune?.resolved ?? 0
-  evidence.intunePasses = input.intune?.passed ?? 0
+  const intune = input.intune
+  evidence.intuneTicketsResolved = intune?.resolved ?? 0
+  evidence.intunePasses = intune?.passed ?? 0
+  evidence.intuneReadBeforeFix = intune?.readBeforeFix ?? 0
+  evidence.intunePerfectDiagnosis = intune?.perfectDiagnosis ?? 0
+  evidence.intunePerfectSafety = intune?.perfectSafety ?? 0
+  evidence.intuneLifecycleDecisions = intune?.lifecycleDecisions ?? 0
+  // One template per requirement where a category would be too loose: a wipe
+  // closes a lifecycle ticket, but it does not demonstrate retiring a leaver.
+  const passes = intune?.passesByTemplate ?? {}
+  evidence.intuneComplianceFixes = passes[INTUNE_TEMPLATE.compliance] ?? 0
+  evidence.intuneVerdictRefreshed = passes[INTUNE_TEMPLATE.verdict] ?? 0
+  evidence.intuneAppInstallFixes = passes[INTUNE_TEMPLATE.install] ?? 0
+  evidence.intuneAppSetsInstalled = passes[INTUNE_TEMPLATE.appSet] ?? 0
+  evidence.intuneLeaverRetires = passes[INTUNE_TEMPLATE.leaver] ?? 0
+  evidence.intuneWipePasses = passes[INTUNE_TEMPLATE.wipe] ?? 0
+  evidence.intuneStaleCleared = passes[INTUNE_TEMPLATE.stale] ?? 0
+  evidence.intuneOwnershipPasses = passes[INTUNE_TEMPLATE.owner] ?? 0
 
   /*
    * A voicemail is a property of the attempt, not of the family: any ticket can

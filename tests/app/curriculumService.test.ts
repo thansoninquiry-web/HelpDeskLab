@@ -67,12 +67,12 @@ describe('loadCurriculum', () => {
   it('opens with every module untouched', async () => {
     const view = await loadCurriculum()
 
-    expect(view.modules).toHaveLength(16)
+    expect(view.modules).toHaveLength(19)
     expect(view.modules.map((module) => module.number)).toEqual(
-      Array.from({ length: 16 }, (_, index) => index + 1),
+      Array.from({ length: 19 }, (_, index) => index + 1),
     )
-    expect(view.playable).toBe(16)
-    expect(view.total).toBe(52)
+    expect(view.playable).toBe(19)
+    expect(view.total).toBe(64)
     expect(view.met).toBe(0)
     expect(view.percent).toBe(0)
     expect(view.complete).toBe(0)
@@ -167,13 +167,13 @@ describe('loadCurriculum', () => {
     const view = await loadCurriculum()
     const byNumber = new Map(view.modules.map((module) => [module.number, module]))
 
-    expect(view.playable).toBe(16)
-    expect(view.total).toBe(52)
+    expect(view.playable).toBe(19)
+    expect(view.total).toBe(64)
     // Modules 1, 6, 7 and 16 close: the listing asks for passwords, and PWD-01 passed.
     expect(view.complete).toBe(4)
     expect(view.met).toBe(15)
-    // 15 of 52 requirements: the two device-console requirements are new and unmet.
-    expect(view.percent).toBe(28)
+    // 15 of 64 requirements: the console modules are new and unmet.
+    expect(view.percent).toBe(23)
     expect(view.next?.number).toBe(2)
 
     expect(byNumber.get(1)?.complete).toBe(true)
@@ -191,6 +191,9 @@ describe('loadCurriculum', () => {
     )
     expect(byNumber.get(9)?.met).toBe(2)
     expect(byNumber.get(16)?.complete).toBe(true)
+    // Nothing has been done in the device console.
+    expect(byNumber.get(17)?.met).toBe(0)
+    expect(byNumber.get(19)?.met).toBe(0)
 
     // XP is credited to every module whose scope covers the family it came from.
     expect(byNumber.get(7)?.xp).toBe(60)

@@ -92,4 +92,22 @@ describe('an Intune attempt on the console page', () => {
     // The console records no notes and says so.
     expect(screen.getAllByText('not scored in the console')).toHaveLength(1)
   }, 60_000)
+
+  it('opens on the ticket a lesson deep-links to', async () => {
+    render(
+      <MemoryRouter initialEntries={['/intune/tickets?template=tpl-leaver-retire']}>
+        <IntuneTicketsPage />
+      </MemoryRouter>,
+    )
+
+    // The lesson's query selects the leaver ticket before the learner chooses.
+    expect(
+      await screen.findByRole(
+        'heading',
+        { level: 2, name: 'Lena left on Friday - her phone is still enrolled' },
+        { timeout: 10_000 },
+      ),
+    ).toBeTruthy()
+    expect(await screen.findByRole('link', { name: 'AND-4455' }, { timeout: 10_000 })).toBeTruthy()
+  }, 60_000)
 })

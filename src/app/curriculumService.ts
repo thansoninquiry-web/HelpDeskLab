@@ -33,10 +33,11 @@ export interface ModuleView {
   /** XP earned on the families this module covers. Zero when it has no scope. */
   xp: number
   /**
-   * How the module is practised: a ticket from its lesson's first family, the
-   * Job targets page, or nowhere because the module is not playable.
+   * How the module is practised: a ticket from its lesson's first family, a
+   * ticket in the Intune console, the Job targets page, or nowhere because the
+   * module is not playable.
    */
-  practice: 'tickets' | 'targets' | null
+  practice: 'tickets' | 'targets' | 'intune' | null
   /** The one requirement to work on next, if the module is not finished. */
   nextRequirement: ModuleRequirementView | null
   requirements: readonly ModuleRequirementView[]
@@ -139,7 +140,12 @@ export async function loadCurriculum(): Promise<CurriculumView> {
   const modules: ModuleView[] = CURRICULUM.map((module) => {
     const progress = moduleProgress(module, evidence)
     progressById[module.id] = progress
-    const xp = module.scope.reduce((total, family) => total + (xpByFamily.get(family) ?? 0), 0)
+    // The console's tickets earn XP under their template id, so both kinds of
+    // scope are folded the same way.
+    const xp = [...module.scope, ...(module.intuneTemplates ?? [])].reduce(
+      (total, family) => total + (xpByFamily.get(family) ?? 0),
+      0,
+    )
     return toView(module, progress, xp)
   })
 

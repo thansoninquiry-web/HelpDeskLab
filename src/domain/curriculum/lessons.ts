@@ -57,6 +57,14 @@ export type LessonPractice =
        */
       arrival?: 'voicemail'
     }
+  | {
+      kind: 'intune'
+      /**
+       * The console ticket the button opens. The queue deep-links to it, so the
+       * module starts on the decision it teaches rather than on the list.
+       */
+      templateId: string
+    }
   | { kind: 'targets' }
 
 /**
@@ -663,6 +671,133 @@ export const MODULE_LESSONS: Readonly<Record<string, ModuleLesson>> = {
         'One saved listing with recognised skills, and one passing attempt in a family the advert demands.',
     },
     practice: { kind: 'targets' },
+  },
+
+  'intune-compliance': {
+    concept: [
+      'Compliance in a device console is a verdict the service reaches about a machine, not something the machine reports about itself. A device can be switched on, online and in someone’s hands and still show as non-compliant, because the only thing being judged is whether the rules the policy set are met on the last check-in.',
+      'That makes two failures look alike from a ticket and completely different from the console. A device that has stopped reporting has no fresh facts at all, while a device that is reporting but was never re-judged is holding a verdict the service no longer stands behind. The reason list on the record tells you which one you have; the action bar behaves differently depending on the answer.',
+      'Read the record before you touch it. The dashboard’s red row says a rule failed; the device page says which rule, when it last checked in, and what the service thinks of it now. Everything scored in this console starts from that read, because a sync sent without knowing the failing rule is a guess that happens to be cheap.',
+    ],
+    example: {
+      title: 'A laptop that failed its encryption rule',
+      scenario:
+        'A user opens a ticket saying their laptop is red in the company portal. The machine is on, connected and in the office, and the message mentions disk encryption.',
+      steps: [
+        step(
+          'Open the ticket and read the device record',
+          'The reason list names the rule that failed. That one fact decides whether this is a policy the console can apply or a machine that has to be rebuilt.',
+        ),
+        step(
+          'Send a sync from the action bar',
+          'A sync applies the policy the device is behind on and asks the service to judge it again, which is the whole fix when the rule is encryption.',
+        ),
+        step(
+          'Check the verdict on the device page, not just the toast',
+          'The estate is the evidence. A completed action that left the device non-compliant is not a fixed ticket.',
+        ),
+        step(
+          'Check my work, then read the score by category',
+          'The read before the fix is diagnosis; the sync and the new verdict are resolution. Reading afterwards does not earn the first one.',
+        ),
+      ],
+      result:
+        'One read before the first action, the failing rule addressed, and a device that is compliant when the estate is checked again is a clean 100.',
+    },
+    flow: {
+      title: 'Work it in order',
+      intro:
+        'The console is a state machine, so the order is the evidence. Check these off as you go: the boxes are for this visit and are not scored, while the read and the actions behind them are.',
+      steps: [
+        {
+          action: 'Open the Intune ticket the module starts on',
+          evidence: 'The ticket names one device, its owner, and the state the request starts from.',
+        },
+        {
+          action: 'Press Read the device record before any action',
+          evidence: 'A read event on the device timeline, before the first fix.',
+        },
+        {
+          action: 'Name the failing rule and take the smallest action that addresses it',
+          evidence: 'An applied action whose confirmation names the rule it set right.',
+        },
+        {
+          action: 'Re-read the device page, then press Check my work',
+          evidence: 'The verdict changed on the estate, and the score shows diagnosis and resolution both paid.',
+        },
+      ],
+      finish:
+        'Before you close: the record was read first, the action matches the rule that failed, and the device page — not the toast — shows a current verdict.',
+    },
+    practice: { kind: 'intune', templateId: 'tpl-bitlocker-off' },
+  },
+
+  'intune-apps': {
+    concept: [
+      'An app in this console has two lives. On the catalogue page it is an assignment to a user or device group; on the device it is an install with a status that either got there or did not. A ticket that says “it will not install” is about the second one, so the device’s own app list is the first thing to read.',
+      'The two halves of deployment fail differently. An assignment that was never made is answered by assigning the required set, while a failed install that is already assigned is answered by asking the device to try again. Sending a second sync at a failure changes nothing: nothing had queued the install to be collected.',
+      'The required set is the group’s, not yours. Assignment is what makes a device useful rather than what makes one app appear, and a handover that stops at the portal leaves the VPN client — and often the ticket — open. Read the device, read the group, and let those two decide what “installed” means.',
+    ],
+    example: {
+      title: 'A new phone with nothing on it',
+      scenario:
+        'A starter’s phone arrives from the reseller with no company apps. The ticket asks for the portal and the usual suite before the person starts taking calls.',
+      steps: [
+        step(
+          'Read the device record and its app list',
+          'An empty list on a healthy, enrolled device is a missing assignment, not a broken install.',
+        ),
+        step(
+          'Assign the required set to the device',
+          'The group decides which apps are required; picking the portal by hand leaves the rest of the suite behind.',
+        ),
+        step(
+          'Sync so the phone collects its queue',
+          'Assigning only writes the intent. The check-in is what turns intent into installs on the device.',
+        ),
+        step(
+          'Check my work and read the install list',
+          'The ticket closes when every required app shows installed, not when the assignment looks right.',
+        ),
+      ],
+      result:
+        'Assigning and syncing in that order, with the group’s full set, is the reference path; doing neither or only one leaves installs pending.',
+    },
+    practice: { kind: 'intune', templateId: 'tpl-new-hire-apps' },
+  },
+
+  'intune-lifecycle': {
+    concept: [
+      'Three tickets in this console ask for something that cannot be undone, and the differences between them are the course. Retiring takes company data and assignments off a device its owner keeps. Wiping resets the device itself. Clearing a stale enrolment removes a record of a machine that stopped talking, so the hardware can be enrolled again.',
+      'Choose by who holds the hardware and what the company needs back from it. A leaver still has their phone, so a retire removes the work data and leaves the personal photos. A lost phone is in nobody’s hands, so a wipe is the only action that protects the mail on it. A laptop silent for six weeks is still in the office and still being used, which makes the record — not the machine — the thing that is broken.',
+      'Ownership is the quiet case. A machine registered to the wrong person produces alerts for someone who never used it and assignments for someone who cannot see them, and the fix is a record change. Destroying a working laptop to correct a bookkeeping error costs the safety mark and the machine at once, which is the mistake the scorer is built to price.',
+    ],
+    example: {
+      title: 'A leaver’s phone that is still enrolled',
+      scenario:
+        'Someone finished on Friday and their account is disabled, but their phone is still managed with the portal on it. HR wants it off the estate this week.',
+      steps: [
+        step(
+          'Read the device record and confirm the owner',
+          'The phone is in the person’s hands, so the data has to leave without the hardware being destroyed.',
+        ),
+        step(
+          'Retire the device rather than wipe it',
+          'A retire removes company data and assignments and can be reversed; a wipe takes the owner’s own photos with it.',
+        ),
+        step(
+          'Re-read the device and check the assignments are gone',
+          'The estate is the proof: a retired device should no longer be collecting policy or apps.',
+        ),
+        step(
+          'Check my work and read the explanation',
+          'The debrief names the decision and what the other destructive action would have cost.',
+        ),
+      ],
+      result:
+        'A retire on a leaver is worth the full safety mark; the same ticket closed with a wipe is the mistake the module is built to catch.',
+    },
+    practice: { kind: 'intune', templateId: 'tpl-leaver-retire' },
   },
 }
 

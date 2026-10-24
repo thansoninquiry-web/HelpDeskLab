@@ -98,6 +98,10 @@ function ModuleRow({
                     >
                       {busyId === module.id ? 'Starting…' : 'Practise'}
                     </button>
+                  ) : module.practice === 'intune' ? (
+                    <Link className={styles.moduleAction} to="/intune/tickets">
+                      Intune console
+                    </Link>
                   ) : module.practice === 'targets' ? (
                     <Link className={styles.moduleAction} to="/targets">
                       Job targets
@@ -199,7 +203,7 @@ export function DashboardPage() {
       <PageHeader
         eyebrow="Curriculum"
         title="Dashboard"
-        description="Sixteen modules, all of them playable today. Pull a ticket, investigate the simulated machine, document your evidence, and see which parts of the course your work has covered."
+        description="Nineteen modules, all of them playable today. Pull a ticket, investigate the simulated machine, document your evidence, and see which parts of the course your work has covered."
       />
 
       <div className={styles.ctaRow}>
@@ -215,7 +219,9 @@ export function DashboardPage() {
         <div className={styles.sectionHeading}>
           <h2 id="modules-heading">Modules</h2>
           <span className={styles.count}>
-            {curriculum ? `${curriculum.playable} playable · ${curriculum.modules.length} total` : '16 modules'}
+            {curriculum
+              ? `${curriculum.playable} playable · ${curriculum.modules.length} total`
+              : 'The course'}
           </span>
         </div>
 

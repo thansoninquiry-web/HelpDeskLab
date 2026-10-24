@@ -41,7 +41,7 @@ function moduleView(moduleId: string, evidence: Partial<ModuleEvidence> = {}): M
     total: progress.total,
     percent: progress.percent,
     complete: progress.complete,
-    xp: module.scope.length > 0 ? 40 : 0,
+    xp: module.scope.length > 0 || (module.intuneTemplates?.length ?? 0) > 0 ? 40 : 0,
     practice: lessonFor(module.id)?.practice.kind ?? null,
     nextRequirement: requirements.find((entry) => !entry.met) ?? null,
     requirements,
@@ -181,6 +181,35 @@ describe('module lesson page', () => {
     expect(screen.getByText('1/3 requirements')).toBeInTheDocument()
     expect(screen.getAllByText('1 / 1').length).toBeGreaterThan(0)
     expect(screen.getByText('40 XP earned on these tickets')).toBeInTheDocument()
+  })
+
+  it('opens a console module on the Intune ticket it teaches', async () => {
+    const practice = await import('../../src/app/practiceService')
+    vi.mocked(practice.startModulePractice).mockClear()
+    const service = await import('../../src/app/curriculumService')
+    vi.mocked(service.loadModuleLesson).mockResolvedValue(lessonView('intune-compliance'))
+
+    renderLesson('intune-compliance')
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Intune: Device Compliance' }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Intune console', { selector: 'span' })).toBeInTheDocument()
+
+    // The way in is a link with the ticket in the query, not a started session.
+    expect(screen.getByRole('link', { name: 'Practise this module' })).toHaveAttribute(
+      'href',
+      '/intune/tickets?template=tpl-bitlocker-off',
+    )
+    expect(screen.getByRole('link', { name: 'All Intune tickets' })).toHaveAttribute(
+      'href',
+      '/intune/tickets',
+    )
+    expect(screen.getByRole('link', { name: 'Open the console' })).toHaveAttribute(
+      'href',
+      '/intune',
+    )
+    expect(practice.startModulePractice).not.toHaveBeenCalled()
   })
 
   it('offers the job targets for the module judged on listings', async () => {

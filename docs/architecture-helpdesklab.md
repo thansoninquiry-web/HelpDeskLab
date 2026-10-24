@@ -80,7 +80,7 @@ HelpDeskLab/
       scoring/                  # rubric types, spec evaluator, bands, feedback
       session/                  # ticket lifecycle, caller dialogue, resolution
       progress/                 # XP, streaks, Leitner scheduling, mastery stats
-      curriculum/               # the sixteen-module course, exit criteria, evidence folding
+      curriculum/               # the nineteen-module course, exit criteria, evidence folding
       appearance/               # the workspace theme preference (pure, no DOM)
       targets/                  # job listings → skills, coverage, recommendations,
                                 #   interview templates, share-safe export shape
@@ -930,7 +930,7 @@ Practice → generate/select ticket → session active
 
 | Route | Purpose |
 |-------|---------|
-| `/` | Dashboard: the sixteen-module course, module progress, next step in the course |
+| `/` | Dashboard: the nineteen-module course, module progress, next step in the course |
 | `/modules/:moduleId` | Lesson for a playable module: the idea, one worked example, and the way into the tickets it is judged on |
 | `/practice` | Scenario family picker + difficulty; "surprise me" |
 | `/ticket/:sessionId` | Workspace: ticket + caller chat, terminal, quick actions, resolve flow |
@@ -1436,7 +1436,7 @@ kit) so the terminal aesthetic stays bespoke and the bundle stays small.
 
 ### Curriculum tracker
 
-The dashboard is organised around a sixteen-module course rather than around
+The dashboard is organised around a nineteen-module course rather than around
 features. The catalog lives in `src/domain/curriculum/modules.ts`: one entry per
 module with its position in the course, a scope of scenario families, and two or
 three exit requirements, each naming a counter (`moduleProgress` reads them from

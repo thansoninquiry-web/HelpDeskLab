@@ -9,11 +9,13 @@ import type { DeviceAction, IntuneDevice, IntuneState } from '../types'
  * "done": a learner who reaches the same end state another way still closes the
  * ticket, which is the point of verifying state rather than keystrokes.
  */
+export type IntuneTicketCategory = 'compliance' | 'apps' | 'lifecycle' | 'ownership'
+
 export interface IntuneTicketTemplate {
   id: string
   title: string
   difficulty: 1 | 2 | 3
-  category: 'compliance' | 'apps' | 'lifecycle' | 'ownership'
+  category: IntuneTicketCategory
   /** The seeded device the request is about. */
   deviceId: string
   subject: string

@@ -115,9 +115,8 @@ out of safety, the category it damages, as the evaluator does with a procedure
 violation. Documentation carries no points because the console has no notes step;
 it reads `not scored in the console` rather than a fabricated zero. The split is
 stored in the attempt's score JSON and published with its history, so a console
-attempt joins the weak-topic ranking and the category breakdown on Progress. A
-finished attempt also earns XP and counts toward Asset Management — see
-*Progress* below.
+attempt joins the weak-topic ranking and the category breakdown on Progress.  A finished attempt also earns XP, counts toward Asset Management, and feeds
+  the three console modules — see *Progress* below.
 
 ## Progress: XP, stats and the curriculum
 
@@ -150,13 +149,27 @@ publishes finished attempts in the same shapes those tables produce, and
   one narrows the other, and the section counts, the "only" note and the empty
   copy all follow the choice. The receipt and rank above them stay lifetime
   figures, and the filter is not persisted: a reload opens on *All*.
-- **Curriculum.** Asset Management (module 12) gained two requirements,
-  measured by `intuneTicketsResolved` and `intunePasses`. Its summary line, XP
-  and the module's progress bar read them like any other measure.
+- **Curriculum.** The console carries coursework of its own. Modules 17–19 are
+  judged entirely here, grouped by the decisions the templates already cover:
+  *Intune: Device Compliance* (`intuneReadBeforeFix`, a compliant end state, a
+  refreshed verdict, full diagnostic marks), *Intune: App Deployment* (a fixed
+  install, the full required set, no destructive action) and *Intune: Device
+  Lifecycle* (a leaver retired, a lost phone wiped, a stale record cleared, a
+  wrong owner corrected, three lifecycle decisions in total). Each requirement
+  reads a counter filled from the stored score JSON — the read step, the
+  category split, the safety mark, and passes split by template. Asset
+  Management (module 12) keeps its two broader console requirements.
 
-The XP is attributed to the app as a whole; a module's own XP figure still
-counts only its ticket families, because a module's scope is a list of family
-ids and the Intune templates are not families.
+A module's XP is the sum over its scope, and the console modules name their
+tickets in `intuneTemplates` instead of the service-desk family ids. Attempts
+are already keyed by template id in the merged history, so a console lesson's
+"XP on these tickets" line adds up the same way a ticket module's does.
+
+The lessons live in `domain/curriculum/lessons.ts` beside the others and use a
+third practice kind, `{ kind: 'intune', templateId }`. The lesson page links to
+`/intune/tickets?template=<id>`, which the queue reads to open on that ticket
+with a fresh attempt. The console is still not a ticket session: nothing here
+writes into `sessions` or `scores`.
 
 ## Phone width
 
@@ -181,6 +194,11 @@ stylesheets, works out that the content column is 358px at the default size and
 3. Write `expectedActions` in the order the reference path takes them.
 4. Write `verify(device, state)` so it reads the estate, not a counter.
 5. Add the explanation and three hints: a nudge, a narrower nudge, then the step.
+6. Optional, for coursework: give it a counter in `MODULE_MEASURES`, fill that
+   counter from `passesByTemplate` (or its category) in
+   `modules/intune/progress.ts` and `domain/curriculum/evidence.ts`, then name
+   the counter in a requirement and add the template id to that module's
+   `intuneTemplates`. Modules 17–19 are written this way.
 
 No other file changes: the queue page and the completion check read the registry,
 and the tests iterate the list. Do not add the read step to `expectedActions`: it

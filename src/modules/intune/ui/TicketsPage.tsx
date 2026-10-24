@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import { ComplianceBadge, LifecycleBadge } from './Badges'
 import { DeviceActions } from './DeviceActions'
 import { IntuneNav } from './IntuneNav'
@@ -27,7 +27,12 @@ function useTicketQueue(): readonly IntuneTicketTemplate[] {
 export function IntuneTicketsPage() {
   const { state, error, busy, act, review, service } = useIntune()
   const templates = useTicketQueue()
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  // A lesson deep-links to the ticket it teaches, so the queue can open on the
+  // decision the module is about instead of asking the learner to find it. The
+  // query is read when the page opens: from there, choosing a ticket is the
+  // queue's own business.
+  const [params] = useSearchParams()
+  const [selectedId, setSelectedId] = useState<string | null>(() => params.get('template'))
   const [startedAt, setStartedAt] = useState<number>(() => Date.now())
   const [score, setScore] = useState<IntuneScore | null>(null)
   const [scoring, setScoring] = useState(false)

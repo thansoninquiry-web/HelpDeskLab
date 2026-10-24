@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { CURRICULUM } from '../../../src/domain/curriculum/modules'
 import { lessonFor, MODULE_LESSONS } from '../../../src/domain/curriculum/lessons'
 import { listVariants } from '../../../src/domain/generator'
+import { INTUNE_TICKET_TEMPLATES } from '../../../src/modules/intune/tickets/templates'
 
 const playable = CURRICULUM.filter((module) => module.status === 'playable')
 const planned = CURRICULUM.filter((module) => module.status === 'planned')
@@ -83,6 +84,15 @@ describe('module lessons', () => {
         continue
       }
 
+      if (lesson.practice.kind === 'intune') {
+        // The console is a second simulator: its tickets are named separately
+        // from the generator's families.
+        expect(module.intuneTemplates, `${module.id} templates`).toContain(
+          lesson.practice.templateId,
+        )
+        continue
+      }
+
       expect(lesson.practice.families.length, `${module.id} families`).toBeGreaterThan(0)
       for (const family of lesson.practice.families) {
         expect(module.scope, `${module.id} → ${family}`).toContain(family)
@@ -150,6 +160,32 @@ describe('module lessons', () => {
     // The arrival is drawn from the ticket's seed, so asking for one is how the
     // module opens on the thing it teaches without pinning a family's variant.
     expect(asking).toEqual(['voicemails'])
+  })
+
+  it('sends the console modules into the console, not the ticket queue', () => {
+    const consoleModules = playable.filter(
+      (module) => lessonFor(module.id)?.practice.kind === 'intune',
+    )
+    expect(consoleModules.map((module) => module.id)).toEqual([
+      'intune-compliance',
+      'intune-apps',
+      'intune-lifecycle',
+    ])
+
+    const templateIds = new Set(INTUNE_TICKET_TEMPLATES.map((template) => template.id))
+    for (const module of consoleModules) {
+      const practice = lessonFor(module.id)?.practice
+      if (practice?.kind !== 'intune') {
+        continue
+      }
+      expect(templateIds, `${module.id} → ${practice.templateId}`).toContain(
+        practice.templateId,
+      )
+      expect(module.intuneTemplates, `${module.id} XP templates`).toContain(
+        practice.templateId,
+      )
+      expect(module.scope, `${module.id} families`).toEqual([])
+    }
   })
 
   it('keeps the targets practice to the module that is judged on listings', () => {
