@@ -30,3 +30,7 @@ Thumbs.db
 # Never commit pasted job listings; the app keeps them in IndexedDB,
 # but file-based dumps belong here.
 data/job-listings/
+
+# The agent's working notes: the desk-presence switch, the assumption log
+# and the dev screenshots. Kept on this machine, never published.
+notes/

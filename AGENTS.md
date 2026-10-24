@@ -4,6 +4,11 @@ Read this file before the first tool call of a session. Everything in it is
 about *how to work here*, not about the product. The product rules are in
 [docs/architecture-helpdesklab.md](docs/architecture-helpdesklab.md).
 
+The desk-presence switch and the assumption log it feeds live in `notes/`, which
+is ignored by git: they are working notes about one person's desk, so they stay
+on the machine that owns them. A clone has this file and no `notes/`, and the
+missing `Mode:` line resolves to AFK, which is the safe default.
+
 ---
 
 ## 1. Desk presence: READY or AFK
@@ -12,7 +17,7 @@ The human who owns this repository is sometimes at the desk and sometimes not.
 Which one it is decides whether you may stop and ask, or whether you have to keep
 working on your own judgement. Resolve the mode before you start, in this order:
 
-1. **[docs/desk-presence.md](docs/desk-presence.md)** → its `Mode:` line is
+1. **[notes/desk-presence.md](notes/desk-presence.md)** → its `Mode:` line is
    `ready`, `afk` or `auto`. A forced `ready` / `afk` wins outright.
 2. **`auto`, or the file is missing or unreadable** → compare the machine's local
    clock (`date`) against its `Away:` window. Inside the window is AFK; outside
@@ -25,18 +30,18 @@ hours, until 17:30)` — so a wrong guess costs the human one sentence to fix.
 
 A fresh message is **not** evidence of presence: requests get sent from a phone
 on a break, and the answer would never come. Only the mode in
-[docs/desk-presence.md](docs/desk-presence.md) decides, and only a message that
+[notes/desk-presence.md](notes/desk-presence.md) decides, and only a message that
 explicitly says the human is back changes it.
 
 If a message sounds like a switch ("heading to work", "brb", "I'm home for the
 rest of the day", "stay at the desk"), update
-[docs/desk-presence.md](docs/desk-presence.md) — the `Mode:` line, `Updated:`,
+[notes/desk-presence.md](notes/desk-presence.md) — the `Mode:` line, `Updated:`,
 and a new row in the switch history — and carry on with whatever you were doing.
 A switch is not a reason to stop.
 
 ## 2. Work hours
 
-The `Away:` window lives in [docs/desk-presence.md](docs/desk-presence.md), one
+The `Away:` window lives in [notes/desk-presence.md](notes/desk-presence.md), one
 line in local time:
 
 ```
@@ -85,7 +90,7 @@ The whole point is that the work does not stop and nobody is paged.
   short handoff at the top of the log saying what is finished, what is not, and
   the exact next step.
 
-## 5. The log — [docs/assumption-log.md](docs/assumption-log.md)
+## 5. The log — [notes/assumption-log.md](notes/assumption-log.md)
 
 One entry per decision that changed what you built, plus anything waiting on the
 human.
