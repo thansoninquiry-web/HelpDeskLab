@@ -9,6 +9,7 @@ import type {
   SnapshotStore,
   TicketRepository,
 } from '../domain/ports'
+import { IntuneStore } from '../modules/intune/persistence/store'
 import { ImportError, PersistenceError } from './errors'
 import { runMigrations } from './migrations'
 import { createRepositories } from './repositories'
@@ -27,6 +28,12 @@ export interface Persistence {
   progress: ProgressRepository
   settings: SettingsRepository
   targets: JobTargetRepository
+  /**
+   * The Intune simulator's tables. It is handed the same read/write context as
+   * the repositories so its writes go through the one transaction queue and pick
+   * up the snapshot save, but its SQL and its model stay inside the module.
+   */
+  intune: IntuneStore
   schemaVersion(): number
   exportDatabase(): Promise<Uint8Array>
   importDatabase(bytes: Uint8Array): Promise<void>
@@ -70,6 +77,7 @@ export class SqlitePersistence implements Persistence, BackupStore {
   readonly progress: ProgressRepository
   readonly settings: SettingsRepository
   readonly targets: JobTargetRepository
+  readonly intune: IntuneStore
 
   constructor(db: SqliteDriver, snapshotStore: SnapshotStore, wasmBinary?: ArrayBuffer) {
     this.db = db
@@ -88,6 +96,7 @@ export class SqlitePersistence implements Persistence, BackupStore {
     this.progress = repositories.progress
     this.settings = repositories.settings
     this.targets = repositories.targets
+    this.intune = new IntuneStore(context)
   }
 
   schemaVersion(): number {

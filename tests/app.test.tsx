@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 import type { TicketView } from '../src/app/practiceService'
@@ -32,6 +32,8 @@ const queueTicket: TicketView = {
   },
   symptoms: ['Names fail while IP addresses work'],
   reportedAt: Date.UTC(2026, 9, 16, 9, 30),
+  voicemail: null,
+  resume: null,
 }
 
 vi.mock('../src/app/curriculumService', () => ({
@@ -44,6 +46,21 @@ vi.mock('../src/app/curriculumService', () => ({
     percent: 0,
     next: null,
   }),
+}))
+
+/**
+ * The queue reads the price list beside the tickets, so the page renders with a
+ * stand-in for the settings table's catalogue: a default and two families, one
+ * of which prices itself.
+ */
+vi.mock('../src/app/settingsService', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/app/settingsService')>()),
+  loadHintTargets: vi.fn().mockResolvedValue([
+    { id: null, policy: { perHint: 5, cap: 15, budget: 0 }, own: true },
+    { id: 'PWD-01', policy: { perHint: 5, cap: 15, budget: 0 }, own: false },
+    { id: 'NET-01', policy: { perHint: 9, cap: 27, budget: 0 }, own: true },
+    { id: 'PRN-01', policy: { perHint: 0, cap: 0, budget: 6 }, own: true },
+  ]),
 }))
 
 vi.mock('../src/app/practiceService', () => ({
@@ -109,6 +126,60 @@ describe('app shell', () => {
     expect(screen.getByRole('button', { name: 'Open ticket' })).toBeInTheDocument()
   })
 
+  it('says where the open ticket left off, and offers to resume from there', async () => {
+    const practice = await import('../src/app/practiceService')
+    await mockQueue([
+      {
+        ...queueTicket,
+        status: 'in_progress',
+        resume: { tool: 'printers', pane: 'tools', steps: 3 },
+      },
+    ])
+    vi.mocked(practice.findActiveSessionId).mockResolvedValueOnce('session-printers')
+    renderAt('/practice')
+
+    // The card names the console and how far in the work had got, so a resume
+    // is a known place rather than just a ticket title.
+    expect(
+      await screen.findByText('Left off in the Printers console, 3 steps in.'),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Resume' })).toBeInTheDocument()
+
+    // The bar at the top says the same thing, so resuming from there is no
+    // more of a guess than resuming from the row.
+    expect(
+      screen.getByText(/You have a ticket open — left off in the Printers console, 3 steps in\./),
+    ).toBeInTheDocument()
+  })
+
+  it('shows what a hint costs in each family, and marks the ones on the default', async () => {
+    await mockQueue([queueTicket])
+    renderAt('/practice')
+
+    expect(await screen.findByRole('heading', { name: 'Hint prices' })).toBeInTheDocument()
+    const list = screen.getByRole('list', { name: 'Effective hint price by family' })
+
+    // A family that has not been priced plays at the default, and says so.
+    const accounts = within(list).getByText('Accounts').closest('li')
+    expect(accounts).toHaveTextContent('5 pts a hint · cap 15')
+    expect(accounts).toHaveTextContent('inherits default')
+
+    // One with a price of its own shows that price instead.
+    const network = within(list).getByText('Network').closest('li')
+    expect(network).toHaveTextContent('9 pts a hint · cap 27')
+    expect(network).toHaveTextContent('own price')
+
+    // A free family says free, and its ration is the only number left to print.
+    const printing = within(list).getByText('Printing').closest('li')
+    expect(printing).toHaveTextContent('Free · 6 a ticket')
+
+    // The default the inheriting families play at is stated once, above the list,
+    // and the panel says when a price is fixed.
+    const note = screen.getByText(/Every family plays at the default/)
+    expect(note).toHaveTextContent('5 pts a hint · cap 15')
+    expect(note).toHaveTextContent('keeps the price it started at')
+  })
+
   it('filters the queue to the family passed from a weak-topic link', async () => {
     await mockQueue([
       queueTicket,
@@ -130,23 +201,15 @@ describe('app shell', () => {
     expect(screen.getByRole('button', { name: 'Generate three of this family' })).toBeInTheDocument()
   })
 
-  it('centres the current section when the nav strip cannot show them all', async () => {
+  it('keeps every section in the header nav, with none hidden behind a scroll', () => {
     renderAt('/')
 
     const nav = screen.getByRole('navigation', { name: 'Primary' })
-    // jsdom has no layout, so the strip is measured the way a phone measures it.
-    Object.defineProperty(nav, 'scrollWidth', { configurable: true, value: 640 })
-    Object.defineProperty(nav, 'clientWidth', { configurable: true, value: 320 })
-    const scrollTo = vi.fn()
-    Object.assign(nav, { scrollTo })
-
-    const practice = screen.getByRole('link', { name: 'Practice' })
-    Object.defineProperty(practice, 'offsetLeft', { configurable: true, value: 400 })
-    Object.defineProperty(practice, 'offsetWidth', { configurable: true, value: 80 })
-    fireEvent.click(practice)
-
-    // 400 − (320 − 80) / 2: the link's middle lands on the strip's middle.
-    await waitFor(() => expect(scrollTo).toHaveBeenCalledWith({ left: 280 }))
+    expect(
+      within(nav)
+        .getAllByRole('link')
+        .map((link) => link.textContent?.trim()),
+    ).toEqual(['Modules', 'Practice', 'Intune', 'Job targets', 'Progress', 'Settings'])
   })
 
   it('renders the not-found page for unknown routes', () => {

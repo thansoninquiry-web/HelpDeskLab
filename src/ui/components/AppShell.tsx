@@ -1,11 +1,23 @@
-import { useEffect, useRef } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router'
 import { ProgressChip } from './ProgressChip'
+import { useScrolledPast } from './useScrolledPast'
 import styles from './AppShell.module.css'
+
+/**
+ * Where the phone header folds to one row, and where it unfolds again.
+ *
+ * The distance between the two is wider than the section row it gives back
+ * (3.2rem, about 64px at the largest text size), because collapsing the header
+ * pulls the scroll position up by exactly that row: a single threshold inside
+ * the gap would fold and unfold the header on the same scroll event.
+ */
+const COLLAPSE_AFTER_PX = 160
+const RESTORE_BELOW_PX = 40
 
 const navigation = [
   { to: '/', label: 'Modules', end: true, icon: 'grid' },
   { to: '/practice', label: 'Practice', end: false, icon: 'ticket' },
+  { to: '/intune', label: 'Intune', end: false, icon: 'device' },
   { to: '/targets', label: 'Job targets', end: false, icon: 'target' },
   { to: '/progress', label: 'Progress', end: false, icon: 'chart' },
   { to: '/settings', label: 'Settings', end: false, icon: 'gear' },
@@ -52,6 +64,15 @@ function Icon({ name }: { name: (typeof navigation)[number]['icon'] }) {
       </svg>
     )
   }
+  if (name === 'device') {
+    // A laptop outline: the Intune section is about managed devices.
+    return (
+      <svg {...common}>
+        <rect x="3" y="5" width="18" height="11" rx="1.5" />
+        <path d="M2 19h20" />
+      </svg>
+    )
+  }
   if (name === 'chart') {
     return (
       <svg {...common}>
@@ -70,41 +91,15 @@ function Icon({ name }: { name: (typeof navigation)[number]['icon'] }) {
 
 export function AppShell() {
   const { pathname } = useLocation()
-  const navRef = useRef<HTMLElement | null>(null)
-
-  /**
-   * At phone width the sections live on a strip that scrolls. Put the section
-   * the learner is on in the middle of it, so the strip never rests with a
-   * label sliced by the edge and the current one is always readable.
-   */
-  useEffect(() => {
-    const nav = navRef.current
-    if (!nav || nav.scrollWidth <= nav.clientWidth) {
-      return
-    }
-
-    // The router marks the match; the ticket override marks practice itself.
-    const current =
-      nav.querySelector<HTMLElement>('[aria-current="page"]') ??
-      nav.querySelector<HTMLElement>(`.${styles.navLinkActive}`)
-    if (!current) {
-      return
-    }
-
-    const left = Math.max(0, current.offsetLeft - (nav.clientWidth - current.offsetWidth) / 2)
-    if (typeof nav.scrollTo === 'function') {
-      nav.scrollTo({ left })
-    } else {
-      nav.scrollLeft = left
-    }
-  }, [pathname])
+  // Only the phone stylesheet reads this; the wider header is one row already.
+  const scrolled = useScrolledPast(COLLAPSE_AFTER_PX, RESTORE_BELOW_PX)
 
   // A ticket is still practice: keep the queue tab lit while it is open.
   const isSectionActive = (to: string, routerSaysActive: boolean): boolean =>
     routerSaysActive || (to === '/practice' && pathname.startsWith('/ticket'))
 
   return (
-    <div className={styles.shell}>
+    <div className={styles.shell} data-scrolled={scrolled ? 'true' : 'false'}>
       <a className={styles.skipLink} href="#main">
         Skip to content
       </a>
@@ -120,7 +115,7 @@ export function AppShell() {
 
         <span className={styles.headerRule} aria-hidden="true" />
 
-        <nav className={styles.nav} aria-label="Primary" ref={navRef}>
+        <nav className={styles.nav} aria-label="Primary">
           {navigation.map((item) => (
             <NavLink
               key={item.to}

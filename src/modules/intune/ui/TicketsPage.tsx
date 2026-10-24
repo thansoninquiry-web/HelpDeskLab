@@ -1,0 +1,197 @@
+import { useMemo, useState } from 'react'
+import { Link } from 'react-router'
+import { ComplianceBadge, LifecycleBadge } from './Badges'
+import { DeviceActions } from './DeviceActions'
+import { IntuneNav } from './IntuneNav'
+import { relativeTime, useIntune } from './useIntune'
+import { registerIntuneTicketTemplates } from '../tickets/registry'
+import { isIntuneTicketComplete } from '../tickets/registry'
+import type { IntuneScore } from '../tickets/scoring'
+import type { IntuneTicketTemplate } from '../tickets/templates'
+import { appName } from '../logic/compliance'
+import styles from './intune.module.css'
+
+/**
+ * The queue, filled through the module's registration function rather than by
+ * importing the template list. That is the seam a future hub would use, so the
+ * page exercises it instead of going around it.
+ */
+function useTicketQueue(): readonly IntuneTicketTemplate[] {
+  return useMemo(() => {
+    const collected: IntuneTicketTemplate[] = []
+    registerIntuneTicketTemplates({ offer: (template) => collected.push(template) })
+    return collected
+  }, [])
+}
+
+export function IntuneTicketsPage() {
+  const { state, error, busy, act, service } = useIntune()
+  const templates = useTicketQueue()
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [startedAt, setStartedAt] = useState<number>(() => Date.now())
+  const [score, setScore] = useState<IntuneScore | null>(null)
+  const [scoring, setScoring] = useState(false)
+
+  const selected = templates.find((template) => template.id === selectedId) ?? null
+  const device = selected ? state?.devices.find((entry) => entry.id === selected.deviceId) : undefined
+
+  const check = async () => {
+    if (!service || !selected) {
+      return
+    }
+    setScoring(true)
+    try {
+      const result = await service.score(selected.id, startedAt)
+      setScore(result.score)
+    } finally {
+      setScoring(false)
+    }
+  }
+
+  return (
+    <div className={styles.page}>
+      <header>
+        <p className={styles.count}>Eight practice tickets · verified against the estate</p>
+        <h1>Practice tickets</h1>
+        <p className={styles.note}>
+          Each ticket names a device in the console above. Work it from here — the
+          actions are the same ones the device page offers — then check the work
+          against the state the estate is actually in.
+        </p>
+      </header>
+
+      <IntuneNav />
+
+      {error ? (
+        <p className={styles.empty} role="alert">
+          {error}
+        </p>
+      ) : null}
+
+      <section className={styles.section} aria-label="Ticket queue">
+        <div className={styles.ticketList}>
+          {templates.map((template) => {
+            const complete = state ? isIntuneTicketComplete(template.id, state) : false
+            return (
+              <button
+                key={template.id}
+                type="button"
+                className={styles.ticketRow}
+                aria-pressed={selectedId === template.id}
+                onClick={() => {
+                  setSelectedId(template.id)
+                  setStartedAt(Date.now())
+                  setScore(null)
+                }}
+              >
+                <span>{template.title}</span>
+                <span className={styles.count}>difficulty {template.difficulty}</span>
+                <span className={styles.count}>{template.category}</span>
+                <span className={styles.badge} data-tone={complete ? 'compliant' : 'not-evaluated'}>
+                  {complete ? 'Resolved' : 'Open'}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+
+        {selected && state ? (
+          <div className={styles.stack}>
+            <h2>{selected.subject}</h2>
+            <p className={styles.ticketBody}>{selected.body}</p>
+
+            {device ? (
+              <>
+                <div className={styles.card}>
+                  <h3>On the console</h3>
+                  <p>
+                    <Link className={styles.link} to={`/intune/devices/${device.id}`}>
+                      {device.name}
+                    </Link>{' '}
+                    <ComplianceBadge state={device.compliance} />{' '}
+                    <LifecycleBadge lifecycle={device.lifecycle} />
+                  </p>
+                  <dl className={styles.meta}>
+                    <dt>Primary user</dt>
+                    <dd>
+                      {state.users.find((user) => user.id === device.ownerUserId)?.displayName ??
+                        '—'}
+                    </dd>
+                    <dt>Last check-in</dt>
+                    <dd>{relativeTime(device.lastCheckIn)}</dd>
+                    <dt>Apps</dt>
+                    <dd>
+                      {device.apps.length === 0
+                        ? 'none assigned'
+                        : device.apps
+                            .map(
+                              (entry) =>
+                                `${appName(state.apps, entry.appId)} (${entry.status})`,
+                            )
+                            .join(', ')}
+                    </dd>
+                  </dl>
+                </div>
+
+                <DeviceActions
+                  device={device}
+                  users={state.users}
+                  busy={busy}
+                  onRun={(action, options) => act(device.id, action, options)}
+                />
+              </>
+            ) : (
+              <p className={styles.empty}>The device for this ticket is not in the estate.</p>
+            )}
+
+            <div>
+              <button
+                type="button"
+                className={styles.button}
+                disabled={scoring || busy}
+                onClick={() => void check()}
+              >
+                {scoring ? 'Checking…' : 'Check my work'}
+              </button>
+            </div>
+
+            {score ? (
+              <div className={styles.score} aria-live="polite">
+                <div className={styles.scoreTotal}>
+                  <strong>{score.total}</strong>
+                  <span className={styles.count}>
+                    out of 100 · {score.band} {score.passed ? '· passed' : '· not passed'}
+                  </span>
+                </div>
+                <ul className={styles.items}>
+                  {score.items.map((item) => (
+                    <li key={item.id} data-passed={item.passed}>
+                      <span className="mark" aria-hidden="true">
+                        {item.passed ? '✓' : '✗'}
+                      </span>
+                      <span>
+                        {item.label}
+                        <br />
+                        <span className={styles.count}>{item.detail}</span>
+                      </span>
+                      <span className={styles.mono}>
+                        {Math.round(item.earned)}/{Math.round(item.possible)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <div className={styles.explain}>
+                  {score.explanation.map((line) => (
+                    <p key={line}>{line}</p>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <p className={styles.empty}>Choose a ticket to open it.</p>
+        )}
+      </section>
+    </div>
+  )
+}
