@@ -9,6 +9,7 @@ import {
 } from '../domain/curriculum/modules'
 import { evidenceFrom } from '../domain/curriculum/evidence'
 import { lessonFor, type ModuleLesson } from '../domain/curriculum/lessons'
+import { loadIntuneProgress } from './intuneProgress'
 import { getLocalDatabase } from './persistenceService'
 
 /** How far back the curriculum looks. Local history is small; this is a guard. */
@@ -115,14 +116,19 @@ export async function loadModuleLesson(moduleId: string): Promise<ModuleLessonVi
  */
 export async function loadCurriculum(): Promise<CurriculumView> {
   const db = await getLocalDatabase()
-  const [history, sessions, actions, listings] = await Promise.all([
+  const [ticketHistory, sessions, actions, listings, intune] = await Promise.all([
     db.scores.listHistory(),
     db.sessions.listRecent(HISTORY_SCAN),
     db.actions.listRecent(HISTORY_SCAN),
     db.targets.list(),
+    loadIntuneProgress(),
   ])
 
-  const evidence = evidenceFrom({ history, sessions, actions, listings })
+  // Intune attempts count as scored attempts — they are real work, judged and
+  // dated — and their own numbers come in beside the ticket history because
+  // there is no session for this reader to fold them from.
+  const history = [...ticketHistory, ...intune.history]
+  const evidence = evidenceFrom({ history, sessions, actions, listings, intune: intune.evidence })
 
   const xpByFamily = new Map<string, number>()
   for (const entry of history) {

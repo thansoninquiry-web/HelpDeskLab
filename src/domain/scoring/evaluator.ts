@@ -4,6 +4,7 @@ import { parseCommandLine } from '../environment/parser'
 import { usableCallerVerificationMethods } from '../environment/verification'
 import type { Effect, EffectType, VerificationMethod, World } from '../environment/types'
 import type { TopologyCheck, TopologyView } from '../environment/topology'
+import { attemptXp } from '../progress/xp'
 import type { ActionKind } from '../tickets/types'
 import {
   hintsAreFree,
@@ -11,6 +12,8 @@ import {
   totalHintCost,
   type HintPolicy,
 } from './policy'
+import { missingNoteParts as missingNotePartsIn } from './noteCoverage'
+import { refusalReasonInfo } from './refusal'
 import type {
   CategoryScore,
   CheckSpec,
@@ -71,6 +74,25 @@ export {
 } from './policy'
 export const UNVERIFIED_CHANGE_PENALTY = 10
 export const FIX_BEFORE_EVIDENCE_PENALTY = 5
+/**
+ * What it costs to take a colleague's word on a shared line as proof of who is
+ * calling. It is a process cost, not a cheaper check: the call established a
+ * different person, so it cannot stand in for verifying the employee and the
+ * safety item stays unmet. Acting on it afterwards is priced separately, by the
+ * unverified change it turns out to be.
+ */
+export const SHARED_LINE_CALLBACK_PENALTY = 5
+
+/**
+ * What a refusal earns when it stopped the work but named the wrong pretext.
+ *
+ * A refusal does two things: it stops the request, and it records which rule the
+ * request broke. Refusing for a mismatched reason does the first and not the
+ * second, so the step is half earned — the account was protected, but the report
+ * does not say what Security is looking for. The attempt can still pass; it just
+ * cannot pass strongly on a report that names the wrong ask.
+ */
+export const MISMATCHED_REFUSAL_CREDIT = 0.5
 
 /**
  * How strong each way of proving a caller is. The live code and a walk-up with
@@ -163,6 +185,7 @@ const EVIDENCE_COMMANDS: ReadonlySet<string> = new Set([
   'get-share-access',
   'get-mailbox',
   'get-quarantine',
+  'get-messages',
   'trace-message',
   'get-remote-machine',
   'get-sessions',
@@ -261,14 +284,26 @@ function actionSatisfies(spec: CheckSpec, action: EvaluatorAction): boolean {
       // A recorded verification only counts when it actually verified someone,
       // and, when the item names a method, when it was that method: a code read
       // back is not a call placed, and the log has to say which one happened.
+      // It also has to have proved the person on the ticket: a call to a shared
+      // line records that a colleague answered, which is somebody else however
+      // friendly the confirmation sounded.
       return (
         action.kind === 'verify-caller' &&
         action.output.verified !== false &&
+        action.output.provesCaller !== false &&
         (!spec.method || verificationMethodOf(action) === spec.method)
       )
     case 'deny-caller':
-      // Only a recorded refusal counts; a note that says "denied" is not an action.
-      return action.kind === 'deny-caller' && action.output.denied !== false
+      // Only a recorded refusal counts; a note that says "denied" is not an
+      // action. When the item names a reason, the refusal has to have been for
+      // that reason: the decision is which rule the request broke. A refusal
+      // filed under another reason still happened, which is why it can satisfy
+      // a sequence or an absence even though it does not satisfy this check.
+      return (
+        action.kind === 'deny-caller' &&
+        action.output.denied !== false &&
+        (!spec.reason || action.input.reason === spec.reason)
+      )
     case 'ask':
       return action.kind === 'ask-user' && (!spec.intent || action.input.intent === spec.intent)
     case 'note': {
@@ -281,6 +316,61 @@ function actionSatisfies(spec: CheckSpec, action: EvaluatorAction): boolean {
     default:
       return false
   }
+}
+
+/** The refusal the log recorded, whatever reason it was filed under. */
+function recordedRefusal(actions: readonly EvaluatorAction[]): EvaluatorAction | null {
+  return (
+    actions.find((action) => action.kind === 'deny-caller' && action.output.denied !== false) ??
+    null
+  )
+}
+
+/**
+ * What a check earned: all of it, none of it, or — for the one check where a
+ * partly right answer exists — half.
+ *
+ * A refusal is the only action that carries a "why". Refusing for the wrong
+ * reason is not the same as not refusing: the caller was stopped, which is the
+ * harm the step protects against, and only the record of the pretext is wrong.
+ * That half is priced here rather than folded into the pass/fail gate, so the
+ * debrief can point at what is still unearned instead of zeroing the step.
+ */
+function checkCredit(
+  spec: CheckSpec,
+  actions: readonly EvaluatorAction[],
+  world: World,
+  decision: SessionDecision,
+): number {
+  if (spec.kind === 'deny-caller' && spec.reason) {
+    const refusal = recordedRefusal(actions)
+    if (!refusal) {
+      return 0
+    }
+    return refusal.input.reason === spec.reason ? 1 : MISMATCHED_REFUSAL_CREDIT
+  }
+  return isSatisfiedAnywhere(actions, spec, world, decision) ? 1 : 0
+}
+
+/**
+ * The share of a step an attempt earned. Old scores kept no share, so their
+ * pass flag is read as the whole step or nothing — which is what it meant.
+ */
+export function itemCredit(item: Pick<RubricItemResult, 'passed' | 'credit'>): number {
+  if (typeof item.credit === 'number' && Number.isFinite(item.credit)) {
+    return Math.min(1, Math.max(0, item.credit))
+  }
+  return item.passed ? 1 : 0
+}
+
+/**
+ * The whole points a step earned. Rounded per step because the debrief shows
+ * points, and a card reading 12.5/30 would be a number the screen cannot hold.
+ */
+export function itemPoints(
+  item: Pick<RubricItemResult, 'weight' | 'passed' | 'credit'>,
+): number {
+  return Math.round(item.weight * itemCredit(item))
 }
 
 function commandName(action: EvaluatorAction): string | null {
@@ -306,12 +396,20 @@ export function detectProcedureViolations(
 ): ProcedureViolation[] {
   let verified = false
   let verifiedBy: VerificationMethod | null = null
+  let colleagueAnswered = false
   let evidenceSeen = false
   let unverifiedChange = false
   let fixBeforeEvidence = false
 
   for (const action of actions) {
     if (action.kind === 'verify-caller') {
+      // A colleague answering a shared line is proof of somebody else, so it
+      // gets its own finding rather than the weaker-check price: the two
+      // mistakes are not the same, and only one of them is a real proof.
+      if (action.output.result === 'colleague-answered') {
+        colleagueAnswered = true
+        continue
+      }
       if (action.output.verified === false) {
         continue
       }
@@ -365,7 +463,17 @@ export function detectProcedureViolations(
       category: 'diagnosis',
     })
   }
-  if (verifiedBy) {
+  if (colleagueAnswered) {
+    violations.push({
+      id: 'callback-to-shared-line',
+      label: 'Took a colleague’s word for who was calling',
+      detail:
+        'A shared team line was rung and a colleague answered. They can confirm what the team knows, but they are not the employee on the ticket, so the call verified somebody else and the caller is still unproven.',
+      points: SHARED_LINE_CALLBACK_PENALTY,
+      category: 'safety',
+    })
+  }
+  if (verifiedBy && !colleagueAnswered) {
     const cost = weakerVerificationCost(verifiedBy, options.availableMethods)
     if (cost > 0) {
       const best = options.availableMethods.reduce((left, right) =>
@@ -424,10 +532,9 @@ function missingNoteParts(
   actions: readonly EvaluatorAction[],
   spec: Extract<CheckSpec, { kind: 'note-covers' }>,
 ): NoteCoveragePart[] {
-  const haystack = notesOfKind(actions, spec).join('\n').toLowerCase()
-  return spec.parts.filter(
-    (part) => !part.any.some((fragment) => haystack.includes(fragment.toLowerCase())),
-  )
+  // The scoring read and a refusal close's own check are one matcher: a note
+  // that covers a part here covers it on the close form as well.
+  return missingNotePartsIn(notesOfKind(actions, spec).join('\n'), spec.parts)
 }
 
 function matchSequence(
@@ -722,8 +829,12 @@ function actionPhrase(spec: CheckSpec): string {
         return 'checked photo ID at the desk'
       }
       return 'verified the caller before changing anything'
-    case 'deny-caller':
-      return 'refused the request and reported it to Security'
+    case 'deny-caller': {
+      const reason = spec.reason ? refusalReasonInfo(spec.reason) : null
+      return reason
+        ? `refused the request — “${reason.label}” — and reported it to Security`
+        : 'refused the request and reported it to Security'
+    }
     case 'ask':
       return `asked the caller ${ASK_PHRASES[spec.intent ?? ''] ?? 'a diagnostic question'}`
     case 'note':
@@ -748,11 +859,33 @@ function actionPhrase(spec: CheckSpec): string {
   }
 }
 
-function findingFor(
-  spec: CheckSpec,
-  passed: boolean,
+/**
+ * A refusal that stopped the work under the wrong pretext. The debrief has to
+ * say which reason was filed and which one the ticket needed, because "refused"
+ * alone reads as a pass and the missing half is the part Security relies on.
+ */
+function mismatchedRefusalFinding(
+  spec: CheckSpec & { kind: 'deny-caller' },
   actions: readonly EvaluatorAction[],
 ): string {
+  const refusal = recordedRefusal(actions)
+  const filed =
+    refusal && typeof refusal.input.reason === 'string'
+      ? refusalReasonInfo(refusal.input.reason)
+      : null
+  const needed = spec.reason ? refusalReasonInfo(spec.reason) : null
+  const filedLabel = filed?.label ?? 'a reason this desk does not record'
+  const rule = needed?.detail ?? 'That rule is the one this request broke.'
+  return `Partial credit: you refused the request, but filed it as “${filedLabel}” rather than “${needed?.label ?? 'the reason this ticket needed'}”. ${rule} A refusal earns this step in full when its reason names the pretext that actually applied.`
+}
+
+function findingFor(
+  spec: CheckSpec,
+  credit: number,
+  actions: readonly EvaluatorAction[],
+): string {
+  const passed = credit === 1
+
   if (spec.kind === 'absent') {
     return passed
       ? `You ${actionPhrase(spec)}.`
@@ -777,6 +910,12 @@ function findingFor(
       : 'You closed the ticket as resolved, but it needed another team.'
   }
 
+  // A refused request is not answered by "no record": the record exists, and
+  // what is wrong with it is the reason it was filed under.
+  if (spec.kind === 'deny-caller' && credit > 0 && credit < 1) {
+    return mismatchedRefusalFinding(spec, actions)
+  }
+
   return passed
     ? `You ${actionPhrase(spec)}.`
     : `No record that you ${actionPhrase(spec)}.`
@@ -785,13 +924,14 @@ function findingFor(
 /** A handoff check reports each coverage part separately so the debrief is specific. */
 function findingsForSpec(
   spec: CheckSpec,
-  passed: boolean,
+  credit: number,
   actions: readonly EvaluatorAction[],
   gapsOnly = false,
 ): string[] {
   if (spec.kind !== 'note-covers') {
-    return [findingFor(spec, passed, actions)]
+    return [findingFor(spec, credit, actions)]
   }
+  const passed = credit === 1
   // A note that is too short to use is not judged on coverage: the learner
   // needs to know it did not count, not that its words missed a heading.
   if (!passed && hasNoteOfKind(actions, spec) && notesOfKind(actions, spec).length === 0) {
@@ -818,18 +958,24 @@ function findingsForSpec(
 function evaluateItem(item: RubricItem, input: EvaluationInput): RubricItemResult {
   const checks = item.checks.map((spec) => ({
     spec,
-    passed: isSatisfiedAnywhere(input.actions, spec, input.world, input.decision),
+    credit: checkCredit(spec, input.actions, input.world, input.decision),
   }))
-  const passed = checks.every((check) => check.passed)
+  // Each check is an equal share of the step, so a step with one partly answered
+  // check earns that share and owes the rest.
+  const credit =
+    checks.length === 0
+      ? 1
+      : checks.reduce((sum, check) => sum + check.credit, 0) / checks.length
+  const passed = checks.every((check) => check.credit === 1)
   const evidence: string[] = []
   const gaps: string[] = []
 
   for (const check of checks) {
-    evidence.push(...findingsForSpec(check.spec, check.passed, input.actions))
-    if (!check.passed) {
+    evidence.push(...findingsForSpec(check.spec, check.credit, input.actions))
+    if (check.credit < 1) {
       // A handoff that covered two parts still owes only the third; the parts
       // that passed are findings, not gaps.
-      gaps.push(...findingsForSpec(check.spec, check.passed, input.actions, true))
+      gaps.push(...findingsForSpec(check.spec, check.credit, input.actions, true))
     }
   }
 
@@ -840,6 +986,7 @@ function evaluateItem(item: RubricItem, input: EvaluationInput): RubricItemResul
     weight: item.weight,
     critical: item.critical,
     passed,
+    credit,
     why: item.why,
     hints: item.hints,
     evidence,
@@ -895,13 +1042,11 @@ export function evaluateSession(input: EvaluationInput): EvaluationResult {
   for (const item of items) {
     const category = categoryScores[item.category]
     category.possible += item.weight
-    if (item.passed) {
-      category.earned += item.weight
-    }
+    category.earned += itemPoints(item)
   }
 
   const possible = items.reduce((total, item) => total + item.weight, 0)
-  const earned = items.reduce((total, item) => total + (item.passed ? item.weight : 0), 0)
+  const earned = items.reduce((total, item) => total + itemPoints(item), 0)
   const rawTotal = possible === 0 ? 0 : Math.round((earned / possible) * 100)
 
   // Both are read from the recorded attempt, not from anything the interface
@@ -934,7 +1079,14 @@ export function evaluateSession(input: EvaluationInput): EvaluationResult {
   // The findings, not the item labels: a step that was never done cannot be
   // listed as "Unlocked tbrooks", and a label is rubric authoring vocabulary the
   // learner has never seen. A critical item always has at least one gap.
-  const failedCritical = items.filter((item) => item.critical && !item.passed)
+  //
+  // A partly earned step is not a missed gate: the refusal happened, and what is
+  // wrong is the reason written beside it. Blocking the whole attempt on that
+  // would price a wrong sentence like a leaked password, so the shortfall is
+  // carried by the score and named in the step instead.
+  const failedCritical = items.filter(
+    (item) => item.critical && itemCredit(item) === 0,
+  )
   const criticalFailures: string[] = []
   for (const item of failedCritical) {
     const gaps = item.gaps && item.gaps.length > 0 ? item.gaps : [item.label]
@@ -1021,11 +1173,10 @@ export function evaluateSession(input: EvaluationInput): EvaluationResult {
   // The summary and the picture are kept together: the debrief reworks the
   // counts, but only the snapshot says which link each one was.
   const topology = topologyMap ? summarizeTopology(topologyMap) : null
+  // The base formula is shared with every other scorer — the Intune console
+  // earns on the same terms — and the proof bonus is this surface's own.
   const xp =
-    input.difficulty * 30 +
-    (passed ? 40 : 10) +
-    (band === 'strong' ? 30 : 0) +
-    (topology?.bonusXp ?? 0)
+    attemptXp({ difficulty: input.difficulty, passed, band }) + (topology?.bonusXp ?? 0)
 
   return {
     total,

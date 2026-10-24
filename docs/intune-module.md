@@ -94,7 +94,34 @@ order), 25 for the state check passing, 15 for not damaging a device the ticket
 did not ask to destroy. A wipe the ticket never called for costs 40 and a retire
 25, which is how "wiped the wrong device" fails an attempt that otherwise read
 well. Bands and thresholds are the app's own, imported from
-`domain/generator/rubric`, so an Intune score sits beside any other.
+`domain/generator/rubric`, so an Intune score sits beside any other. A finished
+attempt also earns XP and counts toward Asset Management — see *Progress* below.
+
+## Progress: XP, stats and the curriculum
+
+An Intune attempt is not a ticket session, so it is never written into
+`sessions` or `scores`: a session without a world would appear in the practice
+queue and open a debrief with nothing to show. Instead [progress.ts](src/modules/intune/progress.ts)
+publishes finished attempts in the same shapes those tables produce, and
+`src/app/intuneProgress.ts` is the one reader the rest of the app uses.
+
+- **XP and rank.** A finished attempt earns `difficulty × 30 + (passed ? 40 : 10)
+  + (strong ? 30 : 0)`, from `domain/progress/xp.ts` — the same function the
+  ticket evaluator now uses, so all three surfaces pay the same. Re-checking an
+  attempt updates its row rather than paying twice; starting a new attempt after
+  finishing one pays again.
+- **Scenario stats.** Attempts fold into `scenario_stats` through
+  `domain/progress/leitner.ts`, the rule the practice service used to keep to
+  itself: attempts, passes, best score, review box and due date all match a ticket
+  family. The Progress table lists each template under its ticket title and links
+  the row to `/intune/tickets`.
+- **Curriculum.** Asset Management (module 12) gained two requirements,
+  measured by `intuneTicketsResolved` and `intunePasses`. Its summary line, XP
+  and the module's progress bar read them like any other measure.
+
+The XP is attributed to the app as a whole; a module's own XP figure still
+counts only its ticket families, because a module's scope is a list of family
+ids and the Intune templates are not families.
 
 ## Adding a ticket template
 

@@ -6,6 +6,7 @@ import type { JsonObject } from '../shared/json'
 import type { JobTarget } from '../targets/types'
 import { extractListing } from '../targets/extract'
 import type { Session, SessionAction } from '../tickets/types'
+import { isVoicemailArrival } from '../tickets/voicemail'
 import { emptyEvidence, type ModuleEvidence } from './modules'
 
 const ACCOUNT_FAMILIES = new Set(['PWD-01', 'M365-01'])
@@ -203,6 +204,19 @@ function groupBySession(actions: readonly SessionAction[]): Map<string, SessionA
 }
 
 /**
+ * True when the request arrived as a message on the desk's voicemail. The
+ * arrival is kept on the attempt's world, so an old row that never had one is
+ * simply a ticket that came in live.
+ */
+function arrivedAsVoicemail(session: Session | undefined): boolean {
+  const world = session?.world
+  if (typeof world !== 'object' || world === null || Array.isArray(world)) {
+    return false
+  }
+  return isVoicemailArrival(world.voicemail)
+}
+
+/**
  * Turns stored history into the counters the curriculum reads. Pure so the
  * rules can be tested without a database: everything the modules claim is
  * measured from records the app already keeps, never from a second ledger.
@@ -212,9 +226,30 @@ export function evidenceFrom(input: {
   sessions: readonly Session[]
   actions: readonly SessionAction[]
   listings: readonly JobTarget[]
+  /**
+   * Device work from the Intune console, counted by its own scorer. It is passed
+   * in rather than derived from `history` because an Intune attempt keeps no
+   * action log and no world for this reader to fold.
+   */
+  intune?: { resolved: number; passed: number }
 }): ModuleEvidence {
   const evidence = emptyEvidence()
   const { history, sessions, actions, listings } = input
+  evidence.intuneTicketsResolved = input.intune?.resolved ?? 0
+  evidence.intunePasses = input.intune?.passed ?? 0
+
+  /*
+   * A voicemail is a property of the attempt, not of the family: any ticket can
+   * be left on the machine. It is read from the saved world, and the attempt's
+   * own id joins it to the score, the log, and the notes written on it.
+   */
+  const voicemailSessions = new Set(
+    sessions.filter((session) => arrivedAsVoicemail(session)).map((session) => session.id),
+  )
+
+  evidence.voicemailPasses = history.filter(
+    (entry) => entry.passed && voicemailSessions.has(entry.sessionId),
+  ).length
 
   evidence.scoredAttempts = history.length
   evidence.passedAttempts = history.filter((entry) => entry.passed).length
@@ -262,6 +297,15 @@ export function evidenceFrom(input: {
         evidence.customerNotes += 1
       } else if (noteKind === 'resolution') {
         evidence.resolutionNotes += 1
+      }
+      // A message has to be written into the ticket: the recording is not a
+      // record a later shift can read, and the note is what survives it.
+      if (
+        noteKind !== null &&
+        noteKind !== 'resolution' &&
+        voicemailSessions.has(action.sessionId)
+      ) {
+        evidence.voicemailNotes += 1
       }
       continue
     }
@@ -323,8 +367,17 @@ export function evidenceFrom(input: {
       continue
     }
 
-    if (action.kind === 'verify-caller' && action.output.verified === true) {
-      evidence.callerVerifications += 1
+    if (action.kind === 'verify-caller') {
+      if (action.output.verified === true) {
+        evidence.callerVerifications += 1
+      }
+      // Ringing the person back is this module's own requirement, so it is
+      // counted where it was placed. A callback that reached nobody still
+      // shows the desk rang the line on file rather than closing blind, and an
+      // impersonation ticket is meant to teach exactly that.
+      if (action.input.method === 'callback' && voicemailSessions.has(action.sessionId)) {
+        evidence.voicemailCallbacks += 1
+      }
       continue
     }
 

@@ -29,6 +29,10 @@ export const MODULE_MEASURES = {
   callerQuestions: 0,
   callerIntents: 0,
   askedBeforeTouching: 0,
+  /** Attempts that arrived as a message on the desk's voicemail. */
+  voicemailPasses: 0,
+  voicemailCallbacks: 0,
+  voicemailNotes: 0,
   verifiedBeforeTouching: 0,
   callerVerifications: 0,
   refusedRequests: 0,
@@ -57,6 +61,9 @@ export const MODULE_MEASURES = {
   listingsSaved: 0,
   listingsWithSkills: 0,
   demandedFamiliesPassed: 0,
+  /** Device work done in the Intune console, which never opens a ticket session. */
+  intuneTicketsResolved: 0,
+  intunePasses: 0,
 } as const
 
 export type ModuleMeasure = keyof typeof MODULE_MEASURES
@@ -121,23 +128,11 @@ function requirement(
   return { id, label, detail, measure, target }
 }
 
-const planned = (
-  id: string,
-  number: number,
-  title: string,
-  summary: string,
-  note: string,
-): CurriculumModule => ({
-  id,
-  number,
-  title,
-  summary,
-  scope: [],
-  status: 'planned',
-  requirements: [],
-  note,
-})
-
+/*
+ * Every module in the course is built. `status: 'planned'` stays in the model
+ * for a module that has to be listed before it can be practised — a gap in the
+ * course is better shown than hidden — but nothing in the catalog uses it.
+ */
 export const CURRICULUM: readonly CurriculumModule[] = [
   {
     id: 'first-shift',
@@ -262,14 +257,37 @@ export const CURRICULUM: readonly CurriculumModule[] = [
         10,
       ),
     ],
+  },  {
+    id: 'voicemails',
+    number: 5,
+    title: 'Voicemails',
+    summary: 'Callbacks, notes from a message, and deciding what can wait.',
+    scope: ALL_FAMILIES,
+    status: 'playable',
+    requirements: [
+      requirement(
+        'voicemail-pass',
+        'Close a ticket that arrived as a voicemail',
+        'The recording is the report. Work the ticket it describes, and close it on the evidence rather than on what a caller told you aloud.',
+        'voicemailPasses',
+        1,
+      ),
+      requirement(
+        'ring-back',
+        'Ring the caller back from the message',
+        'A callback placed on the attempt. The line on file, or the desk line when the handset is out of action, is the one to ring.',
+        'voicemailCallbacks',
+        1,
+      ),
+      requirement(
+        'write-it-down',
+        'Write the message into the ticket',
+        'A note on the attempt that records what was asked for. The audio is gone once the message is deleted; the ticket is not.',
+        'voicemailNotes',
+        1,
+      ),
+    ],
   },
-  planned(
-    'voicemails',
-   5,
-    'Voicemails',
-    'Callbacks, notes from a message, and deciding what can wait.',
-    'Not in this build. The callback and voicemail workflow is not modelled yet, so this module has no lessons or requirements.',
-  ),
   {
     id: 'the-phone',
     number: 6,
@@ -489,6 +507,20 @@ export const CURRICULUM: readonly CurriculumModule[] = [
         'Pass the ticket where a shelf hold stops the handover',
         'A machine quarantined for damage cannot be issued, and imaging it does not close the case. Read the hold and hand it to Field Services rather than running the sequence.',
         'deploymentHoldPasses',
+        1,
+      ),
+      requirement(
+        'resolve-intune-ticket',
+        'Resolve a device ticket in the Intune console',
+        'The console at /intune shows the estate a device ticket is about. A ticket counts when the estate agrees it is done: a sync that brings a device back into compliance, a retire for a leaver, a wipe for a lost phone.',
+        'intuneTicketsResolved',
+        1,
+      ),
+      requirement(
+        'pass-intune-ticket',
+        'Pass a scored Intune ticket',
+        'Intune tickets are scored out of 100 on the steps taken and the state they leave the device in. Passing needs the right actions without destroying a machine the ticket did not ask for.',
+        'intunePasses',
         1,
       ),
     ],

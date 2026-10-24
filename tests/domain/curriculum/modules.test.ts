@@ -88,9 +88,9 @@ describe('curriculum catalog', () => {
     }
   })
 
-  it('builds exactly the fifteen modules the app can practise today', () => {
-    expect(CURRICULUM.filter((module) => module.status === 'playable')).toHaveLength(15)
-    expect(CURRICULUM.filter((module) => module.status === 'planned')).toHaveLength(1)
+  it('builds every module in the course', () => {
+    expect(CURRICULUM.filter((module) => module.status === 'playable')).toHaveLength(16)
+    expect(CURRICULUM.filter((module) => module.status === 'planned')).toHaveLength(0)
   })
 
   it('makes the mail modules playable on the trace and quarantine decisions', () => {
@@ -125,6 +125,9 @@ describe('curriculum catalog', () => {
       'deploymentQueueReads',
       'deploymentReads',
       'deploymentHoldPasses',
+      // The device console joined this module: its work is asset work.
+      'intuneTicketsResolved',
+      'intunePasses',
     ])
 
     const deployment = moduleByNumber(13)
@@ -250,6 +253,8 @@ describe('module progress', () => {
           deploymentQueueReads: 1,
           deploymentReads: 1,
           deploymentHoldPasses: 1,
+          intuneTicketsResolved: 1,
+          intunePasses: 1,
         }),
       ).complete,
     ).toBe(true)
@@ -265,12 +270,29 @@ describe('module progress', () => {
     ).toBe(true)
   })
 
-  it('never reports a planned module as complete', () => {
+  it('judges Voicemails on the message, the callback and the note', () => {
     const voicemails = moduleByNumber(5)
+
+    expect(voicemails.status).toBe('playable')
+    expect(voicemails.scope).toEqual(FAMILIES)
+    expect(voicemails.requirements.map((entry) => entry.measure)).toEqual([
+      'voicemailPasses',
+      'voicemailCallbacks',
+      'voicemailNotes',
+    ])
+
+    // Chat evidence is not message evidence: a caller who answered the phone
+    // is a different attempt from one who left a recording.
     const progress = moduleProgress(voicemails, evidence({ callerQuestions: 99 }))
-    expect(progress.total).toBe(0)
+    expect(progress.met).toBe(0)
     expect(progress.complete).toBe(false)
-    expect(progress.percent).toBe(0)
+
+    expect(
+      moduleProgress(
+        voicemails,
+        evidence({ voicemailPasses: 1, voicemailCallbacks: 1, voicemailNotes: 1 }),
+      ).complete,
+    ).toBe(true)
   })
 
   it('ignores evidence it cannot read', () => {
@@ -302,7 +324,7 @@ describe('next module', () => {
     expect(nextModule(CURRICULUM, progress)?.number).toBe(1)
   })
 
-  it('skips modules that are not built', () => {
+  it('moves on to the next module once one is finished', () => {
     const progress = allComplete()
     progress[moduleByNumber(2).id] = moduleProgress(moduleByNumber(2), evidence())
     expect(nextModule(CURRICULUM, progress)?.number).toBe(2)

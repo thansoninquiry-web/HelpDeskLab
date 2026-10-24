@@ -71,8 +71,8 @@ describe('loadCurriculum', () => {
     expect(view.modules.map((module) => module.number)).toEqual(
       Array.from({ length: 16 }, (_, index) => index + 1),
     )
-    expect(view.playable).toBe(15)
-    expect(view.total).toBe(47)
+    expect(view.playable).toBe(16)
+    expect(view.total).toBe(52)
     expect(view.met).toBe(0)
     expect(view.percent).toBe(0)
     expect(view.complete).toBe(0)
@@ -167,18 +167,21 @@ describe('loadCurriculum', () => {
     const view = await loadCurriculum()
     const byNumber = new Map(view.modules.map((module) => [module.number, module]))
 
-    expect(view.playable).toBe(15)
-    expect(view.total).toBe(47)
+    expect(view.playable).toBe(16)
+    expect(view.total).toBe(52)
     // Modules 1, 6, 7 and 16 close: the listing asks for passwords, and PWD-01 passed.
     expect(view.complete).toBe(4)
     expect(view.met).toBe(15)
-    expect(view.percent).toBe(31)
+    // 15 of 52 requirements: the two device-console requirements are new and unmet.
+    expect(view.percent).toBe(28)
     expect(view.next?.number).toBe(2)
 
     expect(byNumber.get(1)?.complete).toBe(true)
     expect(byNumber.get(2)?.met).toBe(1)
     expect(byNumber.get(3)?.met).toBe(0)
     expect(byNumber.get(4)?.met).toBe(0)
+    // No attempt in this history arrived as a message, so Voicemails is still open.
+    expect(byNumber.get(5)?.met).toBe(0)
     expect(byNumber.get(6)?.complete).toBe(true)
     expect(byNumber.get(7)?.complete).toBe(true)
     // Nothing in this history opened, read, or wrote up a remote session.
@@ -269,22 +272,28 @@ describe('loadCurriculum', () => {
     await submitCommand(`start-deployment ${task?.assetTag ?? ''}`)
 
     const view = await loadCurriculum()
-    // The queue and the record are read; no hold pass and no closed attempt yet.
-    expect(moduleByNumber(view, 12).requirements.map((entry) => entry.current)).toEqual([1, 1, 0])
+    // The queue and the record are read; no hold pass, no closed attempt, and
+    // nothing yet from the device console that counts toward module 12.
+    expect(moduleByNumber(view, 12).requirements.map((entry) => entry.current)).toEqual([
+      1, 1, 0, 0, 0,
+    ])
     expect(moduleByNumber(view, 13).requirements.map((entry) => entry.current)).toEqual([1, 1, 0])
     expect(moduleByNumber(view, 13).nextRequirement?.measure).toBe('deploymentPasses')
   })
 
-  it('keeps planned modules empty and marked', async () => {
+  it('opens Voicemails on the three things a message asks for', async () => {
     const view = await loadCurriculum()
-    const planned = view.modules.filter((module) => module.status === 'planned')
+    const voicemails = moduleByNumber(view, 5)
 
-    expect(planned).toHaveLength(1)
-    for (const module of planned) {
-      expect(module.requirements).toEqual([])
-      expect(module.total).toBe(0)
-      expect(module.note).toMatch(/not in this build/i)
-      expect(module.nextRequirement).toBeNull()
-    }
+    expect(voicemails.status).toBe('playable')
+    expect(voicemails.note).toBeNull()
+    expect(voicemails.requirements.map((entry) => entry.measure)).toEqual([
+      'voicemailPasses',
+      'voicemailCallbacks',
+      'voicemailNotes',
+    ])
+    expect(voicemails.requirements.map((entry) => entry.current)).toEqual([0, 0, 0])
+    expect(voicemails.total).toBe(3)
+    expect(voicemails.nextRequirement?.measure).toBe('voicemailPasses')
   })
 })
