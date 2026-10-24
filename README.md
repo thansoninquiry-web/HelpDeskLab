@@ -39,15 +39,15 @@ worker, and a browser only registers one on a secure origin, so a phone opening
 plain `http://192.168.…` gets a lab that works but can never be installed or
 opened offline.
 
-The certificate is signed by a local CA in `.freebuff/certs/`, because this
-Tailscale account has TLS certificates turned off and so cannot issue a trusted
-one. Install `helpdesklab-ca.crt` on the phone once — Settings → Security &
-privacy → More security settings → Encryption & credentials → Install a
-certificate → CA certificate — as Chrome refuses to register the service worker
-on a certificate it does not trust.
+The certificate is signed by a CA the script mints on first run into
+`.freebuff/certs/`, so nothing outside your machine is involved; it needs
+`openssl` on the PATH. Install `helpdesklab-ca.crt` on the phone once —
+Settings → Security & privacy → More security settings → Encryption &
+credentials → Install a certificate → CA certificate — as Chrome refuses to
+register the service worker on a certificate it does not trust.
 
-Once HTTPS certificates are enabled in the Tailscale admin console (DNS → HTTPS
-Certificates), the trusted road needs no install on the phone:
+If you have a tailnet with HTTPS certificates enabled, that road needs no
+install on the phone and is the better one:
 
 ```bash
 npm run build && npm run preview   # serves 127.0.0.1:4173

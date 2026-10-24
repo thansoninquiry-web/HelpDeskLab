@@ -9,14 +9,14 @@
  * server — but that origin is not a secure context, so it can never be
  * installed, and nothing offline works there.
  *
- * Why a local CA rather than a real certificate: Tailscale would issue a trusted
- * one for the tailnet name, but this account has TLS certificates turned off, so
- * `tailscale serve` refuses. Until that toggle is flipped in the admin console,
- * this script mints its own CA and a leaf that chains to it. The phone has to
- * trust that CA — not for the padlock's sake, but because a browser refuses to
- * register a service worker on a certificate it cannot verify, which is the whole
- * point of serving over HTTPS here. Everything stays file-local: no accounts, no
- * outside services, and nothing is written to the machine's trust store.
+ * Why a local CA rather than a real certificate: a tailnet with HTTPS
+ * certificates enabled can issue a trusted one for its own name, and where that
+ * is not available this script mints its own CA and a leaf that chains to it. The
+ * phone has to trust that CA — not for the padlock's sake, but because a browser
+ * refuses to register a service worker on a certificate it cannot verify, which is
+ * the whole point of serving over HTTPS here. Everything stays file-local: no
+ * accounts, no outside services, and nothing is written to the machine's trust
+ * store.
  *
  * Usage: `npm run serve:phone`, then open one of the printed addresses.
  */
@@ -196,9 +196,9 @@ console.log('  Android: Settings → Security & privacy → More security settin
 console.log('  Encryption & credentials → Install a certificate → CA certificate.')
 console.log('  Taildrop it over with: tailscale file cp <the .crt path> <phone>: ')
 console.log('')
-console.log('The trusted alternative, needing no install on the phone: enable HTTPS')
-console.log('certificates in the Tailscale admin console (DNS → HTTPS Certificates),')
-console.log('then serve the preview and point Tailscale at it — see README “On a phone”.')
+console.log('If your tailnet has HTTPS certificates enabled, that road needs no install')
+console.log('on the phone: serve the preview and point the tailnet at it — see the')
+console.log('README section “On a phone”.')
 console.log('')
 console.log('Stop with Ctrl+C.')
 console.log('')
