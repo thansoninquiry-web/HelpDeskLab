@@ -1,7 +1,7 @@
 # HelpDeskLab — Roadmap
 
-**Status:** M0–M4, M6, and the M7 job-targets surface built · M5 and R1 sign-off still open
-**Last updated:** 2026-10-17
+**Status:** M0–M8 built, M7 half done (its sign-off slot is still open) · R1 close-out still open
+**Last updated:** 2026-10-24
 **Companion:** [architecture-helpdesklab.md](architecture-helpdesklab.md)
 
 ## 1. Goal and audience
@@ -21,7 +21,7 @@ ticket, real SQLite persistence, real scoring, real debrief. Each later release
 adds either breadth (more families, more variants) or depth (composite faults,
 timers, authoring) — never both at once.
 
-### Current status (2026-10-17)
+### Current status (2026-10-24)
 
 - **M0 — scaffold: done.** Strict Vite/React/TypeScript shell, routing, CSS
   tokens, Vitest + Testing Library, layered ESLint import rules, offline
@@ -42,6 +42,16 @@ timers, authoring) — never both at once.
   effects, ordering, notes, and the closure decision, with critical safety gates;
   attempts, action logs, scores, and per-scenario progress persisted in SQLite;
   and a debrief that explains every item plus a clean reference path.
+- **M5 — device-management console: done (2026-10-24).** A second simulator at
+  `/intune`, self-contained in `src/modules/intune/`: fifteen devices, twelve
+  people, two compliance policies and four apps seeded on first run, seven
+  `intune_*` tables from one migration, a compliance engine that calls a silent
+  device *not evaluated* rather than broken, seven device actions whose refusals
+  are recorded too, and eight practice tickets verified against the estate.
+  Attempts score out of 100 — 10 diagnosis, 55 resolution, 20 end state, 15
+  safety — and the split joins the app's rubric categories, XP, scenario stats,
+  weak topics and Asset Management's requirements. The module imports the app
+  only for its thresholds and is reached through two functions.
 - **M6 — scenario depth, handoff notes, weak topics: done.** Three more families
   (DHCP-01, M365-01, FS-01) with the tools they need, a scored escalation handoff
   note, and weak-topic recommendations on Progress. This pulls forward M365 and
@@ -52,10 +62,30 @@ timers, authoring) — never both at once.
   weakness-weighted practice recommendations, and per-listing interview prompts.
   §11 records the scope and evidence. This does not replace the R1 sign-off slot
   below; the same M7 label covers both, and sign-off is still open.
-- **Next — M5:** close Release 1 — fairness lint, three fixtures per variant,
-  keyboard/resume audit, and streak plus Leitner surfacing. R1 sign-off then
-  closes the release; M8–M11 evaluate the reference product's lesson,
-  progression, call, and interview ideas in that order (see §9).
+- **M8 — service consoles, curriculum, theming and the type scale: done
+  (checkpoint `9c7af49`).** The module curriculum and the evidence checks behind
+  it, with a lesson for every playable module; progress ranks, streaks and hint
+  budgets; the theme service with scheduled light/dark switching and its preview;
+  the service-desk consoles — directory, tool console, fake desktop, topology —
+  with the deployment, shelf, shipping and mail-security command families and the
+  scoring policy that reads them; and one documented type scale every stylesheet
+  reads, guarded so it cannot drift back. The workspace dividers and remembered
+  layout, the phone layouts for the workspace and both consoles, and the text
+  size control landed with it.
+- **Next — R1 close-out:** fairness lint over every variant, three scoring
+  fixtures per variant, the keyboard and resume audit, Leitner surfacing on
+  Progress, and the sign-off pass with its evidence. Sign-off is what closes
+  Release 1; nothing in §9 is approved ahead of it.
+
+**On the numbering.** The plan in §9.3 was written on 2026-10-17, before anything
+after M4 had shipped, and the work since reused two of its labels: M5 went to the
+device console and M8 to the service-console and course pass, both committed
+under those names. So read §9.3's M5 row as *R1 close-out* — the work is unchanged,
+the number is not — and its M8 *field notes* row as unbuilt: the lesson written for
+each module covers part of that ground, but a per-family primer does not exist yet.
+M9's rank and streak shipped inside M8 and are in the header today, though the
+tier ladder itself is only written down in `src/domain/progress/rank.ts`; M10's
+text call mode and M11's interview drill are still only ideas.
 
 The Release 1 checklist and acceptance criteria below are still outstanding; the
 items above cover the build milestones but not yet the fairness-lint acceptance
@@ -64,7 +94,7 @@ tests (500 tickets per variant, unsafe/lucky fixtures per scenario).
 A family is "done" only when it has a reference script, fairness lint coverage,
 three scoring fixtures, and a debrief that explains every deduction. M6 added
 the reference scripts and rubric coverage for three new families; their fairness
-lint and fixtures land with M5.
+lint and fixtures land with R1 close-out.
 
 ## 2. Release 1 — "First Shift"
 
@@ -174,13 +204,13 @@ focused solo work**. No dates are committed.
 | M2 | Environment core: world model, command parser/registry, network + identity probes/actions, simulated clock | L | Reducer unit tests; wrong-tool outputs are realistic |
 | M3 | Generator and workspace across PWD-01, NET-01, and PRN-01: seeded tickets, queue, terminal, caller questions, verification, notes, resolve/escalate | L | Any generated ticket playable from queue to debrief · **done** |
 | M4 | Scoring and debrief: declarative specs over the action log and end state, safety gates, SQLite persistence, explained debrief | M | Reference/unsafe/lucky fixtures behave as specified · **done** |
-| M5 | Close Release 1: fairness lint over twelve variants, three fixtures per variant, keyboard/resume audit, streak and Leitner surfacing | M | R1 criteria 2–6 and 11 demonstrated |
-| M6 | Scenario depth, handoff notes, weak topics: DHCP-01, M365-01, FS-01 with their tools; a scored escalation handoff; weak-topic recommendations on Progress | L | Twelve variants score 100 on the reference path; escalation notes are scored by content; Progress names the weakest family |
-| M7 | R1 sign-off: recovery UI polish, a11y and performance pass, docs, manual E2E script | S | All acceptance criteria recorded |
+| M5 | Close Release 1: fairness lint over twelve variants, three fixtures per variant, keyboard/resume audit, streak and Leitner surfacing — **renumbered: the label M5 went to the device console, so this work is the R1 close-out above** | M | R1 criteria 2–6 and 11 demonstrated |
+| M6 | Scenario depth, handoff notes, weak topics: DHCP-01, M365-01, FS-01 with their tools; a scored escalation handoff; weak-topic recommendations on Progress | L | Twelve variants score 100 on the reference path; escalation notes are scored by content; Progress names the weakest family · **done** |
+| M7 | R1 sign-off: recovery UI polish, a11y and performance pass, docs, manual E2E script | S | All acceptance criteria recorded · **open** |
 
 The plan is a vertical slice, not waterfall: M2–M4 were developed against NET-01
 so the loop was playable early; M6 then widened the catalog once the mechanics
-were proven, and M5/M7 close the release around it.
+were proven, and the close-out and sign-off close the release around it.
 
 ### R1 risks
 
@@ -299,7 +329,8 @@ No release ships unless:
 
 ## 9. Proposed M5+ plan — from the reference feature inventory
 
-**Proposed 2026-10-17 · M6 delivered, the rest awaiting approval.**
+**Proposed 2026-10-17 · M6, M8 and M9's rank and streak have shipped since, and
+M5 was reused for the device console; the rest awaits approval.**
 
 M6 replaced the old "R1 sign-off" slot with scenario depth: DHCP-01, M365-01,
 FS-01, a scored escalation handoff note, and weak-topic recommendations on
@@ -323,7 +354,7 @@ versions below are independent designs rather than reconstructions.
 | 2. Points and rank progression | Medium — motivating, but XP already exists and is not yet surfaced | S, no schema change | A rank title derived from total stored XP, shown in the header with a small progress bar, plus a weekly practice streak computed from session timestamps on the dashboard. No achievements, badges, leaderboards, or currency. | M9 |
 | 4. Phone-call practice | Medium–high — call handling is the part of the job the terminal cannot teach, and the caller scripts already exist | M — a new interaction mode, no audio | A text call mode on one family: caller turns arrive in sequence with two decision points (verify identity, read back the fix), recorded in the action log and scored as one communication rubric item. No audio, transcription, voicemail box, or script authoring. | M10 |
 | 3. Mock interview mode | Medium overall, high for job seekers; weakest link to the simulated machine | M–L — content plus a new surface | Three original interviewer personas × five questions; each question is answered by picking the strongest of three original responses, followed by an explanation of why the others are weaker and a short summary. No free-text grading, no AI, no voice. | M11 |
-| 5. Open-ticket count and severity colour-coding | Already delivered in M3 | None | The queue already shows open/closed counts and colour-coded severity | Done — verify in the M5 checklist |
+| 5. Open-ticket count and severity colour-coding | Already delivered in M3 | None | The queue already shows open/closed counts and colour-coded severity | Done — verify in the close-out checklist |
 
 Deliberately not carried over from the reference product: paid gating, a points
 economy, achievements, video or screenshot-based lessons, voice calls, and
@@ -358,10 +389,17 @@ its fixture set before it ships rather than after.
 | M5 | Close Release 1: fairness lint (500 tickets per variant, 6,000 total), three scoring fixtures per variant, keyboard and resume audit, streak and Leitner surfacing | M | R1 criteria 2–6 and 11 demonstrated with no new feature surface |
 | M6 | Scenario depth, handoff notes, weak topics — **done** | L | Twelve variants score 100 on the reference path; handoff notes scored by content; Progress names the weakest family |
 | M7 | R1 sign-off: recovery-flow polish, accessibility and performance pass, docs refresh, recorded manual E2E script — **still open**; the job-targets surface that shipped under the same label is recorded in §11 | S | All R1 acceptance criteria recorded with evidence |
-| M8 | Family field notes: one original primer per family, linked from queue and debrief | S–M | Every family has a primer; copy independently written; no schema change |
-| M9 | Rank and streak: derived rank from XP, weekly streak on the dashboard | S | Rank and streak survive reload; thresholds documented; no new tables |
+| M8 | Family field notes: one original primer per family, linked from queue and debrief — **label used instead for the service consoles, curriculum, theming and type scale; the primers are still unbuilt** | S–M | Every family has a primer; copy independently written; no schema change |
+| M9 | Rank and streak: derived rank from XP, weekly streak on the dashboard — **shipped inside M8, except that the ladder is documented only in `src/domain/progress/rank.ts`** | S | Rank and streak survive reload; thresholds documented; no new tables |
 | M10 | Text call mode: one family end-to-end | M | Call variant playable from greeting to resolution; transcript stored as actions; communication rubric item with fixtures |
 | M11 | Interview drill: personas, questions, deterministic scoring, summary | M–L | Three personas playable; scoring is deterministic and explained; no AI or free text required |
+
+**Reading this table today.** The label **M5** went to the device console, so
+this row's work is the *R1 close-out* described under *Current status* — the
+number moved, the work did not. The **M8** row's family primers are still
+unbuilt, because that label was used for the service consoles, course, theming
+and type scale, and **M9** shipped inside those. When a label is reused in a
+commit message, this table is what to correct first.
 
 **Why this order.** Release 1's acceptance criteria are still unmet, so closing
 them outranks any new surface. Field notes come first among the new features
@@ -391,7 +429,8 @@ handling, M11 can move ahead of M10 without touching the engine.
 
 ### 9.5 Open questions for approval
 
-1. Does closing Release 1 (M5 and M7) stay ahead of all new surfaces?
+1. Does closing Release 1 (the close-out and M7's sign-off) stay ahead of all
+   new surfaces?
 2. Are single-screen field notes enough, or should each family get a three-page
    primer with paging?
 3. Are original rank names acceptable (for example a Tier 1 progression ladder),
@@ -411,10 +450,11 @@ Confirm the four choices listed in
 4. Keep all local attempt history, with export/import and manual reset
    (recommended).
 
-For the work ahead, also confirm the §9 sequencing: finish Release 1 (M5 and
-M7) before M8 field notes, M9 rank and streak, M10 text call mode, and M11
-interview drill — or say what to reorder. Nothing after M6 is implemented until
-that approval arrives.
+For the work ahead, also confirm the §9 sequencing: finish Release 1 (the
+close-out above and M7's sign-off slot) before the unbuilt ideas — family
+primers, M10 text call mode, M11 interview drill — or say what to reorder. The
+device console, the service consoles and course, and rank and streak are already
+in; nothing beyond them is implemented until that approval arrives.
 
 ## 11. M7 delivered — job targets and skills coverage
 
