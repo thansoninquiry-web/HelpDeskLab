@@ -349,6 +349,9 @@
 }
 
 .moduleAction {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.5rem;
   color: var(--accent);
   font-family: var(--font-mono);
   font-size: var(--type-xs);
@@ -554,6 +557,7 @@
 
 .field {
   display: grid;
+  min-width: 0;
   gap: 0.3rem;
   color: var(--text-faint);
   font-family: var(--font-mono);
@@ -564,6 +568,10 @@
 
 .field input,
 .field select {
+  /* A long option must not widen the page: the field shrinks and the select
+     with it, rather than pushing the route sideways. */
+  width: 100%;
+  min-width: 0;
   padding: 0.4rem 0.5rem;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
@@ -784,6 +792,16 @@
   color: var(--accent);
 }
 
+/*
+ * The file input is clipped to nothing, and a clipped control is not given
+ * `:focus-visible` by the browser — so the label it lives in paints the ring for
+ * it, on `:focus-within`, which still matches.
+ */
+.fileLabel:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .fileInput {
   position: absolute;
   width: 1px;
@@ -847,6 +865,9 @@
 }
 
 .lessonBack {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.5rem;
   color: var(--accent);
   font-family: var(--font-mono);
   font-size: var(--type-xs);

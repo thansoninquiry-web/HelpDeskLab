@@ -1,3 +1,5 @@
+import type { VoicemailArrival } from '../tickets/voicemail'
+
 export type SiteId = string
 export type DeviceId = string
 export type UserId = string
@@ -268,6 +270,12 @@ export interface World {
   clock: number
   orgName: string
   domain: string
+  /**
+   * The message this request arrived as, when it was left on the voicemail.
+   * Absent on a ticket that came in live, and on every attempt made before
+   * voicemails were recorded.
+   */
+  voicemail?: VoicemailArrival
   sites: Site[]
   users: DirectoryUser[]
   devices: Device[]
@@ -325,6 +333,16 @@ export interface World {
    */
   mobileOutOfAction?: boolean
   /**
+   * A line on the caller's record that a whole team answers, set by a variant
+   * where a callback to it reaches a colleague instead of the employee. The
+   * label is what the record calls the line; `answeredBy` is the colleague who
+   * picks it up, so the gate can name who actually confirmed.
+   */
+  sharedCallbackLine?: {
+    label: string
+    answeredBy: string
+  }
+  /**
    * The request the desk refused on this call. Once it is set, the commands
    * that change an account will not run: the refusal is the decision, and a
    * refusal is not carried out the moment the caller is not looking.
@@ -370,7 +388,7 @@ export interface CallerClaim {
   identity?: boolean
 }
 
-export type VerificationRecipientRole = 'caller' | 'manager'
+export type VerificationRecipientRole = 'caller' | 'manager' | 'team'
 
 /**
  * How a contact can be used to prove who is on the call. Two methods reach a
@@ -404,6 +422,11 @@ export interface VerificationRecipient {
    * that is lost. A code is still sent to it, but nothing can be read back.
    */
   reachable: boolean
+  /**
+   * The colleague who answers a shared team line. Absent on the caller's own
+   * contacts: only a line the whole team picks up needs to say who picked it up.
+   */
+  answeredBy?: string
 }
 
 export interface ActiveVerificationCode {

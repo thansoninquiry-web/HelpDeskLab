@@ -8,6 +8,7 @@ function localDay(day: number, hour = 9): number {
 
 function entry(computedAt: number, xp: number, overrides: Partial<ScoreHistoryEntry> = {}): ScoreHistoryEntry {
   return {
+    sessionId: 'session-1',
     scenarioId: 'NET-01',
     variantId: 'bad-static-dns',
     total: 80,

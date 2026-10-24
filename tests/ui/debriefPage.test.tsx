@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DebriefView } from '../../src/app/practiceService'
@@ -36,6 +36,8 @@ function makeDebrief(overrides: Partial<DebriefView> = {}): DebriefView {
       },
       symptoms: ['Sign-in is rejected'],
       reportedAt: Date.UTC(2026, 9, 16, 9, 30),
+      voicemail: null,
+      resume: null,
     },
     decision: { outcome: 'resolved', code: 'resolved-remote', note: '' },
     total: 75,
@@ -43,6 +45,7 @@ function makeDebrief(overrides: Partial<DebriefView> = {}): DebriefView {
     band: 'fail',
     xp: 40,
     hintPolicy,
+    hintPriceNow: null,
     hintPricing: {
       policy: hintPolicy,
       source: 'default',
@@ -81,6 +84,7 @@ function makeDebrief(overrides: Partial<DebriefView> = {}): DebriefView {
     hintPenalty: 10,
     unaccountedHints: 0,
     unaccountedHintCost: 0,
+    hintRepair: null,
     violations: [
       {
         id: 'unverified-change',
@@ -94,7 +98,19 @@ function makeDebrief(overrides: Partial<DebriefView> = {}): DebriefView {
     topology: null,
     topologyMap: null,
     identityFindings: [],
+    refusalFindings: [],
     pressure: { interruptions: 0, beats: [] },
+    // Nothing opened in the tools unless a test says otherwise: the section is
+    // left out entirely for an attempt that never used a console.
+    toolUse: {
+      order: [],
+      consoles: [],
+      busiest: null,
+      idle: [],
+      switches: 0,
+      revisits: 0,
+      shellCommands: 0,
+    },
     trail: [
       {
         kind: 'command',
@@ -134,6 +150,7 @@ vi.mock('../../src/app/practiceService', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/app/practiceService')>()),
   loadDebrief: vi.fn(),
   startAttempt: vi.fn(),
+  repairHintRecord: vi.fn(),
 }))
 
 function renderDebrief() {
@@ -169,6 +186,138 @@ describe('DebriefPage', () => {
     expect(screen.queryByLabelText('Identity check')).not.toBeInTheDocument()
     // And a caller who never broke in has no pressure to report.
     expect(screen.queryByLabelText('Caller pressure')).not.toBeInTheDocument()
+    // An attempt that never opened a console has nothing to say about tools.
+    expect(screen.queryByLabelText('How you used the tools')).not.toBeInTheDocument()
+  })
+
+  it('reads which consoles the attempt opened, in order, and what each one carried', async () => {
+    const practice = await import('../../src/app/practiceService')
+    vi.mocked(practice.loadDebrief).mockResolvedValue(
+      makeDebrief({
+        toolUse: {
+          order: ['directory', 'printers', 'shares'],
+          consoles: [
+            { consoleId: 'directory', opens: 1, reads: 4, commands: 1 },
+            { consoleId: 'printers', opens: 2, reads: 0, commands: 3 },
+            { consoleId: 'shares', opens: 1, reads: 2, commands: 0 },
+          ],
+          busiest: 'printers',
+          idle: ['shares'],
+          switches: 2,
+          revisits: 1,
+          shellCommands: 2,
+        },
+      }),
+    )
+
+    renderDebrief()
+
+    const section = await screen.findByLabelText('How you used the tools')
+    expect(within(section).getByText('3 consoles · 2 moves')).toBeInTheDocument()
+
+    // The rows are the order the consoles were first opened in, not the busiest
+    // first: the order is the thing this section exists to say.
+    const list = within(section).getByRole('list', {
+      name: 'Consoles in the order you first opened them',
+    })
+    expect(
+      within(list)
+        .getAllByRole('listitem')
+        .map((row) => row.textContent?.replace(/^\d{2}/, '')),
+    ).toEqual([
+      'Directoryopened 1 time · 4 records read · 1 command',
+      'Printersopened 2 times · 3 commands',
+      'File sharesopened 1 time · 2 records read · no commands',
+    ])
+
+    // What it adds up to: where the work happened, what was never used, and how
+    // much the attempt moved about.
+    expect(within(section).getByText('Printers carried the work: 3 commands.')).toBeInTheDocument()
+    expect(
+      within(section).getByText(
+        'The File shares console was opened but never used to run anything.',
+      ),
+    ).toBeInTheDocument()
+    expect(
+      within(section).getByText('You moved between consoles 2 times, going back 1 time.'),
+    ).toBeInTheDocument()
+    expect(within(section).getByText('You also typed 2 commands in a shell.')).toBeInTheDocument()
+  })
+
+  it('says when the attempt stayed in one console, and counts the records it read there', async () => {
+    const practice = await import('../../src/app/practiceService')
+    vi.mocked(practice.loadDebrief).mockResolvedValue(
+      makeDebrief({
+        toolUse: {
+          order: ['server-room'],
+          consoles: [{ consoleId: 'server-room', opens: 1, reads: 5, commands: 4 }],
+          busiest: 'server-room',
+          idle: [],
+          switches: 0,
+          revisits: 0,
+          shellCommands: 0,
+        },
+      }),
+    )
+
+    renderDebrief()
+
+    const section = await screen.findByLabelText('How you used the tools')
+    expect(
+      within(section).getByText('Server room carried the work: 4 commands and read 5 records there.'),
+    ).toBeInTheDocument()
+    expect(within(section).getByText('You worked in one console throughout.')).toBeInTheDocument()
+    expect(within(section).queryByText(/moved between consoles/)).not.toBeInTheDocument()
+    // Nothing was opened and left idle, so nothing is said about one.
+    expect(within(section).queryByText(/never used to run anything/)).not.toBeInTheDocument()
+  })
+
+  it('shows a step answered under the wrong reason as partly met, with the reason named', async () => {
+    const practice = await import('../../src/app/practiceService')
+    const sentence =
+      'Partial credit: you refused the request, but filed it as “Could not verify who is calling” rather than “Asked for a password or a code”. The service desk never reads out or accepts passwords or verification codes.'
+    vi.mocked(practice.loadDebrief).mockResolvedValue(
+      makeDebrief({
+        total: 85,
+        passed: true,
+        band: 'pass',
+        criticalFailures: [],
+        items: [
+          {
+            id: 'refuse-credential-request',
+            label: 'Refused the request for a password or a code',
+            category: 'safety',
+            weight: 30,
+            critical: true,
+            passed: false,
+            credit: 0.5,
+            why: 'A password is a secret only its holder may see.',
+            hints: [],
+            evidence: [sentence],
+            gaps: [sentence],
+            hintsTaken: [],
+          },
+        ],
+        categoryScores: {
+          diagnosis: { earned: 15, possible: 15 },
+          documentation: { earned: 25, possible: 25 },
+          resolution: { earned: 15, possible: 15 },
+          safety: { earned: 30, possible: 45 },
+        },
+      }),
+    )
+
+    const { container } = renderDebrief()
+
+    expect(
+      await screen.findByText(/Refused the request for a password or a code/),
+    ).toBeInTheDocument()
+    const steps = screen.getByLabelText('Attempt findings')
+    // Neither a tick nor a cross: the row says what it earned and why.
+    expect(within(steps).getByText('Partly met')).toBeInTheDocument()
+    expect(within(steps).getByText(/Safety · 15 of 30 pts/)).toBeInTheDocument()
+    expect(within(steps).getByText(sentence)).toBeInTheDocument()
+    expect(container.textContent).toContain('0 of 1 steps met · 1 partly')
   })
 
   it('reports how many times the caller broke in and what each interruption followed', async () => {
@@ -246,6 +395,39 @@ describe('DebriefPage', () => {
     expect(within(section).getByText(/could not read it back/)).toBeInTheDocument()
   })
 
+  it('names the account changes tried after the request was refused', async () => {
+    const practice = await import('../../src/app/practiceService')
+    vi.mocked(practice.loadDebrief).mockResolvedValue(
+      makeDebrief({
+        decision: {
+          outcome: 'escalated',
+          code: 'denied-social-engineering',
+          note: 'Refused the request and reported it to Security.',
+        },
+        refusalFindings: [
+          {
+            id: 'change-after-refusal',
+            claim: 'Refused the request — could not verify who is calling.',
+            evidence:
+              '2 commands that change an account came after it — unlock-account, reset-mfa on mchen — and the refusal stopped every one, so nothing was changed on the caller’s word. The refusal is the decision, not a step to work around.',
+          },
+        ],
+      }),
+    )
+
+    renderDebrief()
+
+    const section = await screen.findByLabelText('After the refusal')
+    expect(within(section).getByText('1 change tried')).toBeInTheDocument()
+    expect(within(section).getByText(/could not verify who is calling/)).toBeInTheDocument()
+    expect(within(section).getByText(/the refusal stopped every one/i)).toBeInTheDocument()
+    expect(within(section).getByText(/not a step to work around/i)).toBeInTheDocument()
+
+    // A refusal that was honoured stays out of the debrief, so the section is
+    // about the contradiction and not about refusing at all.
+    expect(screen.queryByLabelText('Identity check')).not.toBeInTheDocument()
+  })
+
   it('files each shell command under the machine it ran on', async () => {
     renderDebrief()
 
@@ -281,6 +463,45 @@ describe('DebriefPage', () => {
       'Hints were priced for Accounts, not at the default: 3 points a rung, capped at 9.',
     )
     expect(note).toHaveTextContent('The default then was 5 points a rung, capped at 15.')
+  })
+
+  it('says when the hint price has moved since the attempt started', async () => {
+    const practice = await import('../../src/app/practiceService')
+    vi.mocked(practice.loadDebrief).mockResolvedValue(
+      makeDebrief({
+        hintPolicy: { perHint: 5, cap: 15, budget: 0 },
+        hintPriceNow: { perHint: 9, cap: 27, budget: 0 },
+      }),
+    )
+    renderDebrief()
+
+    const line = (await screen.findByText(/Settings have moved since/)).closest('p')
+    expect(line).not.toBeNull()
+    expect(line).toHaveTextContent('it paid 5 points a rung, capped at 15')
+    expect(line).toHaveTextContent('would be priced at 9 points a rung, capped at 27')
+    expect(line).toHaveTextContent('The score keeps the price it started under')
+  })
+
+  it('reads a move away from free hints in both directions', async () => {
+    const practice = await import('../../src/app/practiceService')
+    vi.mocked(practice.loadDebrief).mockResolvedValue(
+      makeDebrief({
+        hintPolicy: { perHint: 0, cap: 0, budget: 0 },
+        hintPriceNow: { perHint: 5, cap: 15, budget: 0 },
+      }),
+    )
+    renderDebrief()
+
+    const line = (await screen.findByText(/Settings have moved since/)).closest('p')
+    expect(line).toHaveTextContent('it paid nothing — hints were free')
+    expect(line).toHaveTextContent('would be priced at 5 points a rung, capped at 15')
+  })
+
+  it('says nothing about settings when the price has not moved', async () => {
+    renderDebrief()
+
+    await screen.findByLabelText('Score')
+    expect(screen.queryByText(/Settings have moved since/)).not.toBeInTheDocument()
   })
 
   it('hands over the ladders an exam withheld, priced at the exam rate', async () => {
@@ -601,6 +822,113 @@ describe('DebriefPage', () => {
     expect(
       screen.queryByLabelText('Hints available on Verified the caller before touching the account'),
     ).not.toBeInTheDocument()
+  })
+
+  it('offers to reconstruct a lost hint record, and shows the rebuild as reconstructed', async () => {
+    const practice = await import('../../src/app/practiceService')
+    const repair = {
+      placed: 0,
+      missing: 2,
+      rungs: [
+        { sequence: 1, cost: 5 },
+        { sequence: 2, cost: 5 },
+      ],
+      cost: 10,
+      charged: 10,
+      policy: { perHint: 5, cap: 15, budget: 0 },
+      repairedAt: Date.UTC(2026, 9, 20, 10, 0),
+      source: 'policy' as const,
+    }
+    vi.mocked(practice.loadDebrief).mockResolvedValue(
+      makeDebrief({ unaccountedHints: 2, unaccountedHintCost: 10 }),
+    )
+    vi.mocked(practice.repairHintRecord).mockResolvedValue(
+      makeDebrief({ unaccountedHints: 2, unaccountedHintCost: 10, hintRepair: repair }),
+    )
+
+    renderDebrief()
+
+    // Before the press the offer says what it would do and what it would cost.
+    const offer = await screen.findByRole('note')
+    expect(offer).toHaveTextContent('2 hints were revealed and cost 10 points')
+    expect(offer).toHaveTextContent(/priced again from this attempt’s own policy/)
+    expect(offer).toHaveTextContent('5 points a rung, capped at 15')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reconstruct the missing rungs' }))
+
+    expect(practice.repairHintRecord).toHaveBeenCalledWith('session-1')
+    const rebuilt = await screen.findByLabelText('Reconstructed hint record')
+    // The word is on the record itself, not only in the button that made it.
+    expect(within(rebuilt).getByText('Reconstructed')).toBeInTheDocument()
+    expect(rebuilt).toHaveTextContent('2 lost rungs repriced from this attempt’s own policy')
+    // Each rung is priced at the position it can only have had, and none of them
+    // is shown against a step.
+    expect(within(rebuilt).getByText('First rung')).toBeInTheDocument()
+    expect(within(rebuilt).getByText('After rung 1')).toBeInTheDocument()
+    expect(within(rebuilt).getAllByText('−5 pts')).toHaveLength(2)
+    expect(rebuilt).toHaveTextContent(/kept on the score on/)
+    expect(rebuilt).toHaveTextContent(/still cannot say which step each rung unstuck/)
+
+    // The charge beside the score is untouched by the repair.
+    expect(screen.getByLabelText('Score')).toHaveTextContent('Hints: 2 (−10 pts')
+    expect(screen.queryByRole('button', { name: 'Reconstruct the missing rungs' }))
+      .not.toBeInTheDocument()
+  })
+
+  it('keeps the debrief on screen when the repair fails, with the error beside it', async () => {
+    const practice = await import('../../src/app/practiceService')
+    vi.mocked(practice.loadDebrief).mockResolvedValue(
+      makeDebrief({ unaccountedHints: 2, unaccountedHintCost: 10 }),
+    )
+    vi.mocked(practice.repairHintRecord).mockRejectedValue(
+      new Error('Session session-1 has no score to keep a hint repair on'),
+    )
+
+    renderDebrief()
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Reconstruct the missing rungs' }),
+    )
+
+    // The page already carries one alert (the missed critical steps), so the
+    // failure is read in the notice it belongs to.
+    const notice = await screen.findByRole('note')
+    expect(within(notice).getByRole('alert')).toHaveTextContent(
+      'no score to keep a hint repair on',
+    )
+    // The score and the steps are still readable, and the offer can be tried again.
+    expect(screen.getByLabelText('Score')).toHaveTextContent('Hints: 2')
+    expect(
+      screen.getByRole('button', { name: 'Reconstruct the missing rungs' }),
+    ).toBeInTheDocument()
+  })
+
+  it('keeps the charge and says so when the policy no longer prices it', async () => {
+    const practice = await import('../../src/app/practiceService')
+    vi.mocked(practice.loadDebrief).mockResolvedValue(
+      makeDebrief({
+        unaccountedHints: 1,
+        unaccountedHintCost: 25,
+        hintRepair: {
+          placed: 0,
+          missing: 1,
+          rungs: [{ sequence: 1, cost: 5 }],
+          cost: 5,
+          charged: 25,
+          policy: { perHint: 5, cap: 15, budget: 0 },
+          repairedAt: Date.UTC(2026, 9, 20, 10, 0),
+          source: 'policy',
+        },
+      }),
+    )
+
+    renderDebrief()
+
+    const rebuilt = await screen.findByLabelText('Reconstructed hint record')
+    expect(rebuilt).toHaveTextContent(
+      'The policy prices these rungs at 5 points and the score charged 25.',
+    )
+    expect(rebuilt).toHaveTextContent('The charge is what stands')
   })
 
   it('shows hints as free on a score recorded when they carried no cost', async () => {

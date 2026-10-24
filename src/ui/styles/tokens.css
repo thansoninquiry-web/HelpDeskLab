@@ -54,6 +54,48 @@
    */
   --split-ratio: 0.5;
 
+  /*
+   * The same, one level out: where the divider between the case file and the tool
+   * card sits, as the share of the stage the case file takes. The workspace sets it
+   * as the learner drags, and the default is the fractions the grid shipped with —
+   * 0.92 of the stage against 1.45.
+   */
+  --stage-ratio: 0.388;
+
+  /*
+   * How wide the tool card is when a short, wide window docks it to the right
+   * edge instead of stacking it: half the window, with a floor wide enough for
+   * the console to wrap in and a ceiling so a short desktop window does not give
+   * it most of the page. Declared here because the workspace, the stage bar and
+   * the stage all measure against it, and because a stylesheet may not ask for a
+   * token the palette does not name.
+   */
+  --dock-width: clamp(20rem, 50vw, 30rem);
+
+  /*
+   * How much of a phone's screen the docked tool card takes. Two numbers because
+   * the card's job differs: a log reads at a little over half the screen, while a
+   * machine's desktop is a screen and wants most of it. The workspace writes both
+   * when the learner drags the card's top edge, so the height they chose holds
+   * whichever of the two is on the card; these are the untouched shares, and the
+   * two themes lay out identically. Written twice each because an unknown unit is
+   * dropped at parse time, and a browser without `dvh` keeps the `vh` line.
+   */
+  --dock-share: 55vh;
+  --dock-share: 55dvh;
+  --dock-share-desktop: 82vh;
+  --dock-share-desktop: 82dvh;
+
+  /*
+   * How much of the window an on-screen keyboard covers, in pixels. The workspace
+   * measures it from the visual viewport and lifts the docked console by that much,
+   * so the command line stays above the keys. Declared here rather than only in
+   * the workspace because a stylesheet may not ask for a token the palette does
+   * not name; the default is the no-keyboard case and the two themes lay out
+   * identically.
+   */
+  --keyboard-inset: 0px;
+
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 10px;
@@ -104,11 +146,54 @@
   --type-display: clamp(1.45rem, 2.2vw, 1.95rem);
   --type-display-lg: clamp(2rem, 3.4vw, 2.7rem);
 
+  /*
+   * The interface scale: the one number the root font-size is multiplied by, so
+   * Settings can grow or shrink the workspace without a stylesheet sweep. Every
+   * size above and every length in the components is a rem against the root, so
+   * the type and the spacing move together and nothing drifts out of proportion
+   * — the opposite of a per-stylesheet text size, which is what the ladder above
+   * exists to prevent.
+   *
+   * Settings offers Small, Default and Large; the values are declared below and
+   * the attribute is set before the first frame, like the theme. Default is the
+   * size the layout is drawn at. Small takes the micro-labels below the 0.7rem
+   * design floor on purpose: that floor is the floor of the design, and a learner
+   * asking for a tighter screen is choosing to go under it.
+   */
+  --ui-scale: 1;
+
   --max-width: 1240px;
   --workspace-width: 1440px;
   --gutter: clamp(1rem, 2.4vw, 1.75rem);
   --header-height: 3.5rem;
   --rail-width: 2.75rem;
+
+  /*
+   * How wide the fade is at each end of the open-tool strip. It lives here, with
+   * the other measurements, because two things read it: the mask that draws the
+   * fade, and the script that scrolls the tab in front into view — which stops
+   * clear of the fade, since a tab brought in by an edge that is still fading out
+   * has not really been brought into view.
+   */
+  --strip-fade: 2.5rem;
+}
+
+/*
+ * The text size Settings writes as `data-text-size` on the root. Every choice is
+ * declared, including the default, so the stylesheet and the domain agree on the
+ * list rather than leaving one of them to a fallback — tests/ui/typeScale.test.ts
+ * reads both and fails if a choice exists on only one side.
+ */
+:root[data-text-size='small'] {
+  --ui-scale: 0.875;
+}
+
+:root[data-text-size='default'] {
+  --ui-scale: 1;
+}
+
+:root[data-text-size='large'] {
+  --ui-scale: 1.125;
 }
 
 /*

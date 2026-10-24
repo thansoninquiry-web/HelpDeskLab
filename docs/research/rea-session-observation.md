@@ -212,3 +212,25 @@ verification, ordering, and documentation quality are where points are lost.
 - Whether `Close Anyway` can still claim any points.
 
 Each needs a signed-in session; none should be designed against until then.
+
+---
+
+## 8. Public demo, no sign-in (2026-10-20)
+
+Observed on the public demo at `#ticket/NET17917668259890/remote` (no sign-in).
+
+- Ticket: "WiFi keeps disconnecting every few seconds", CRITICAL, reporter Andrew
+  Kim (Sales). The status line reads "Solution complete" and the action reads
+  "Review the work, then close the ticket." with a `CLOSE TICKET` button.
+- Company Chat with Andrew Kim works without sign-in. A typed message ("Hi Andrew,
+  is the connection still dropping? If so, since when?") was sent and answered
+  ("Hey! Nope, it's all good now…"). Replies are stamped with local times.
+- Network during that exchange: only Firestore `Write/channel` traffic and a
+  Google Analytics `collect` beacon. No `callDialogue` or `transcribeAudio`
+  function request was seen. The reply came over Firestore, not a cloud function.
+- `Start voice call` opened no visible panel and produced no function request.
+
+So on the public demo, text chat does not call `callDialogue`, and voice calls
+did not start. Whether either fires for a signed-in session is still unobserved.
+One limit: the log was captured after the first reply, so a request made before
+the clear would be missed.

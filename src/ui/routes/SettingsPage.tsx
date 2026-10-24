@@ -40,6 +40,14 @@ import {
   type ThemePreference,
   type ThemeSchedule,
 } from '../../app/themeService'
+import {
+  applyTextSize,
+  describeCurrentTextSize,
+  loadTextSize,
+  saveTextSize,
+  textSizeChoices,
+  type TextSize,
+} from '../../app/textSizeService'
 import { familyLabel } from '../components/familyLabels'
 import { PageHeader } from '../components/PageHeader'
 import { ThemeSchedulePreview } from '../components/ThemeSchedulePreview'
@@ -143,6 +151,9 @@ export function SettingsPage() {
   const [theme, setTheme] = useState<ThemePreference | null>(null)
   const [terminal, setTerminal] = useState<TerminalSurface | null>(null)
   const [terminalAction, setTerminalAction] = useState<ActionState>({ kind: 'idle' })
+  // Null while the stored size is still being read.
+  const [textSize, setTextSize] = useState<TextSize | null>(null)
+  const [textSizeAction, setTextSizeAction] = useState<ActionState>({ kind: 'idle' })
   // The sentence under the choices names the resolved theme, and Schedule can
   // change it at dawn or dusk while this page sits open, so it is re-rendered
   // when the workspace changes rather than only when a control is touched.
@@ -185,6 +196,33 @@ export function SettingsPage() {
     () => subscribeToTheme(() => setThemeVersion((version) => version + 1)),
     [],
   )
+
+  useEffect(() => {
+    let active = true
+
+    // Read on its own, so a settings row that cannot be read reports itself here
+    // rather than failing the theme's own read with it.
+    loadTextSize().then(
+      (stored) => {
+        if (active) {
+          applyTextSize(stored)
+          setTextSize(stored)
+        }
+      },
+      (error: unknown) => {
+        if (active) {
+          setTextSizeAction({
+            kind: 'error',
+            message: error instanceof Error ? error.message : 'Your text size could not be read.',
+          })
+        }
+      },
+    )
+
+    return () => {
+      active = false
+    }
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -388,6 +426,29 @@ export function SettingsPage() {
       setThemeAction({
         kind: 'error',
         message: caught instanceof Error ? caught.message : 'The theme could not be saved.',
+      })
+    }
+  }
+
+  const onChooseTextSize = async (value: TextSize) => {
+    const previous = textSize
+    // The scale is applied before the write, so the workspace answers the click
+    // at once; a failed write puts the size it had back.
+    applyTextSize(value)
+    setTextSize(value)
+    setTextSizeAction({ kind: 'working', label: 'Saving the text size…' })
+    try {
+      const saved = await saveTextSize(value)
+      setTextSize(saved)
+      setTextSizeAction({ kind: 'idle' })
+    } catch (caught) {
+      if (previous !== null) {
+        applyTextSize(previous)
+        setTextSize(previous)
+      }
+      setTextSizeAction({
+        kind: 'error',
+        message: caught instanceof Error ? caught.message : 'The text size could not be saved.',
       })
     }
   }
@@ -639,6 +700,54 @@ export function SettingsPage() {
                   {themeAction.message}
                 </p>
               ) : null}
+
+              <div className={styles.subgroup}>
+                <h3 className={styles.subgroupHeading}>Text size</h3>
+                <p className={styles.sectionText}>
+                  Everything in the workspace is measured against the root, so this one choice
+                  scales the type and the spacing together instead of a handful of labels moving
+                  on their own. It is stored beside the theme and applied before the first
+                  frame, so the workspace never flashes the other size on the way in.
+                </p>
+
+                {textSize === null ? (
+                  <p className={styles.statusMessage}>Reading your text size…</p>
+                ) : (
+                  <>
+                    <div className={styles.themeRow} role="radiogroup" aria-label="Text size">
+                      {textSizeChoices().map((choice) => (
+                        <label
+                          key={choice.value}
+                          className={styles.themeChoice}
+                          data-selected={String(textSize === choice.value)}
+                        >
+                          <input
+                            type="radio"
+                            name="textSize"
+                            value={choice.value}
+                            aria-label={choice.label}
+                            checked={textSize === choice.value}
+                            disabled={textSizeAction.kind === 'working'}
+                            onChange={() => void onChooseTextSize(choice.value)}
+                          />
+                          <span className={styles.themeChoiceLabel}>{choice.label}</span>
+                          <span className={styles.themeChoiceDetail}>{choice.detail}</span>
+                        </label>
+                      ))}
+                    </div>
+
+                    <p className={styles.hintEffect} role="status">
+                      {describeCurrentTextSize()}
+                    </p>
+                  </>
+                )}
+
+                {textSizeAction.kind === 'error' ? (
+                  <p className={styles.statusError} role="alert">
+                    {textSizeAction.message}
+                  </p>
+                ) : null}
+              </div>
 
               <div className={styles.subgroup}>
                 <h3 className={styles.subgroupHeading}>Terminal</h3>

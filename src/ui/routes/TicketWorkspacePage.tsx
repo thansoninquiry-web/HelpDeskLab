@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties, FormEvent, KeyboardEvent, PointerEvent } from 'react'
+import type { CSSProperties, DragEvent, FormEvent, KeyboardEvent, PointerEvent, ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import {
   CALLBACK_OVER_CODE_PENALTY,
@@ -13,43 +13,101 @@ import {
   callerPrompts,
   closureOptions,
   commandCheatSheet,
+  consoleDigest,
+  consoleHasNews,
   denialReasons,
   denyCaller,
   formatSimClock,
+  insertWorkspaceTool,
   loadConsole,
+  nextConsoleWithNews,
+  noteConsoleRead,
   openSession,
+  pinWorkspaceTool,
   placeCallback,
   recordInPersonVisit,
+  reorderWorkspaceTools,
   resolveAttempt,
+  recordConsoleRead,
   revealHint,
   reapplyRewind,
   reviewClosure,
   rewindAttempt,
   runConsoleAction,
   saveClosureDraft,
+  saveConsoleFocus,
+  saveWorkspaceLayout,
+  focusConsole,
   scanBadge,
   sendVerificationCode,
   submitCommand,
   submitDesktopTerminalCommand,
   toolCatalog,
   verifyCallerWithCode,
+  workspaceInsertIndex,
   verifyCallerWithLetterPin,
   weakerVerificationCost,
   type ClosureDraft,
   type ClosureReview,
   type CommandCheatSheetGroup,
+  type ConsoleFocus,
+  type ConsoleFocusMap,
   type ConsoleId,
+  type ConsoleReads,
   type ConsoleView,
   type DenialReason,
   type NoteKind,
   type WorkspaceEntry,
+  type WorkspaceLayout,
   type WorkspaceView,
 } from '../../app/practiceService'
-import { loadSplitView, saveSplitView } from '../../app/settingsService'
+import {
+  DOCK_SHARE_DEFAULT,
+  DOCK_SHARE_MAX,
+  DOCK_SHARE_MIN,
+  DOCK_SHARE_WITH_DESKTOP,
+  LAYOUT_PRESETS,
+  SPLIT_DEFAULT_RATIO,
+  SPLIT_MAX_RATIO,
+  SPLIT_MIN_RATIO,
+  SPLIT_STOPS,
+  STAGE_DEFAULT_RATIO,
+  STAGE_MAX_RATIO,
+  STAGE_MIN_RATIO,
+  dockShareWithin,
+  loadDockShare,
+  loadSplitRatio,
+  loadSplitView,
+  loadStageRatio,
+  saveDockShare,
+  saveSplitRatio,
+  saveSplitView,
+  saveStageRatio,
+  layoutPresetAt,
+  snapSplitRatio,
+  splitRatioWithin,
+  stageRatioWithin,
+  stepSplitStop,
+  type LayoutPreset,
+  type LayoutPresetId,
+} from '../../app/settingsService'
 import { commandOriginLabel } from '../components/sourceLabel'
+import {
+  dropIndexAt,
+  fadeClearance,
+  scrollLeftToShow,
+  tabInStrip,
+  visibleEnds,
+  type StripEnds,
+} from './toolStrip'
+import { stepSwitcherIndex, switcherMatches } from './toolSwitcher'
 import { ToolConsole } from '../components/ToolConsole'
 import { ToolPicker } from '../components/ToolPicker'
+import { toolDragId } from '../components/toolDrag'
 import { useFlushOnHide } from '../components/useFlushOnHide'
+import { useSettledFlush } from '../components/useSettledFlush'
+import { useFoldedCaseFile } from '../components/useFoldedCaseFile'
+import { useKeyboardInsetRef } from '../components/useKeyboardInset'
 import practice from './practice.module.css'
 import styles from './workspace.module.css'
 
@@ -60,8 +118,37 @@ const SEVERITY_LABELS = {
   low: 'Low',
 } as const
 
+/** A recording's length, counted the way a handset counts it. */
+function voicemailLength(seconds: number): string {
+  const whole = Math.max(0, Math.round(seconds))
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`
+}
+
 /** The code the close form starts on before the learner picks another one. */
 const DEFAULT_CLOSURE_CODE = 'resolved-remote'
+
+/**
+ * The commands a refusal stops, named as the reference names them.
+ *
+ * Rendered where the decision was recorded and where the next one would be
+ * typed, from the same list, so the case file and the terminal cannot disagree
+ * about what is off the table. The names come from the command registry, so a
+ * command that starts changing an account is named here the day it is added.
+ */
+function BlockedCommands({ commands }: { commands: readonly string[] }) {
+  if (commands.length === 0) {
+    return null
+  }
+  return (
+    <ul className={practice.blockedCommands} aria-label="Commands off the table">
+      {commands.map((name) => (
+        <li key={name} className={practice.blockedCommand}>
+          <code>{name}</code>
+        </li>
+      ))}
+    </ul>
+  )
+}
 
 /**
  * The gate's record of what the caller said and what answered it. Rendered in
@@ -77,9 +164,7 @@ function ClaimFindings({
   }
   return (
     <div aria-label="Contradicted claims" role="status">
-      <p className={practice.claimHeading}>
-        What the caller claimed does not match the record
-      </p>
+      <p className={practice.claimHeading}>What the caller claimed does not match the record</p>
       <ul className={practice.identityFindings}>
         {findings.map((finding) => (
           <li key={finding.id}>
@@ -117,6 +202,54 @@ function CheatSheetGroups({ groups }: { groups: readonly CommandCheatSheetGroup[
   )
 }
 
+/**
+ * One section of the case file.
+ *
+ * On a window with room it is the block it has always been: a heading and its
+ * fields, side by side with the machine. Where the window folds — a phone, or a
+ * short landscape window whose case file keeps a 361px column beside the dock —
+ * it is a disclosure instead, closed until the learner opens it: the paperwork is
+ * several screens the learner has to get past to reach the terminal, and a list
+ * of what is in it is the shorter road to the tool card. The heading text is the
+ * same either way, including the sections whose names change with the attempt (a
+ * refusal renames the gate and the close), so nothing is learned twice.
+ */
+function CaseSection({
+  title,
+  headingId,
+  folded,
+  children,
+}: {
+  title: string
+  headingId?: string
+  folded: boolean
+  children: ReactNode
+}) {
+  const [open, setOpen] = useState(false)
+
+  if (!folded) {
+    return (
+      <div className={practice.actionBlock}>
+        <h2 id={headingId}>{title}</h2>
+        {children}
+      </div>
+    )
+  }
+
+  return (
+    <details
+      className={practice.actionBlock}
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <summary className={practice.sectionSummary}>
+        <h2 id={headingId}>{title}</h2>
+      </summary>
+      {children}
+    </details>
+  )
+}
+
 /** How long typing in the handoff note waits before it is saved with the attempt. */
 const DRAFT_SAVE_DELAY_MS = 500
 
@@ -144,18 +277,172 @@ function lastSeq(entries: readonly WorkspaceEntry[]): number {
 }
 
 /**
- * Where the divider between the terminal and a tool sits in a fresh workspace,
- * and where a reset puts it back. Half the card: there is no reason to guess.
+ * A measurement from a computed style, in px. A browser omits properties it has
+ * not been given, and a missing padding is no padding rather than a `NaN` that
+ * would quietly stop every snap.
  */
-const SPLIT_DEFAULT_RATIO = 0.5
-/** Neither half may be squeezed past a quarter of the card; below that a console
- *  and a log are both unreadable. */
-const SPLIT_MIN_RATIO = 0.25
-const SPLIT_MAX_RATIO = 1 - SPLIT_MIN_RATIO
-/** One arrow key press: fine enough to aim, coarse enough to be worth pressing. */
-const SPLIT_KEY_STEP = 0.02
-/** Shift and an arrow move five times as far, for crossing the card in one go. */
-const SPLIT_KEY_COARSE_FACTOR = 5
+function pxOf(value: string): number {
+  const parsed = Number.parseFloat(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+/** True when the keyboard belongs to a field rather than to the page. */
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false
+  }
+  if (target.isContentEditable) {
+    return true
+  }
+  return target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT'
+}
+
+/**
+ * One arrow key press on either divider: fine enough to aim, coarse enough to be
+ * worth pressing.
+ */
+const DIVIDER_KEY_STEP = 0.02
+/** Shift and an arrow move five times as far, for crossing the stage in one go. */
+const DIVIDER_KEY_COARSE_FACTOR = 5
+/**
+ * How long a divider waits before its position is written. A drag makes a new ratio
+ * per pointer move and a held arrow key one per repeat, so the write waits for the
+ * divider to come to rest instead of filling the table with the journey.
+ */
+const DIVIDER_SAVE_DELAY_MS = 250
+
+/**
+ * How long a console's focus — its search and the record it has open — waits
+ * before it is written. A search is typed a letter at a time and the row only has
+ * to know where the box came to rest, so the write waits for the typing to pause.
+ */
+const FOCUS_SAVE_DELAY_MS = 500
+
+/** A console with nothing typed and no record open: how a cleared search is written. */
+const EMPTY_FOCUS: ConsoleFocus = { query: '', selectedId: null }
+
+/**
+ * The divider's stops as the header offers them, in the order the divider travels
+ * across the card: the console's side, the middle, the log's side. The names are
+ * the interface's — the domain knows only the ratios — and each carries the key
+ * that reaches it, because a shortcut nobody is told about is nobody's shortcut.
+ */
+const SPLIT_STOP_BUTTONS = [
+  {
+    id: 'terminal-min',
+    ratio: SPLIT_STOPS[0],
+    name: 'Tool',
+    label: 'Tool-heavy split',
+    hint: 'The console takes three quarters · press [',
+  },
+  {
+    id: 'even',
+    ratio: SPLIT_STOPS[1],
+    name: 'Even',
+    label: 'Even split',
+    hint: 'Half each · press Enter on the divider',
+  },
+  {
+    id: 'terminal-max',
+    ratio: SPLIT_STOPS[2],
+    name: 'Log',
+    label: 'Log-heavy split',
+    hint: 'The log takes three quarters · press ]',
+  },
+] as const
+
+/**
+ * The keys that take the divider to the next stop. Brackets read as the direction
+ * the divider moves, and they are not characters anything in the workspace waits
+ * for — the command line and the consoles take the keyboard as a field, and the
+ * shortcut stands aside for them.
+ */
+const SPLIT_STOP_KEYS: Record<string, -1 | 1> = { '[': -1, ']': 1 }
+
+/**
+ * The key that steps to the next tab with something unread.
+ *
+ * `n` is for news, and it is a bare letter because nothing else in the workspace
+ * claims one — the brackets step the divider, the digits pick a layout, and a
+ * field keeps every character typed into it, which is as true of this key as of
+ * the others. Shift is not refused, so a learner who happens to have it down
+ * still gets the step.
+ */
+const NEWS_KEY = 'n'
+
+/**
+ * The key that opens the switcher over the open tools.
+ *
+ * `t` is for tools — the word on the card's own button — and it is a bare letter
+ * for the same reason `n` is: nothing else in the workspace claims one, and a
+ * field keeps every character typed into it. Once the switcher is open the key
+ * is inside its input, which is a field, so pressing it again types a letter
+ * into the query rather than opening a second switcher.
+ */
+const SWITCHER_KEY = 't'
+
+/**
+ * What each preset is called, and the key that reaches it. The ratios are the
+ * domain's; the words are the interface's, and the key is on the button's title
+ * because a shortcut nobody is told about is nobody's shortcut.
+ *
+ * The names go the way the workspace widens — the case file, the shipped desk,
+ * the machine — so the number keys read as an order rather than a list.
+ */
+const LAYOUT_PRESET_COPY: Record<
+  LayoutPresetId,
+  { name: string; label: string; hint: string }
+> = {
+  'case-file': {
+    name: 'Paperwork',
+    label: 'Paperwork layout',
+    hint: 'The case file takes most of the width, and the log most of the card · press 1',
+  },
+  balanced: {
+    name: 'Balanced',
+    label: 'Balanced layout',
+    hint: 'The fractions the workspace shipped with · press 2',
+  },
+  machine: {
+    name: 'Machine',
+    label: 'Machine layout',
+    hint: 'The card takes most of the width, and the console most of the card · press 3',
+  },
+}
+
+/**
+ * One number key per preset, in the order `LAYOUT_PRESETS` declares them. Digits
+ * rather than letters: they are the order, and they are not characters anything
+ * in the workspace acts on — a command being typed keeps them, as it keeps the
+ * brackets.
+ */
+const LAYOUT_PRESET_KEYS: Record<string, LayoutPreset> = Object.fromEntries(
+  LAYOUT_PRESETS.map((preset, index) => [String(index + 1), preset]),
+)
+
+/**
+ * The tools this build can open, read from the catalog the picker is built from.
+ * A remembered workspace names its consoles as plain strings, and this set is
+ * what tells a tool that exists from a name a later build retired. It is read
+ * when it is first needed rather than at import, so loading this page never
+ * depends on the catalogue being there — a page opens for a test the same way it
+ * opens for a learner.
+ */
+let knownToolIds: ReadonlySet<string> | null = null
+
+function toolIds(): ReadonlySet<string> {
+  knownToolIds ??= new Set(toolCatalog().flatMap((group) => group.tools.map((tool) => tool.id)))
+  return knownToolIds
+}
+
+/** The console a remembered layout names, when this build still has it. */
+function toConsoleId(id: string | null): ConsoleId | null {
+  return id !== null && toolIds().has(id) ? (id as ConsoleId) : null
+}
+
+function toConsoleIds(ids: readonly string[]): ConsoleId[] {
+  return ids.filter((id) => toolIds().has(id)) as ConsoleId[]
+}
 
 /** A copy of a per-console map without one key, so closing a tool forgets it. */
 function withoutConsole<T>(
@@ -190,11 +477,7 @@ function EntryLog({
           {origin ? <span className={practice.consoleOrigin}> · {origin}</span> : null}
         </p>
         {entry.lines.map((line, index) => (
-          <p
-            key={`${entry.atMs}-${index}`}
-            className={practice.outputLine}
-            data-tone={line.tone}
-          >
+          <p key={`${entry.atMs}-${index}`} className={practice.outputLine} data-tone={line.tone}>
             {line.text || '\u00a0'}
           </p>
         ))}
@@ -229,11 +512,7 @@ function EntryLog({
   }
 
   if (entry.kind === 'deny') {
-    return (
-      <p className={practice.denyEntry}>
-        ⊘ {entry.summary}
-      </p>
-    )
+    return <p className={practice.denyEntry}>⊘ {entry.summary}</p>
   }
 
   if (entry.kind === 'hint') {
@@ -324,7 +603,72 @@ export function TicketWorkspacePage() {
   const [paneMode, setPaneMode] = useState<'terminal' | 'tools'>('terminal')
   /** Where the divider sits, as the fraction of the card the terminal takes. */
   const [splitRatio, setSplitRatio] = useState(SPLIT_DEFAULT_RATIO)
+  /** The ratio the learner last left the divider at, for the settling write. */
+  const splitRatioRef = useRef(SPLIT_DEFAULT_RATIO)
+  /** The whole layout, kept current for the divider's write (see `workspaceLayout`). */
+  const layoutForSave = useRef<WorkspaceLayout | null>(null)
+  /**
+   * Whether the divider has been moved on this attempt. A width nobody chose is
+   * not a width this ticket owns — the ticket opens at the device's width and
+   * stores none, so opening a ticket still writes nothing.
+   */
+  const splitTouched = useRef(false)
+  /** The ratio as last stored, so a divider that has not moved writes nothing. */
+  const savedSplitRatio = useRef<number | null>(null)
+  /** False until the stored divider has been read, so opening never writes one. */
+  const splitReady = useRef(false)
   const [draggingSplit, setDraggingSplit] = useState(false)
+  /** True while a drag is resting on a width the console's layout turns on. */
+  const [splitSnapped, setSplitSnapped] = useState(false)
+  /** What the console inside the tool pane takes from it, measured per drag. */
+  const splitSnap = useRef<{ gutter: number; rem: number } | null>(null)
+  /**
+   * Where the divider between the case file and the tool card sits, as the share
+   * of the stage the case file takes. The split above is the *inside* of the card;
+   * this is the trade between the two columns of the workspace.
+   */
+  const [stageRatio, setStageRatio] = useState(STAGE_DEFAULT_RATIO)
+  const stageRatioRef = useRef(STAGE_DEFAULT_RATIO)
+  /** The ratio as last stored, so a divider that has not moved writes nothing. */
+  const savedStageRatio = useRef<number | null>(null)
+  /** False until the stored trade has been read, so opening never writes one. */
+  const stageReady = useRef(false)
+  const [draggingStage, setDraggingStage] = useState(false)
+  const stageRef = useRef<HTMLDivElement | null>(null)
+  const stageHandle = useRef<HTMLDivElement | null>(null)
+  /**
+   * How much of a phone's screen the docked card takes — the same trade as the
+   * two dividers, made against the bottom edge instead of a column. Null is not
+   * "no card": it is the untouched state, where the stylesheet's own share
+   * applies (a log's, or a machine desktop's). Only a moved edge puts a number
+   * here, and only then is one stored.
+   */
+  const [dockShare, setDockShare] = useState<number | null>(null)
+  const dockShareRef = useRef<number | null>(null)
+  /** The share as last stored, so an edge that has not moved writes nothing. */
+  const savedDockShare = useRef<number | null>(null)
+  /** False until the stored share has been read, so opening never writes one. */
+  const dockReady = useRef(false)
+  const [draggingDock, setDraggingDock] = useState(false)
+  const dockHandle = useRef<HTMLDivElement | null>(null)
+  /**
+   * Where the window folds, the case file folds: on a phone the machine is a
+   * thumb away rather than a glance away, and in a short landscape window the
+   * column beside the dock is narrow enough that the sections read better as a
+   * list than as one long scroll. Both are decided in one hook, because a folded
+   * section is a different document tree and not a different style.
+   */
+  const folded = useFoldedCaseFile()
+  /**
+   * How much of the window the phone's keyboard is covering. The docked console
+   * is fixed to the layout viewport, which the keyboard floats over rather than
+   * shrinks, so the card climbs by this much and its command line stays above
+   * the keys instead of under them. Written onto the workspace as
+   * `--keyboard-inset` rather than into state: the viewport moves with every
+   * pixel of the keyboard's animation, and this page is too big to re-render for
+   * each one.
+   */
+  const workspaceRef = useKeyboardInsetRef<HTMLDivElement>()
   /**
    * Both halves of the tool card at once: the terminal keeps the log in view
    * while a console does the work, instead of one switching the other away.
@@ -334,6 +678,29 @@ export function TicketWorkspacePage() {
   const [rewindTarget, setRewindTarget] = useState<number | null>(null)
   /** The console on screen in the Tools pane, or null for the tool picker. */
   const [openTool, setOpenTool] = useState<ConsoleId | null>(null)
+  /** The one tab held at the left of the strip, or null when none is pinned. */
+  /**
+   * The consoles held as a group at the left of the strip, in the order they
+   * were pinned. The group is the front of `openTools`, and the domain keeps it
+   * that way on every move.
+   */
+  const [pinnedTools, setPinnedTools] = useState<ConsoleId[]>([])
+  /** Where a dragged tab is, and which tab it would land on. */
+  const [draggingTool, setDraggingTool] = useState<number | null>(null)
+  const [dropTarget, setDropTarget] = useState<number | null>(null)
+  /**
+   * A tool being carried out of the picker, and the place in the strip it would
+   * land at. Kept apart from the tab drag above: that one moves a tab that is
+   * already open, this one opens a console that is not — and a caret between two
+   * tabs is what says where, because a tab cannot be highlighted for a place it
+   * does not occupy yet.
+   */
+  const [draggingNewTool, setDraggingNewTool] = useState<ConsoleId | null>(null)
+  const [stripDropIndex, setStripDropIndex] = useState<number | null>(null)
+  /** The tab strip, so the console in front can be kept in view. */
+  const stripRef = useRef<HTMLDivElement | null>(null)
+  /** Which ends of the strip have tabs behind them: none, start, end or both. */
+  const [stripOverflow, setStripOverflow] = useState<StripEnds>('none')
   /**
    * Every console the learner has open, in the order they opened them. Picking a
    * tool that is already here brings it forward instead of replacing what is in
@@ -342,20 +709,57 @@ export function TicketWorkspacePage() {
    */
   const [openTools, setOpenTools] = useState<ConsoleId[]>([])
   const [toolMenuOpen, setToolMenuOpen] = useState(false)
+  /**
+   * The keyboard's way past the strip: a name-typed switcher over the open tools.
+   * `switcherQuery` is what has been typed, `switcherIndex` which row the arrows
+   * are on. The element the switcher was opened from is remembered so Escape can
+   * put the keyboard back where it was.
+   */
+  const [switcherOpen, setSwitcherOpen] = useState(false)
+  const [switcherQuery, setSwitcherQuery] = useState('')
+  const [switcherIndex, setSwitcherIndex] = useState(0)
+  const switcherInput = useRef<HTMLInputElement | null>(null)
+  const switcherReturn = useRef<HTMLElement | null>(null)
   const [consoles, setConsoles] = useState<Partial<Record<ConsoleId, ConsoleView>>>({})
   const [consoleErrors, setConsoleErrors] = useState<Partial<Record<ConsoleId, string>>>({})
+  /**
+   * What each console looked like the last time the learner had it in front, so a
+   * tab can say that it has something the learner has not read yet. Per visit,
+   * not per attempt: see `consoleNews`.
+   */
+  const [consoleReads, setConsoleReads] = useState<ConsoleReads>({})
   // The shelf the picker renders, read once: it is catalog data, not attempt data.
   const [toolGroups] = useState(() => toolCatalog())
   const logEnd = useRef<HTMLDivElement | null>(null)
   const splitRef = useRef<HTMLDivElement | null>(null)
   const splitHandle = useRef<HTMLDivElement | null>(null)
   // The close form is saved with the attempt, so a reload puts it back as it was.
-  const draftRef = useRef<ClosureDraft>({ code: DEFAULT_CLOSURE_CODE, note: '' })
+  const draftRef = useRef<ClosureDraft>({
+    code: DEFAULT_CLOSURE_CODE,
+    note: '',
+  })
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   /** The draft as last stored, so unchanged renders cost no snapshot write. */
   const savedDraft = useRef<string | null>(null)
   /** False until the open session has filled the form, so loading never saves. */
   const draftReady = useRef(false)
+  /**
+   * False until the open session has put the workspace back where it was, so
+   * arriving on the page never saves over the layout being restored.
+   */
+  const layoutReady = useRef(false)
+  /**
+   * Where each console was left: the search typed in it and the record it had
+   * open. Kept beside the layout rather than inside it, because a console's own
+   * view is not the shape of the desk, and written through a short pause.
+   */
+  const [consoleFocus, setConsoleFocus] = useState<ConsoleFocusMap>({})
+  /** The same map, for the write: the flush must see the latest focus, not the
+   * one the render it was created in saw. */
+  const focusRef = useRef<ConsoleFocusMap>({})
+  /** The consoles whose focus has moved since the last write. */
+  const dirtyFocus = useRef<Set<ConsoleId>>(new Set())
+  const focusTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const prompts = useMemo(() => callerPrompts(), [])
   const closures = useMemo(() => closureOptions(), [])
@@ -376,29 +780,344 @@ export function TicketWorkspacePage() {
     // flashing the other one. A preference that will not read falls back to the
     // tab layout; it must never keep a ticket from opening.
     const preference = loadSplitView().catch(() => false)
-    Promise.all([openSession(sessionId), preference])
-      .then(([view, split]) => {
+    // The divider is read with the session too, so the first paint is the split
+    // the learner left rather than half a card that jumps once it loads.
+    const divider = loadSplitRatio().catch(() => null)
+    // ...and so is the trade between the case file and the card, so the whole
+    // workspace first paints in the shape it was left in.
+    const stage = loadStageRatio().catch(() => null)
+    // ...and the docked card's height, so a phone reopens with the console the
+    // size it was given rather than falling back to the default between paints.
+    const dock = loadDockShare().catch(() => null)
+    Promise.all([openSession(sessionId), preference, divider, stage, dock])
+      .then(async ([view, split, storedRatio, storedStage, storedDock]) => {
         if (!cancelled) {
-          const code = view.closureDraft.code ?? DEFAULT_CLOSURE_CODE
+          // A refused attempt opens on the report to Security, so a close resumed
+          // after a refusal lands on the path it belongs to rather than the
+          // default disposition. A chosen code still wins over it.
+          const code = view.closureDraft.code ?? view.denial?.closingCode ?? DEFAULT_CLOSURE_CODE
           setWorkspace(view)
           setSplitView(split)
+          // The divider reopens at the width this ticket was worked at. A ticket
+          // that has never been sized here starts at the device's last width, and
+          // one with neither keeps the default half.
+          const ratio = view.layout.ratio ?? storedRatio ?? SPLIT_DEFAULT_RATIO
+          splitRatioRef.current = ratio
+          // The width in force is the width nothing has moved away from: arriving
+          // on a ticket is not a move, so the resting divider writes nothing back
+          // — not even the device's own width it opened at.
+          savedSplitRatio.current = ratio
+          // A ticket carrying its own width has been sized; one opened at the
+          // device's width is still unsized here until the divider is moved.
+          splitTouched.current = view.layout.ratio !== null
+          splitReady.current = true
+          if (ratio !== SPLIT_DEFAULT_RATIO) {
+            setSplitRatio(ratio)
+          }
+          // The case file and the card reopen in the trade they were left in, and
+          // one that will not read keeps the fractions the grid shipped with.
+          stageRatioRef.current = storedStage ?? STAGE_DEFAULT_RATIO
+          savedStageRatio.current = storedStage
+          stageReady.current = true
+          if (storedStage !== null) {
+            setStageRatio(storedStage)
+          }
+          // The card reopens at the height it was left, where a phone has been
+          // given one; a phone that never moved the edge keeps the stylesheet's.
+          dockShareRef.current = storedDock
+          savedDockShare.current = storedDock
+          dockReady.current = true
+          if (storedDock !== null) {
+            setDockShare(storedDock)
+          }
           // A resumed attempt reopens the close it was writing.
           setClosureCode(code)
           setResolutionNote(view.closureDraft.note)
           draftRef.current = { code, note: view.closureDraft.note }
-          savedDraft.current = JSON.stringify({ code, note: view.closureDraft.note })
+          savedDraft.current = JSON.stringify({
+            code,
+            note: view.closureDraft.note,
+          })
           draftReady.current = true
+          // ...and it reopens where the learner was working: the pane that was
+          // in front, the console showing, and the tabs left open beside it.
+          setPaneMode(view.layout.pane)
+          setOpenTool(toConsoleId(view.layout.tool))
+          setOpenTools(toConsoleIds(view.layout.tabs))
+          setPinnedTools(toConsoleIds(view.layout.pinned))
+          layoutReady.current = true
+          // The consoles reopen on the machine each of them was left on: the
+          // search typed there and the record left open. This is read with the
+          // session, so a console that is not open yet has its focus waiting.
+          focusRef.current = view.consoleFocus
+          setConsoleFocus(view.consoleFocus)
+          // The restored tools are read again rather than put back as they were:
+          // a console projects the machines, and the ticket may have moved on
+          // since the tab was left open. A console that will not read shows its
+          // error when it is opened, and never keeps the ticket from opening.
+          for (const consoleId of toConsoleIds(view.layout.tabs)) {
+            try {
+              const consoleView = await loadConsole(consoleId)
+              if (!cancelled && consoleView) {
+                setConsoles((current) => ({
+                  ...current,
+                  [consoleId]: consoleView,
+                }))
+              }
+            } catch {
+              // Nothing to say here: the tab is there, and opening it says why.
+            }
+          }
         }
       })
       .catch((caught: unknown) => {
         if (!cancelled) {
-          setLoadError(caught instanceof Error ? caught.message : 'This session could not be opened.')
+          setLoadError(
+            caught instanceof Error ? caught.message : 'This session could not be opened.',
+          )
         }
       })
     return () => {
       cancelled = true
     }
   }, [sessionId])
+
+  /**
+   * Where the learner is working is written as it changes, so a ticket reopened
+   * tomorrow lands back in the tool it was left in. It is written on the click
+   * that changed it rather than on the way out — closing a tab is a decision that
+   * has already happened — and the service skips a click that changed nothing.
+   * A save that fails is not worth interrupting the work over: the workspace
+   * still looks the way it was asked to, and the next change stores it again.
+   */
+  useEffect(() => {
+    if (!layoutReady.current) {
+      return
+    }
+    void saveWorkspaceLayout({
+      pane: paneMode,
+      tool: openTool,
+      tabs: openTools,
+      pinned: pinnedTools,
+      // The width is written by the divider's own settle flush, which is the only
+      // thing that moves it; it rides along here so a tab click cannot wipe the
+      // width the ticket was worked at. A ticket nobody has sized keeps null,
+      // which is why opening one still stores no layout at all.
+      ratio: splitTouched.current ? splitRatioRef.current : null,
+    }).catch(() => {})
+  }, [paneMode, openTool, openTools, pinnedTools])
+
+  /**
+   * The workspace as the attempt stores it, so the pin and the drag can be the
+   * domain's own rules rather than a second copy of them here.
+   */
+  const workspaceLayout = useCallback(
+    (): WorkspaceLayout => ({
+      pane: paneMode,
+      tool: openTool,
+      tabs: openTools,
+      pinned: pinnedTools,
+      ratio: splitTouched.current ? splitRatio : null,
+    }),
+    [paneMode, openTool, openTools, pinnedTools, splitRatio],
+  )
+
+  /**
+   * The layout as the last render left it, for the divider's own write. The
+   * divider comes to rest without touching the tab state the layout effect
+   * watches, so it needs the rest of the layout at the moment it writes — and it
+   * must not write on every pointer move, which is why it is not a dependency of
+   * that effect.
+   */
+  useEffect(() => {
+    layoutForSave.current = workspaceLayout()
+  }, [workspaceLayout])
+
+  /**
+   * Pinning holds the console in front in the group at the left of the strip, so
+   * a working set stays where the hand expects it while other tabs come and go.
+   * Pinning again takes that console out of the group; the tabs are the domain's
+   * to arrange, so a pin joins the end of the group and an unpin leaves the tab
+   * at the front of what is free to drag — the place it already had.
+   */
+  const onTogglePin = useCallback(() => {
+    if (openTool === null) {
+      return
+    }
+    const next = pinWorkspaceTool(workspaceLayout(), openTool)
+    setPinnedTools(toConsoleIds(next.pinned))
+    setOpenTools(toConsoleIds(next.tabs))
+  }, [openTool, workspaceLayout])
+
+  /**
+   * What each open console would print, as one string per console. A console
+   * projects machine state at the moment it is read, so this moves whenever a
+   * command anywhere — the terminal, another console, a desktop shell — changes
+   * what a tab would show.
+   */
+  const consoleDigests = useMemo(() => {
+    const digests: Partial<Record<ConsoleId, string>> = {}
+    for (const consoleId of openTools) {
+      const view = consoles[consoleId]
+      if (view) {
+        digests[consoleId] = consoleDigest(view)
+      }
+    }
+    return digests
+  }, [consoles, openTools])
+
+  /**
+   * The tab being looked at, or `null` when nothing is on screen to look at: with
+   * the split off and the terminal in front, or the shelf showing, no console is
+   * being read. It is named once because two things need the same answer — the
+   * effect that files a read, and the render that decides whether a tab has a dot
+   * — and a dot on the tab you are looking at is wrong even for the frame before
+   * the read is filed.
+   */
+  const lookedConsole = splitView || paneMode === 'tools' ? openTool : null
+
+  /**
+   * Whether a machine's desktop is on the card right now — the same question the
+   * stylesheet asks with `:has([data-desktop])`, needed here only so that resetting
+   * the card's height puts back the share that card would have had untouched.
+   */
+  const desktopShowing =
+    lookedConsole !== null && consoles[lookedConsole]?.desktop != null
+
+  /**
+   * The tab in front is the one being looked at, so it counts as read as it
+   * changes; a tab standing behind another one does not, so it keeps what it had
+   * and can say that it has something new.
+   */
+  useEffect(() => {
+    setConsoleReads((current) => {
+      let next = current
+      for (const consoleId of openTools) {
+        const digest = consoleDigests[consoleId]
+        if (digest === undefined) {
+          continue
+        }
+        next = noteConsoleRead(next, { id: consoleId, digest }, consoleId === lookedConsole)
+      }
+      return next
+    })
+  }, [consoleDigests, lookedConsole, openTools])
+
+  /**
+   * Keeps the strip honest about what is in it. With every tool open the strip is
+   * wider than the card, and it scrolls without a scrollbar; so the tab in front
+   * is brought into view whenever it changes — otherwise the console showing can
+   * be one nothing on screen points at — and each end with tabs still behind it
+   * is marked, which is what the fade in the stylesheet reads.
+   */
+  const showToolInStrip = useCallback(() => {
+    const strip = stripRef.current
+    if (!strip) {
+      return
+    }
+
+    const tab =
+      openTool === null ? null : strip.querySelector<HTMLElement>(`#console-tab-${openTool}`)
+    if (tab) {
+      // Measured as boxes on the page rather than `offsetLeft`, which is offset
+      // from whichever ancestor is positioned — not from the strip. Both the
+      // padding and the fade come off the view, so the tab in front lands where
+      // its name can be read rather than under the fade at an end.
+      const style = getComputedStyle(strip)
+      const paddingStart = Number.parseFloat(style.paddingLeft) || 0
+      const paddingEnd = Number.parseFloat(style.paddingRight) || 0
+      const stripBox = strip.getBoundingClientRect()
+      const tabBox = tab.getBoundingClientRect()
+      const box = tabInStrip(
+        { left: tabBox.left, width: tabBox.width },
+        { left: stripBox.left, scrollLeft: strip.scrollLeft },
+        paddingStart,
+      )
+      strip.scrollLeft = scrollLeftToShow(
+        box,
+        {
+          scrollLeft: strip.scrollLeft,
+          clientWidth: strip.clientWidth - paddingStart - paddingEnd,
+        },
+        fadeClearance(
+          style.getPropertyValue('--strip-fade'),
+          Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
+        ),
+      )
+    }
+
+    setStripOverflow(
+      visibleEnds({
+        scrollLeft: strip.scrollLeft,
+        clientWidth: strip.clientWidth,
+        scrollWidth: strip.scrollWidth,
+      }),
+    )
+  }, [openTool])
+
+  useEffect(() => {
+    showToolInStrip()
+  }, [showToolInStrip, openTools, paneMode, pinnedTools])
+
+  /** The strip is only as wide as the card, and the card is as wide as the window. */
+  useEffect(() => {
+    window.addEventListener('resize', showToolInStrip)
+    return () => window.removeEventListener('resize', showToolInStrip)
+  }, [showToolInStrip])
+
+  /**
+   * A dragged tab lands where it was dropped, except that nothing goes ahead of
+   * the pinned tab — the rule is the domain's, so the strip on screen and the row
+   * in storage cannot disagree about the order.
+   */
+  const onReorderTool = useCallback(
+    (from: number, to: number) => {
+      setOpenTools(toConsoleIds(reorderWorkspaceTools(workspaceLayout(), from, to).tabs))
+    },
+    [workspaceLayout],
+  )
+
+  /**
+   * Where a pointer over the strip asks for something to go: a place between
+   * tabs, counted from the tabs' own boxes. Those boxes are already in page
+   * coordinates, which is the space a pointer speaks in, so there is no strip
+   * offset to add — the mistake that once put the tab in front under the fade.
+   */
+  const stripDropPlace = (clientX: number): number => {
+    const strip = stripRef.current
+    const tabs = strip ? Array.from(strip.querySelectorAll<HTMLElement>('[role="tab"]')) : []
+    return dropIndexAt(
+      tabs.map((tab) => {
+        const box = tab.getBoundingClientRect()
+        return { left: box.left, right: box.right }
+      }),
+      clientX,
+    )
+  }
+
+  /**
+   * The tool a drag is carrying, if it is one this strip can take. The id comes
+   * off the drag itself where the environment hands one back, and out of the
+   * picker's own state otherwise; either way it is checked against the consoles
+   * the desk has, so a drag of anything else opens nothing.
+   */
+  const carriedTool = (event: DragEvent<HTMLElement>): ConsoleId | null =>
+    toConsoleId(toolDragId(event.dataTransfer, draggingNewTool))
+
+  /**
+   * A tool let go over the strip opens at the place it was dropped, and every
+   * tool already open keeps its order around it. Opening is the same move a
+   * click makes — the console is read and recorded — because a drop is a way to
+   * reach the tool, not a second kind of opening.
+   */
+  const onDropTool = (consoleId: ConsoleId, index: number) => {
+    setOpenTools((current) =>
+      toConsoleIds(
+        insertWorkspaceTool({ ...workspaceLayout(), tabs: current }, consoleId, index).tabs,
+      ),
+    )
+    void onShowConsole(consoleId)
+  }
 
   useEffect(() => {
     if (!toolMenuOpen) {
@@ -429,16 +1148,13 @@ export function TicketWorkspacePage() {
     void saveSplitView(next).catch(() => {})
   }, [splitView])
 
-  /** Keeps the divider where both halves are still worth reading. */
-  const clampSplitRatio = (ratio: number) =>
-    Math.min(SPLIT_MAX_RATIO, Math.max(SPLIT_MIN_RATIO, ratio))
 
   /**
-   * The ratio under the pointer, measured against the width the two panes share —
-   * the card minus the handle — because that is what the stylesheet multiplies.
-   * A handle jsdom or a display-none handle reports as zero width is no drag.
+   * The width the two panes share — the card minus the handle — and where it
+   * starts, because that is what the stylesheet multiplies. A card or a handle
+   * jsdom reports as zero width is no drag.
    */
-  const splitRatioAt = (clientX: number): number | null => {
+  const splitGeometry = (): { usable: number; left: number; handleWidth: number } | null => {
     const card = splitRef.current
     const handle = splitHandle.current
     if (!card || !handle) {
@@ -450,14 +1166,81 @@ export function TicketWorkspacePage() {
     if (usable <= 0) {
       return null
     }
-    return clampSplitRatio((clientX - cardBox.left - handleWidth / 2) / usable)
+    return { usable, left: cardBox.left, handleWidth }
+  }
+
+  /** The ratio under the pointer, before anything gets a say about it. */
+  const splitRatioAt = (clientX: number, geometry = splitGeometry()): number | null => {
+    if (!geometry) {
+      return null
+    }
+    return splitRatioWithin(
+      (clientX - geometry.left - geometry.handleWidth / 2) / geometry.usable,
+    )
+  }
+
+  /**
+   * What the console inside the tool pane costs the pane's width, and how large a
+   * rem is here — what a snap needs, measured once when a drag starts, because
+   * neither the console's padding nor the text size moves under the pointer.
+   *
+   * The console is measured through the box its own container query sees, and the
+   * gutter between that box and the pane falls out of the difference: padding and
+   * borders are then whatever the stylesheet says they are, rather than a second
+   * copy of those numbers living in JavaScript.
+   *
+   * An empty tool half has no console to measure, and the geometry still comes
+   * back — with a `NaN` gutter — because the terminal's own widths are still
+   * worth catching on.
+   */
+  const measureSplitSnap = (usable: number): { gutter: number; rem: number } => {
+    const rem = pxOf(window.getComputedStyle(document.documentElement).fontSize) || 16
+    const frame = splitRef.current?.querySelector<HTMLElement>('[data-console-frame]')
+    if (!frame) {
+      return { gutter: Number.NaN, rem }
+    }
+    const style = window.getComputedStyle(frame)
+    const inset =
+      pxOf(style.paddingLeft) +
+      pxOf(style.paddingRight) +
+      pxOf(style.borderLeftWidth) +
+      pxOf(style.borderRightWidth)
+    const pane = usable * (1 - splitRatioRef.current)
+    return { gutter: pane - (frame.getBoundingClientRect().width - inset), rem }
+  }
+
+  /**
+   * The ratio a drag should settle on: the pointer's, unless a console width is
+   * within reach — then the size the console's content actually wants, so a
+   * learner lands on it without aiming for a pixel.
+   */
+  const snappedSplitRatio = (
+    clientX: number,
+  ): { ratio: number; snapped: boolean } | null => {
+    const geometry = splitGeometry()
+    const asked = splitRatioAt(clientX, geometry)
+    if (!geometry || asked === null) {
+      return null
+    }
+    const snap = splitSnap.current
+    if (!snap) {
+      return { ratio: asked, snapped: false }
+    }
+    const ratio = snapSplitRatio(asked, { ...snap, usable: geometry.usable })
+    return { ratio, snapped: ratio !== asked }
   }
 
   const onSplitPointerDown = (event: PointerEvent<HTMLDivElement>) => {
-    const ratio = splitRatioAt(event.clientX)
-    if (ratio === null) {
+    const geometry = splitGeometry()
+    if (!geometry) {
       return
     }
+    splitSnap.current = measureSplitSnap(geometry.usable)
+    const landed = snappedSplitRatio(event.clientX)
+    if (landed === null) {
+      return
+    }
+    const ratio = landed.ratio
     event.preventDefault()
     // The divider moves before the capture is taken, because capture is an
     // optimisation: it keeps the drag alive over the panes, where a move would
@@ -465,6 +1248,7 @@ export function TicketWorkspacePage() {
     // refuses it — a pointer id it does not consider active — the drag still
     // works while the pointer is over the handle.
     setDraggingSplit(true)
+    setSplitSnapped(landed.snapped)
     setSplitRatio(ratio)
     try {
       event.currentTarget.setPointerCapture(event.pointerId)
@@ -477,9 +1261,10 @@ export function TicketWorkspacePage() {
     if (!draggingSplit) {
       return
     }
-    const ratio = splitRatioAt(event.clientX)
-    if (ratio !== null) {
-      setSplitRatio(ratio)
+    const landed = snappedSplitRatio(event.clientX)
+    if (landed !== null) {
+      setSplitSnapped(landed.snapped)
+      setSplitRatio(landed.ratio)
     }
   }
 
@@ -487,6 +1272,8 @@ export function TicketWorkspacePage() {
     if (!draggingSplit) {
       return
     }
+    setSplitSnapped(false)
+    splitSnap.current = null
     if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId)
     }
@@ -499,7 +1286,9 @@ export function TicketWorkspacePage() {
    * narrowest and widest, and Enter puts the default back.
    */
   const onSplitKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    const step = event.shiftKey ? SPLIT_KEY_STEP * SPLIT_KEY_COARSE_FACTOR : SPLIT_KEY_STEP
+    const step = event.shiftKey
+      ? DIVIDER_KEY_STEP * DIVIDER_KEY_COARSE_FACTOR
+      : DIVIDER_KEY_STEP
     const keys: Record<string, number> = {
       ArrowLeft: splitRatio - step,
       ArrowRight: splitRatio + step,
@@ -512,8 +1301,438 @@ export function TicketWorkspacePage() {
       return
     }
     event.preventDefault()
-    setSplitRatio(clampSplitRatio(next))
+    setSplitRatio(splitRatioWithin(next))
   }
+
+  /**
+   * The header's three positions, and the same move the bracket keys make: the
+   * divider jumps to a place the learner aims at often instead of being nudged
+   * there a press at a time. The write is the settle timer's — a jump is a move
+   * like any other, and a learner who lands on a stop and then leaves never
+   * writes two rows for one decision.
+   */
+  const onSplitStop = useCallback((ratio: number) => {
+    setSplitRatio(ratio)
+  }, [])
+
+  /**
+   * The keys that step the divider between its stops.
+   *
+   * They only mean anything while the halves are side by side and the divider is
+   * on screen: below the widest layout the card stacks the two, so a key that
+   * moved an invisible divider would do nothing the learner could see. The
+   * divider's own computed display is the test rather than a breakpoint copied
+   * out of the stylesheet, so the shortcut and the handle can never disagree
+   * about whether there is a divider to move.
+   */
+  useEffect(() => {
+    if (!splitView) {
+      return
+    }
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.altKey || event.ctrlKey || event.metaKey || isTypingTarget(event.target)) {
+        return
+      }
+      const direction = SPLIT_STOP_KEYS[event.key]
+      const handle = splitHandle.current
+      if (direction === undefined || !handle) {
+        return
+      }
+      if (window.getComputedStyle(handle).display === 'none') {
+        return
+      }
+      event.preventDefault()
+      setSplitRatio((current) => stepSplitStop(current, direction))
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [splitView])
+
+  /**
+   * Writes the divider where it came to rest. It skips the write when nothing
+   * moved, and it never runs before the stored position has been read — arriving
+   * on a ticket must not store the default over the learner's own split.
+   */
+  const flushSplitRatio = useCallback(async () => {
+    if (!splitReady.current) {
+      return
+    }
+    const ratio = splitRatioRef.current
+    if (savedSplitRatio.current === ratio) {
+      return
+    }
+    savedSplitRatio.current = ratio
+    splitTouched.current = true
+    try {
+      await saveSplitRatio(ratio)
+      // The width belongs to this ticket as well as to the device: a ticket
+      // reopened tomorrow lands at the width it was worked at, rather than at
+      // whatever another ticket was last sized to.
+      const layout = layoutForSave.current
+      if (layout !== null) {
+        await saveWorkspaceLayout({ ...layout, ratio })
+      }
+    } catch {
+      // The divider is where the learner put it either way; the next move, or
+      // leaving the page, tries the write again.
+      savedSplitRatio.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    splitRatioRef.current = splitRatio
+  }, [splitRatio])
+
+  // Only where the divider comes to rest is worth a row: the hook holds the timer
+  // off while the handle is under the pointer, and writes on a pause, when the page
+  // is hidden or unloaded, and when the route takes the page away.
+  useSettledFlush(flushSplitRatio, {
+    value: splitRatio,
+    resting: !draggingSplit,
+    delayMs: DIVIDER_SAVE_DELAY_MS,
+  })
+
+  /**
+   * Writes where each console was left. Only the consoles that have moved since
+   * the last write are sent, so a pause after opening Mail Admin does not rewrite
+   * the Directory's search as well.
+   *
+   * A failed write is not worth an alert: it is a search box, not the close, and
+   * the console is still showing what the learner typed. The console is put back
+   * on the list of unsaved ones so the next pause or the way out tries again.
+   */
+  const flushConsoleFocus = useCallback(async () => {
+    if (focusTimer.current !== null) {
+      clearTimeout(focusTimer.current)
+      focusTimer.current = null
+    }
+    const pending = [...dirtyFocus.current]
+    if (pending.length === 0) {
+      return
+    }
+    dirtyFocus.current = new Set()
+    for (const consoleId of pending) {
+      try {
+        await saveConsoleFocus(consoleId, focusRef.current[consoleId] ?? EMPTY_FOCUS)
+      } catch {
+        dirtyFocus.current.add(consoleId)
+      }
+    }
+  }, [])
+
+  /**
+   * The console on screen says where it now is; the write waits for the typing to
+   * pause. Focus on a console that is not on screen is not a thing the page can be
+   * told — the pane reports for itself.
+   */
+  const reportConsoleFocus = useCallback(
+    (focus: ConsoleFocus) => {
+      if (openTool === null) {
+        return
+      }
+      const consoleId = openTool
+      const next = focusConsole(focusRef.current, consoleId, focus)
+      if (next === focusRef.current) {
+        return
+      }
+      focusRef.current = next
+      setConsoleFocus(next)
+      dirtyFocus.current.add(consoleId)
+      if (focusTimer.current !== null) {
+        clearTimeout(focusTimer.current)
+      }
+      focusTimer.current = setTimeout(() => void flushConsoleFocus(), FOCUS_SAVE_DELAY_MS)
+    },
+    [openTool, flushConsoleFocus],
+  )
+
+  // The console's focus sits in a timer like the close draft does, so the browser
+  // leaving the page — or the route changing under it — has to be a last chance to
+  // write it rather than the end of it.
+  useFlushOnHide(flushConsoleFocus)
+  useEffect(() => () => void flushConsoleFocus(), [flushConsoleFocus])
+
+  /**
+   * The same trade, one column out: the case file against the tool card.
+   *
+   * The stage is measured rather than assumed, because the room both columns need
+   * is in pixels: at a 1200px stage a quarter of it is 300px of case file, and at
+   * a 900px stage the same quarter is a column too narrow to read. So the pointer's
+   * ratio is clamped against the width the stage has now, and the clamp is the only
+   * rule — there is no snapping here, because what a column "wants" is a reader's
+   * judgement rather than something the content can name.
+   */
+  const stageGeometry = useCallback(
+    (): { usable: number; left: number; handleWidth: number } | null => {
+      const stage = stageRef.current
+      const handle = stageHandle.current
+      if (!stage || !handle) {
+        return null
+      }
+      const stageBox = stage.getBoundingClientRect()
+      const handleWidth = handle.getBoundingClientRect().width
+      const usable = stageBox.width - handleWidth
+      if (usable <= 0) {
+        return null
+      }
+      return { usable, left: stageBox.left, handleWidth }
+    },
+    [],
+  )
+
+  const stageRatioAt = (clientX: number): number | null => {
+    const geometry = stageGeometry()
+    if (!geometry) {
+      return null
+    }
+    return stageRatioWithin(
+      (clientX - geometry.left - geometry.handleWidth / 2) / geometry.usable,
+      geometry.usable,
+    )
+  }
+
+  const onStagePointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    const ratio = stageRatioAt(event.clientX)
+    if (ratio === null) {
+      return
+    }
+    event.preventDefault()
+    setDraggingStage(true)
+    setStageRatio(ratio)
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId)
+    } catch {
+      // Nothing to do: the drag continues without capture, over the columns it
+      // is resizing.
+    }
+  }
+
+  const onStagePointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    if (!draggingStage) {
+      return
+    }
+    const ratio = stageRatioAt(event.clientX)
+    if (ratio !== null) {
+      setStageRatio(ratio)
+    }
+  }
+
+  const onStagePointerUp = (event: PointerEvent<HTMLDivElement>) => {
+    if (!draggingStage) {
+      return
+    }
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    setDraggingStage(false)
+  }
+
+  /**
+   * The same keyboard contract as the divider inside the card — arrows nudge,
+   * Shift moves further, Home and End take the trade to the room the two columns'
+   * minimums leave at this width, and Enter puts back the fractions the grid
+   * shipped with.
+   */
+  const onStageKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const step = event.shiftKey
+      ? DIVIDER_KEY_STEP * DIVIDER_KEY_COARSE_FACTOR
+      : DIVIDER_KEY_STEP
+    const geometry = stageGeometry()
+    const usable = geometry?.usable
+    const keys: Record<string, number> = {
+      ArrowLeft: stageRatio - step,
+      ArrowRight: stageRatio + step,
+      Home: usable !== undefined ? stageRatioWithin(0, usable) : STAGE_MIN_RATIO,
+      End: usable !== undefined ? stageRatioWithin(1, usable) : STAGE_MAX_RATIO,
+      Enter: STAGE_DEFAULT_RATIO,
+    }
+    const next = keys[event.key]
+    if (next === undefined) {
+      return
+    }
+    event.preventDefault()
+    setStageRatio(stageRatioWithin(next, usable))
+  }
+
+  /**
+   * A preset moves both dividers at once: the trade between the case file and the
+   * card, and the split inside the card. Each is clamped by the same rule the
+   * pointer respects — the stage by the room its two columns need at this width,
+   * the card by its own quarter bounds — so a preset can never leave either
+   * divider somewhere it would refuse to be dragged to.
+   *
+   * Nothing is stored here: a preset is a move like any other, and the dividers'
+   * settle timers write where they land. The split is set even while the card is
+   * not split, because the position is remembered for when it is — the switch
+   * itself is the learner's, and a layout preset does not flick it.
+   */
+  const onLayoutPreset = useCallback(
+    (preset: LayoutPreset) => {
+      setStageRatio(stageRatioWithin(preset.stageRatio, stageGeometry()?.usable))
+      setSplitRatio(splitRatioWithin(preset.splitRatio))
+    },
+    [stageGeometry],
+  )
+
+  /**
+   * The number keys, one per preset.
+   *
+   * They stand aside for fields, for a modified key, and for a window where the
+   * stage's divider is not drawn — a preset there would move a trade nobody can
+   * see. The handle's own computed display is the test rather than a breakpoint
+   * copied out of the stylesheet, so the shortcuts and the dividers cannot
+   * disagree about which of them exists.
+   */
+  useEffect(() => {
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.altKey || event.ctrlKey || event.metaKey || isTypingTarget(event.target)) {
+        return
+      }
+      const preset = LAYOUT_PRESET_KEYS[event.key]
+      const handle = stageHandle.current
+      if (!preset || !handle) {
+        return
+      }
+      if (window.getComputedStyle(handle).display === 'none') {
+        return
+      }
+      event.preventDefault()
+      onLayoutPreset(preset)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onLayoutPreset])
+
+  /**
+   * Writes the trade where it came to rest — or, when the stage's width has changed
+   * since, the same ratio, which is now a different pair of widths: a share of the
+   * stage is what the learner chose.
+   */
+  const flushStageRatio = useCallback(async () => {
+    if (!stageReady.current) {
+      return
+    }
+    const ratio = stageRatioRef.current
+    if (savedStageRatio.current === ratio) {
+      return
+    }
+    savedStageRatio.current = ratio
+    try {
+      await saveStageRatio(ratio)
+    } catch {
+      // The columns are where the learner put them either way; the next move tries
+      // the write again.
+      savedStageRatio.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    stageRatioRef.current = stageRatio
+  }, [stageRatio])
+
+  useSettledFlush(flushStageRatio, {
+    value: stageRatio,
+    resting: !draggingStage,
+    delayMs: DIVIDER_SAVE_DELAY_MS,
+  })
+
+  /**
+   * The card's top edge, dragged against the screen it is pinned to.
+   *
+   * The two dividers measure a container; this one needs no measurement at all,
+   * because the card is fixed to the window: the share is simply the part of the
+   * viewport below the pointer. The clamp is the same rule either way, so a drag
+   * cannot leave the card without a console or the page without a card.
+   */
+  const dockShareAt = (clientY: number): number =>
+    dockShareWithin(1 - clientY / Math.max(1, window.innerHeight))
+
+  const onDockPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    setDraggingDock(true)
+    setDockShare(dockShareAt(event.clientY))
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId)
+    } catch {
+      // Nothing to do: the drag continues without capture, over the page it is
+      // resizing.
+    }
+  }
+
+  const onDockPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    if (!draggingDock) {
+      return
+    }
+    setDockShare(dockShareAt(event.clientY))
+  }
+
+  const onDockPointerUp = (event: PointerEvent<HTMLDivElement>) => {
+    if (!draggingDock) {
+      return
+    }
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    setDraggingDock(false)
+  }
+
+  /** The share an untouched card would have here: a log's, or a desktop's. */
+  const defaultDockShare = desktopShowing ? DOCK_SHARE_WITH_DESKTOP : DOCK_SHARE_DEFAULT
+
+  /**
+   * The dividers' keyboard contract, on the horizontal axis: arrows nudge (up
+   * makes the card taller, because the edge is moving up), Shift moves further,
+   * Home and End take the card to its bounds, and Enter puts back the share an
+   * untouched card would have.
+   */
+  const onDockKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const step = event.shiftKey
+      ? DIVIDER_KEY_STEP * DIVIDER_KEY_COARSE_FACTOR
+      : DIVIDER_KEY_STEP
+    const current = dockShare ?? defaultDockShare
+    const keys: Record<string, number> = {
+      ArrowUp: current + step,
+      ArrowDown: current - step,
+      Home: DOCK_SHARE_MIN,
+      End: DOCK_SHARE_MAX,
+      Enter: defaultDockShare,
+    }
+    const next = keys[event.key]
+    if (next === undefined) {
+      return
+    }
+    event.preventDefault()
+    setDockShare(dockShareWithin(next))
+  }
+
+  /** Writes the height the card came to rest at, and nothing while it is untouched. */
+  const flushDockShare = useCallback(async () => {
+    if (!dockReady.current) {
+      return
+    }
+    const share = dockShareRef.current
+    if (share === null || savedDockShare.current === share) {
+      return
+    }
+    savedDockShare.current = share
+    try {
+      await saveDockShare(share)
+    } catch {
+      // The card stays where the learner put it either way; the next move tries
+      // the write again.
+      savedDockShare.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    dockShareRef.current = dockShare
+  }, [dockShare])
+
+  useSettledFlush(flushDockShare, {
+    value: dockShare,
+    resting: !draggingDock,
+    delayMs: DIVIDER_SAVE_DELAY_MS,
+  })
 
   const flushDraft = useCallback(async () => {
     if (draftTimer.current !== null) {
@@ -593,7 +1812,10 @@ export function TicketWorkspacePage() {
     const timer = setTimeout(() => {
       void (async () => {
         try {
-          const review = await reviewClosure({ code: closureCode, note: resolutionNote })
+          const review = await reviewClosure({
+            code: closureCode,
+            note: resolutionNote,
+          })
           if (!cancelled) {
             setProjected(review)
           }
@@ -698,9 +1920,7 @@ export function TicketWorkspacePage() {
         await refreshOpenConsoles()
         return view
       } catch (caught) {
-        setActionError(
-          caught instanceof Error ? caught.message : 'That command could not be run.',
-        )
+        setActionError(caught instanceof Error ? caught.message : 'That command could not be run.')
         return null
       } finally {
         setBusy(false)
@@ -893,11 +2113,17 @@ export function TicketWorkspacePage() {
     setBusy(true)
     setActionError(null)
     try {
-      setWorkspace(await denyCaller(denyReason))
+      const refused = await denyCaller(denyReason)
+      setWorkspace(refused)
       setConfirmDeny(false)
-      // A refusal has a matching close disposition; the learner can still change it.
-      setClosureCode('denied-social-engineering')
-      setClosureReview(null)
+      // A refusal has one close that fits it — the report to Security — and the
+      // service has written it to the draft already; the form follows, so the
+      // learner reads the report, not the resolve form. They can still change it.
+      const closing = refused.denial?.closingCode
+      if (closing) {
+        setClosureCode(closing)
+        setClosureReview(null)
+      }
     } catch (caught) {
       setActionError(caught instanceof Error ? caught.message : 'The request could not be refused.')
     } finally {
@@ -913,15 +2139,30 @@ export function TicketWorkspacePage() {
     setBusy(true)
     setActionError(null)
     try {
-      if (!closureReview) {
-        const review = await reviewClosure({ code: closureCode, note: resolutionNote })
-        // A close that would pass can still leave the network proof bonus on
-        // the table, so the review is shown before the learner commits to it.
-        if (review.blocking.length > 0 || review.pendingBonusXp > 0) {
-          setClosureReview(review)
-          setBusy(false)
-          return
-        }
+      // The close is reviewed on every attempt rather than reusing the hint shown
+      // last time: a refusal's report is a contract, not advice, so it is read
+      // against the note as it stands now.
+      const review = await reviewClosure({ code: closureCode, note: resolutionNote })
+      // A security report the desk cannot accept stops the close here, naming
+      // the part that is missing. The service refuses it too, so no other
+      // surface can record a refusal without one.
+      if (review.report) {
+        setClosureReview(review)
+        setBusy(false)
+        return
+      }
+      // A close that would pass can still leave the network proof bonus on
+      // the table, so the review is shown before the learner commits to it.
+      // A step that would only be partly credited is worth a look before it is
+      // committed: the close is not blocked, but the score is not what the
+      // learner may expect and the reason is in the review.
+      if (
+        !closureReview &&
+        (review.blocking.length > 0 || review.partial.length > 0 || review.pendingBonusXp > 0)
+      ) {
+        setClosureReview(review)
+        setBusy(false)
+        return
       }
       await resolveAttempt({ code: closureCode, note: resolutionNote })
       navigate(`/debrief/${sessionId}`)
@@ -935,14 +2176,159 @@ export function TicketWorkspacePage() {
     toolGroups.flatMap((group) => group.tools).find((tool) => tool.id === consoleId)?.label ??
     consoleId
 
+  /**
+   * The open tools as the switcher names them, narrowed by what has been typed.
+   * Drawn in the strip's own order, so the list reads the way the tabs do.
+   */
+  const switcherTools = switcherMatches(
+    openTools.map((id) => ({ id, label: toolLabel(id) })),
+    switcherQuery,
+  )
+
+  /**
+   * Closes the switcher, optionally handing the keyboard back to whatever had it
+   * when the switcher opened. That is what makes Escape a cancel rather than a
+   * jump to the top of the page — unless the element has left the document in
+   * the meantime, which is what a tab closed behind the panel looks like.
+   */
+  const closeSwitcher = useCallback((restoreFocus: boolean) => {
+    setSwitcherOpen(false)
+    const target = switcherReturn.current
+    switcherReturn.current = null
+    if (restoreFocus && target && target.isConnected) {
+      target.focus()
+    }
+  }, [])
+
+  /**
+   * Opens the tool the highlight is on. The tab is the anchor the learner came
+   * from, so focus goes there once it exists: the console changes under it, and
+   * the next key press then belongs to the strip.
+   */
+  const onSwitcherPick = (consoleId: ConsoleId) => {
+    setSwitcherOpen(false)
+    switcherReturn.current = null
+    void onShowConsole(consoleId)
+    window.requestAnimationFrame(() => {
+      document.getElementById(`console-tab-${consoleId}`)?.focus()
+    })
+  }
+
+  /**
+   * The switcher's own keys: arrows walk the list, Home and End take its ends,
+   * Enter opens what is highlighted, Escape puts the keyboard back. The highlight
+   * is what `aria-activedescendant` reads, so the input keeps the focus and the
+   * list is announced as the query narrows.
+   */
+  const onSwitcherKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      setSwitcherIndex((index) =>
+        stepSwitcherIndex(index, event.key === 'ArrowDown' ? 1 : -1, switcherTools.length),
+      )
+      return
+    }
+    if (event.key === 'Home' || event.key === 'End') {
+      event.preventDefault()
+      setSwitcherIndex(event.key === 'Home' ? 0 : Math.max(0, switcherTools.length - 1))
+      return
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      const pick = switcherTools[switcherIndex]
+      if (pick) {
+        onSwitcherPick(pick.id)
+      }
+      return
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      closeSwitcher(true)
+      return
+    }
+    if (event.key === 'Tab') {
+      // The panel says it is modal, so Tab may not walk out of it into the page
+      // behind. Its input is the only place the keyboard can be, and it is
+      // already there; the list itself is reached with the arrows.
+      event.preventDefault()
+    }
+  }
+
+  /**
+   * `t` opens the switcher.
+   *
+   * It stands aside for a field being typed into, for a modified key, and for a
+   * workspace with nothing open — a switcher over an empty strip would be a panel
+   * saying there is nothing to switch to. Opening it closes the tools menu, which
+   * is the other list of tools and would otherwise sit under this one.
+   */
+  useEffect(() => {
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.altKey || event.ctrlKey || event.metaKey || isTypingTarget(event.target)) {
+        return
+      }
+      if (event.key.toLowerCase() !== SWITCHER_KEY || openTools.length === 0) {
+        return
+      }
+      event.preventDefault()
+      switcherReturn.current =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null
+      setSwitcherQuery('')
+      setSwitcherIndex(0)
+      setToolMenuOpen(false)
+      setSwitcherOpen(true)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [openTools])
+
+  /**
+   * The query has the keyboard as soon as the panel is on screen: a switcher you
+   * have to tab into is not a keyboard-first one.
+   */
+  useEffect(() => {
+    if (switcherOpen) {
+      switcherInput.current?.focus()
+    }
+  }, [switcherOpen])
+
+  /**
+   * Puts the caller's latest view on screen, unless something newer has already
+   * arrived: a command finishing while a read was in flight must not be undone by
+   * the view that read returned.
+   */
+  const applyCallerView = useCallback((view: WorkspaceView | null) => {
+    if (!view) {
+      return
+    }
+    setWorkspace((current) =>
+      current && lastSeq(current.entries) > lastSeq(view.entries) ? current : view,
+    )
+  }, [])
+
+  // Reads are recorded one at a time: two records opened in the same breath
+  // must not both read the caller's script before either has written its row,
+  // or the same line would be said twice.
+  const readInFlight = useRef<Promise<void>>(Promise.resolve())
+
+  /** Reading a record is a step of the attempt, and the caller can answer it. */
+  const onReadRecord = (consoleId: ConsoleId, entryId: string | null) => {
+    readInFlight.current = readInFlight.current
+      .then(() => recordConsoleRead(consoleId, entryId))
+      .then(applyCallerView)
+      .catch(() => {})
+  }
+
   const onShowConsole = async (consoleId: ConsoleId) => {
     setPaneMode('tools')
     setOpenTool(consoleId)
     // Opening a tool that is already open only brings it forward.
-    setOpenTools((current) =>
-      current.includes(consoleId) ? current : [...current, consoleId],
-    )
+    setOpenTools((current) => (current.includes(consoleId) ? current : [...current, consoleId]))
     setToolMenuOpen(false)
+    // The caller hears a tool being opened, so the attempt records the look
+    // before the console is read. A line said now keeps the latest view.
+    onReadRecord(consoleId, null)
+
     try {
       const view = await loadConsole(consoleId)
       if (!view) {
@@ -957,11 +2343,49 @@ export function TicketWorkspacePage() {
     } catch (caught) {
       setConsoleErrors((current) => ({
         ...current,
-        [consoleId]:
-          caught instanceof Error ? caught.message : 'The console could not be read.',
+        [consoleId]: caught instanceof Error ? caught.message : 'The console could not be read.',
       }))
     }
   }
+
+  /**
+   * The keyboard's way to act on the dot.
+   *
+   * A tab that is not in front is the one that collects news, and a strip wider
+   * than the card can hide it behind the fade, or behind the terminal when the
+   * split is off — the dot says something is there but not where. This steps to
+   * the next tab that has news, opening it, which is what marks it read: the same
+   * move a click makes, down to bringing the tools pane forward when the terminal
+   * was the pane in front. With every tab read the key does nothing, rather than
+   * moving the workspace somewhere it was not asked to go.
+   */
+  // The shortcut reads the opener through a ref: opening a console is a fresh
+  // function on every render, and a key listener rebuilt after each one to reach
+  // it would be churn for no gain. The ref is kept current before the listener
+  // effect below runs, because it is declared first.
+  const showConsoleForNews = useRef(onShowConsole)
+  useEffect(() => {
+    showConsoleForNews.current = onShowConsole
+  })
+
+  useEffect(() => {
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.altKey || event.ctrlKey || event.metaKey || isTypingTarget(event.target)) {
+        return
+      }
+      if (event.key.toLowerCase() !== NEWS_KEY) {
+        return
+      }
+      const next = nextConsoleWithNews(openTools, openTool, consoleReads, consoleDigests)
+      if (next === null) {
+        return
+      }
+      event.preventDefault()
+      void showConsoleForNews.current(next)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [consoleDigests, consoleReads, openTool, openTools])
 
   /**
    * Closing a tab drops its view as well as the tab, so reopening the tool reads
@@ -972,6 +2396,9 @@ export function TicketWorkspacePage() {
   const onCloseConsole = (consoleId: ConsoleId) => {
     const remaining = openTools.filter((id) => id !== consoleId)
     setOpenTools(remaining)
+    // A closed tab cannot stay in the held group; the rest of the group keeps
+    // its order, and the tab in front moves to the neighbour it had.
+    setPinnedTools((current) => current.filter((id) => id !== consoleId))
     setConsoles((current) => withoutConsole(current, consoleId))
     setConsoleErrors((current) => withoutConsole(current, consoleId))
     if (openTool === consoleId) {
@@ -990,15 +2417,10 @@ export function TicketWorkspacePage() {
             ? await runConsoleAction(consoleId, entryId, actionId, inputs)
             : await runConsoleAction(consoleId, entryId, actionId)
         setWorkspace(view)
-        // The console map is evidence-driven, so reread it after every check.
-        try {
-          const refreshed = await loadConsole(consoleId)
-          if (refreshed) {
-            setConsoles((current) => ({ ...current, [consoleId]: refreshed }))
-          }
-        } catch {
-          // A stale console view must not fail the action that just succeeded.
-        }
+        // A console action is a command, so it moves the world for every console
+        // and not only the one that ran it: the map is evidence-driven, so all of
+        // them are reread, exactly as after a command typed in the terminal.
+        await refreshOpenConsoles()
         return view
       } catch (caught) {
         setActionError(
@@ -1009,7 +2431,7 @@ export function TicketWorkspacePage() {
         setBusy(false)
       }
     },
-    [],
+    [refreshOpenConsoles],
   )
 
   const onRevealHint = async () => {
@@ -1077,13 +2499,145 @@ export function TicketWorkspacePage() {
   const ticketRef = `SD-${ticket.id.replace(/-/g, '').slice(0, 6).toUpperCase()}`
   // The disposition the projection is priced with, named as the form names it.
   const closeLabel = closures.find((entry) => entry.code === closureCode)?.label ?? closureCode
+  // A refusal gives the ticket a close of its own: the report to Security rather
+  // than the ordinary hand-off, so the form says so and the code opens on it.
+  const refusal = workspace.denial
+
+  /**
+   * The card's paperwork, in pieces it can arrange two ways. A desk reads the
+   * reference, the requester, the impact and the device beside the report; a
+   * folded window folds all of it behind one summary and keeps only the subject
+   * and the report open, because the report is what the call is about and the
+   * rest is reference the learner can open when they need it.
+   */
+  const ticketReference = (
+    <div className={styles.cardTop}>
+      <span className={styles.ticketId}>{ticketRef}</span>
+      <span className={styles.severity} data-severity={ticket.severity}>
+        {SEVERITY_LABELS[ticket.severity]}
+      </span>
+      <span className={styles.cardTopLine} aria-hidden="true" />
+      <span className={styles.cardStatus}>Open</span>
+    </div>
+  )
+
+  const ticketAssignee = (
+    <div className={styles.assigneeRow}>
+      <span className={styles.avatar} aria-hidden="true">
+        YO
+      </span>
+      <span className={styles.assigneeText}>
+        <span className={styles.fieldLabel}>Assignee</span>
+        <span className={styles.assigneeName}>You</span>
+      </span>
+      <span className={styles.statusPill}>In progress</span>
+    </div>
+  )
+
+  const ticketContactFacts = (
+    <>
+      <div className={styles.detailRow}>
+        <span className={styles.fieldLabel}>Reported by</span>
+        <p className={styles.detailValue}>
+          {caller.name} <span className={styles.detailMuted}>({caller.email})</span>
+        </p>
+      </div>
+      <div className={styles.detailPairRow}>
+        <div className={styles.detailPair}>
+          <span className={styles.fieldLabel}>Department</span>
+          <p className={styles.detailValue}>{caller.department}</p>
+        </div>
+        <div className={styles.detailPair}>
+          <span className={styles.fieldLabel}>Contact</span>
+          <p className={styles.detailValue}>{caller.samAccountName}</p>
+        </div>
+      </div>
+    </>
+  )
+
+  const ticketImpactFacts = (
+    <>
+      <div className={styles.detailRow}>
+        <span className={styles.fieldLabel}>Business impact</span>
+        <ul className={styles.impactList}>
+          {ticket.symptoms.map((symptom) => (
+            <li key={symptom}>{symptom}</li>
+          ))}
+        </ul>
+      </div>
+      <div className={styles.detailRow}>
+        <span className={styles.fieldLabel}>Device</span>
+        <p className={styles.detailValue}>
+          {ticket.device.hostname} · {ticket.device.os} · {ticket.device.siteName}
+        </p>
+      </div>
+    </>
+  )
+
+  /**
+   * The report itself, which stays open on every width. A ticket that arrived as
+   * a recording shows the recording where the description would be: the message
+   * is the report, with the time it was left, how long it ran, and the line it
+   * asks to be rung back on. The words are the generated report, unedited.
+   */
+  const ticketReport = ticket.voicemail ? (
+    <div className={styles.voicemail} aria-label="Voicemail">
+      <div className={styles.voicemailHead}>
+        <span className={styles.voicemailBadge}>Voicemail</span>
+        <span className={styles.voicemailWhen}>
+          left at {formatSimClock(ticket.voicemail.leftAt)} ·{' '}
+          {voicemailLength(ticket.voicemail.durationSeconds)} recording
+        </span>
+      </div>
+      <p className={styles.voicemailTranscript}>“{ticket.body}”</p>
+      <p className={styles.voicemailNote}>
+        {ticket.voicemail.callbackLine === 'desk'
+          ? 'The handset on file is out of action, so the message names the desk line. Ring it back from Verify the caller before you change anything.'
+          : 'The number on file takes a call. Ring it back from Verify the caller if the message leaves you guessing.'}
+      </p>
+    </div>
+  ) : (
+    <div className={styles.detailRow}>
+      <span className={styles.fieldLabel}>Issue description</span>
+      <p className={styles.detailValue}>{ticket.body}</p>
+    </div>
+  )
+
+  /**
+   * The preset both dividers are sitting on, if any. A learner who has moved one
+   * of them has left the preset, and the strip says so by lighting nothing.
+   */
+  const activePreset = layoutPresetAt(stageRatio, splitRatio)
 
   return (
-    <div className={styles.workspace}>
+    <div className={styles.workspace} ref={workspaceRef}>
       <div className={styles.stageBar}>
         <Link className={styles.backLink} to="/practice">
           <span aria-hidden="true">←</span> Back to queue
         </Link>
+
+        {/* The two trades named together: a learner who reads the case file or
+            works a console every time can ask for both with one key instead of
+            aiming two dividers. */}
+        <div className={styles.layoutPresets} role="group" aria-label="Workspace layout">
+          <span className={styles.layoutPresetsLabel} aria-hidden="true">
+            Layout
+          </span>
+          {LAYOUT_PRESETS.map((preset, index) => (
+            <button
+              key={preset.id}
+              type="button"
+              className={styles.layoutPreset}
+              aria-label={LAYOUT_PRESET_COPY[preset.id].label}
+              aria-keyshortcuts={String(index + 1)}
+              aria-pressed={activePreset?.id === preset.id}
+              title={LAYOUT_PRESET_COPY[preset.id].hint}
+              onClick={() => onLayoutPreset(preset)}
+            >
+              {LAYOUT_PRESET_COPY[preset.id].name}
+            </button>
+          ))}
+        </div>
         <div className={styles.stageMeta}>
           <span className={styles.stageId}>{ticketRef}</span>
           <span className={styles.stageDivider} aria-hidden="true" />
@@ -1106,16 +2660,13 @@ export function TicketWorkspacePage() {
               </span>
               <span className={styles.procedureCostLabel}>Process cost</span>
               <span className={styles.procedureCostValue}>
-                {workspace.procedurePenalty === 0
-                  ? '0 pts'
-                  : `−${workspace.procedurePenalty} pts`}
+                {workspace.procedurePenalty === 0 ? '0 pts' : `−${workspace.procedurePenalty} pts`}
               </span>
             </summary>
             {workspace.procedureViolations.length === 0 ? (
               <p className={styles.procedureCostNote}>
-                No process deductions so far. Changing something before the caller is
-                verified, or fixing before reading any evidence, is priced here as it
-                happens.
+                No process deductions so far. Changing something before the caller is verified, or
+                fixing before reading any evidence, is priced here as it happens.
               </p>
             ) : (
               <ul className={styles.procedureCostList}>
@@ -1198,8 +2749,8 @@ export function TicketWorkspacePage() {
                   </p>
                   <p className={styles.projectionNote}>
                     Both charges are already taken out of the total, and are the ones the close
-                    would record. The score follows the log and this form; the close button is
-                    what commits it.
+                    would record. The score follows the log and this form; the close button is what
+                    commits it.
                   </p>
                 </div>
               ) : null}
@@ -1208,68 +2759,66 @@ export function TicketWorkspacePage() {
         </div>
       </div>
 
-      <div className={styles.stage}>
+      <div
+        className={styles.stage}
+        data-stage
+        ref={stageRef}
+        style={
+          {
+            '--stage-ratio': stageRatio,
+            // Where the card's top edge was left, when it has been moved. Both
+            // shares are written, so the height the learner chose holds whether
+            // a log or a machine's desktop is on the card; untouched, the
+            // palette's own two shares apply.
+            ...(dockShare === null
+              ? {}
+              : {
+                  '--dock-share': `${Number((dockShare * 100).toFixed(2))}dvh`,
+                  '--dock-share-desktop': `${Number((dockShare * 100).toFixed(2))}dvh`,
+                }),
+          } as CSSProperties
+        }
+      >
         <div className={styles.ticketColumn}>
           <section className={styles.ticketCard} aria-label="Ticket">
-            <div className={styles.cardTop}>
-              <span className={styles.ticketId}>{ticketRef}</span>
-              <span className={styles.severity} data-severity={ticket.severity}>
-                {SEVERITY_LABELS[ticket.severity]}
-              </span>
-              <span className={styles.cardTopLine} aria-hidden="true" />
-              <span className={styles.cardStatus}>Open</span>
-            </div>
-
-            <h1 className={styles.ticketSubject}>{ticket.subject}</h1>
-
-            <div className={styles.assigneeRow}>
-              <span className={styles.avatar} aria-hidden="true">
-                YO
-              </span>
-              <span className={styles.assigneeText}>
-                <span className={styles.fieldLabel}>Assignee</span>
-                <span className={styles.assigneeName}>You</span>
-              </span>
-              <span className={styles.statusPill}>In progress</span>
-            </div>
-
-            <div className={styles.details}>
-              <div className={styles.detailRow}>
-                <span className={styles.fieldLabel}>Reported by</span>
-                <p className={styles.detailValue}>
-                  {caller.name}{' '}
-                  <span className={styles.detailMuted}>({caller.email})</span>
-                </p>
-              </div>
-              <div className={styles.detailPairRow}>
-                <div className={styles.detailPair}>
-                  <span className={styles.fieldLabel}>Department</span>
-                  <p className={styles.detailValue}>{caller.department}</p>
+            {folded ? (
+              <>
+                {/*
+                  * Where the window folds, the card is the call, not the paperwork:
+                  * the subject and the report are what the learner is working from,
+                  * and the reference, requester, impact and device fold behind one
+                  * summary. The stage bar above still names the ticket, so nothing
+                  * is lost from view, only from the first screen.
+                  */}
+                <h1 className={styles.ticketSubject}>{ticket.subject}</h1>
+                <div className={styles.details}>{ticketReport}</div>
+                <details className={styles.metadataFold}>
+                  <summary className={styles.metadataSummary}>
+                    <span className={styles.metadataTitle}>Ticket details</span>
+                    <span className={styles.metadataNote}>
+                      Reference, severity, requester, impact and device
+                    </span>
+                  </summary>
+                  {ticketReference}
+                  {ticketAssignee}
+                  <div className={styles.details}>
+                    {ticketContactFacts}
+                    {ticketImpactFacts}
+                  </div>
+                </details>
+              </>
+            ) : (
+              <>
+                {ticketReference}
+                <h1 className={styles.ticketSubject}>{ticket.subject}</h1>
+                {ticketAssignee}
+                <div className={styles.details}>
+                  {ticketContactFacts}
+                  {ticketReport}
+                  {ticketImpactFacts}
                 </div>
-                <div className={styles.detailPair}>
-                  <span className={styles.fieldLabel}>Contact</span>
-                  <p className={styles.detailValue}>{caller.samAccountName}</p>
-                </div>
-              </div>
-              <div className={styles.detailRow}>
-                <span className={styles.fieldLabel}>Issue description</span>
-                <p className={styles.detailValue}>{ticket.body}</p>
-              </div>
-              <div className={styles.detailRow}>
-                <span className={styles.fieldLabel}>Business impact</span>
-                <ul className={styles.impactList}>
-                  {ticket.symptoms.map((symptom) => (
-                    <li key={symptom}>{symptom}</li>
-                  ))}
-                </ul>
-              </div>
-              <div className={styles.detailRow}>
-                <span className={styles.fieldLabel}>Device</span>
-                <p className={styles.detailValue}>
-                  {ticket.device.hostname} · {ticket.device.os} · {ticket.device.siteName}
-                </p>
-              </div>
-            </div>
+              </>
+            )}
 
             <div className={styles.hintPanel}>
               <div className={styles.hintHead}>
@@ -1283,80 +2832,82 @@ export function TicketWorkspacePage() {
               </div>
               {workspace.exam ? (
                 <p className={styles.hintBlurb}>
-                  This ticket is an <strong>exam attempt</strong>, so every hint stays closed
-                  until it is scored and the price is the exam's, not the one in Settings. The
-                  debrief opens with the ladders the exam withheld — {workspace.hintPolicy.perHint}{' '}
-                  points a rung on this attempt — so the steps you miss are still explained.
+                  This ticket is an <strong>exam attempt</strong>, so every hint stays closed until
+                  it is scored and the price is the exam's, not the one in Settings. The debrief
+                  opens with the ladders the exam withheld — {workspace.hintPolicy.perHint} points a
+                  rung on this attempt — so the steps you miss are still explained.
                 </p>
               ) : (
                 <>
-                <p className={styles.hintBlurb}>
-                  {hintsFree
-                    ? 'Hints are free on this device.'
-                    : `Each rung costs ${workspace.hintPolicy.perHint} points of diagnostic reasoning, up to ${workspace.hintPolicy.cap} on a ticket; after that they are free.`}{' '}
-                  {hintBudget > 0
-                    ? `This attempt may take up to ${hintBudget} hint${hintBudget === 1 ? '' : 's'}.`
-                    : ''}{' '}
-                  <strong>
-                    {workspace.hintsRemaining} hint{workspace.hintsRemaining === 1 ? '' : 's'}{' '}
-                    remain
-                  </strong>{' '}
-                  on this ticket.
-                </p>
-                {workspace.hints.length > 0 ? (
-                  <>
-                    <ol className={styles.hintList}>
-                      {workspace.hints.map((hint, index) => (
-                        <li key={hint.id}>
-                          <span className={styles.hintStep}>{index + 1}</span>
-                          <span>{hint.text}</span>
-                        </li>
-                      ))}
-                    </ol>
+                  <p className={styles.hintBlurb}>
+                    {hintsFree
+                      ? 'Hints are free on this device.'
+                      : `Each rung costs ${workspace.hintPolicy.perHint} points of diagnostic reasoning, up to ${workspace.hintPolicy.cap} on a ticket; after that they are free.`}{' '}
+                    {hintBudget > 0
+                      ? `This attempt may take up to ${hintBudget} hint${hintBudget === 1 ? '' : 's'}.`
+                      : ''}{' '}
+                    <strong>
+                      {workspace.hintsRemaining} hint
+                      {workspace.hintsRemaining === 1 ? '' : 's'} remain
+                    </strong>{' '}
+                    on this ticket.
+                  </p>
+                  {workspace.hints.length > 0 ? (
+                    <>
+                      <ol className={styles.hintList}>
+                        {workspace.hints.map((hint, index) => (
+                          <li key={hint.id}>
+                            <span className={styles.hintStep}>{index + 1}</span>
+                            <span>{hint.text}</span>
+                          </li>
+                        ))}
+                      </ol>
+                      <p className={styles.hintMeta}>
+                        {workspace.hints.length} revealed ·{' '}
+                        {workspace.hintPenalty === 0
+                          ? 'no points spent'
+                          : `−${workspace.hintPenalty} points so far`}
+                        {hintsFree || workspace.hintPenalty >= workspace.hintPolicy.cap
+                          ? ' (no further charge — the rest are free)'
+                          : ''}
+                        .
+                      </p>
+                    </>
+                  ) : null}
+                  {hintBudget > 0 ? (
                     <p className={styles.hintMeta}>
-                      {workspace.hints.length} revealed ·{' '}
-                      {workspace.hintPenalty === 0
-                        ? 'no points spent'
-                        : `−${workspace.hintPenalty} points so far`}
-                      {hintsFree || workspace.hintPenalty >= workspace.hintPolicy.cap
-                        ? ' (no further charge — the rest are free)'
-                        : ''}
-                      .
+                      Hints used: <strong>{workspace.hints.length}</strong> of {hintBudget} for this
+                      attempt.
                     </p>
-                  </>
-                ) : null}
-                {hintBudget > 0 ? (
-                  <p className={styles.hintMeta}>
-                    Hints used: <strong>{workspace.hints.length}</strong> of {hintBudget} for this
-                    attempt.
-                  </p>
-                ) : null}
-                {hintsExhausted ? (
-                  <p className={styles.hintMeta}>
-                    Every hinted step on this ticket has been revealed. The debrief will explain the
-                    rest.
-                  </p>
-                ) : budgetSpent ? (
-                  <p className={styles.hintMeta}>
-                    {hintBudgetNotice ??
-                      `You have used all ${hintBudget} hint${hintBudget === 1 ? '' : 's'} this attempt's budget allows. Carry on unaided, or raise the budget in Settings for the next ticket.`}
-                  </p>
-                ) : (
-                  <button
-                    type="button"
-                    className={styles.hintReveal}
-                    disabled={busy}
-                    onClick={() => void onRevealHint()}
-                  >
-                    {workspace.hints.length === 0 ? 'Reveal the first hint' : 'Reveal the next hint'}
-                    <span>
-                      {hintsFree || workspace.hintPenalty >= workspace.hintPolicy.cap
-                        ? 'free'
-                        : `−${workspace.hintPolicy.perHint} points`}{' '}
-                      · {workspace.hintsRemaining} left
-                    </span>
-                  </button>
-                )}
+                  ) : null}
+                  {hintsExhausted ? (
+                    <p className={styles.hintMeta}>
+                      Every hinted step on this ticket has been revealed. The debrief will explain
+                      the rest.
+                    </p>
+                  ) : budgetSpent ? (
+                    <p className={styles.hintMeta}>
+                      {hintBudgetNotice ??
+                        `You have used all ${hintBudget} hint${hintBudget === 1 ? '' : 's'} this attempt's budget allows. Carry on unaided, or raise the budget in Settings for the next ticket.`}
+                    </p>
+                  ) : (
+                    <button
+                      type="button"
+                      className={styles.hintReveal}
+                      disabled={busy}
+                      onClick={() => void onRevealHint()}
+                    >
+                      {workspace.hints.length === 0
+                        ? 'Reveal the first hint'
+                        : 'Reveal the next hint'}
+                      <span>
+                        {hintsFree || workspace.hintPenalty >= workspace.hintPolicy.cap
+                          ? 'free'
+                          : `−${workspace.hintPolicy.perHint} points`}{' '}
+                        · {workspace.hintsRemaining} left
+                      </span>
+                    </button>
+                  )}
                 </>
               )}
             </div>
@@ -1368,8 +2919,10 @@ export function TicketWorkspacePage() {
               <span className={styles.caseHint}>Your actions and closing paperwork</span>
             </div>
 
-            <div className={practice.actionBlock}>
-              <h2>{workspace.denial ? 'Request refused' : 'Verify the caller'}</h2>
+            <CaseSection
+              title={workspace.denial ? 'Request refused' : 'Verify the caller'}
+              folded={folded}
+            >
               {workspace.denial ? (
                 <>
                   <div className={practice.denyState} role="status">
@@ -1378,6 +2931,27 @@ export function TicketWorkspacePage() {
                       {workspace.denial.summary} No account changes were made on the caller’s word.
                       Record what was asked, then close the ticket with the denial outcome.
                     </p>
+                    <BlockedCommands commands={workspace.denial.blockedCommands} />
+                    {workspace.denial.retried.length > 0 ? (
+                      <div
+                        className={practice.retryNotice}
+                        role="status"
+                        aria-label="Changes tried after the refusal"
+                      >
+                        <strong>Tried after you refused</strong>
+                        <ul>
+                          {workspace.denial.retried.map((attempt) => (
+                            <li key={attempt.seq}>
+                              <code>{attempt.command}</code> — the refusal stopped it.
+                            </li>
+                          ))}
+                        </ul>
+                        <span>
+                          A refusal is the decision on this ticket, not a step to work around. The
+                          attempt goes to the debrief as it stands.
+                        </span>
+                      </div>
+                    ) : null}
                   </div>
                   <ClaimFindings findings={workspace.verification.contradictions} />
                 </>
@@ -1390,10 +2964,10 @@ export function TicketWorkspacePage() {
                   ) : (
                     <>
                       <p className={practice.mutedSmall}>
-                        Send one code to the person on the ticket and have them read it back, ring
-                        a line on file and confirm the request with them, or use something the
-                        caller carries or can do at the desk. Only one code is live at a time, and
-                        a code only proves who received it.
+                        Send one code to the person on the ticket and have them read it back, ring a
+                        line on file and confirm the request with them, or use something the caller
+                        carries or can do at the desk. Only one code is live at a time, and a code
+                        only proves who received it.
                       </p>
                       <label className={practice.fieldLabel} htmlFor="verification-recipient">
                         Contact to reach
@@ -1408,11 +2982,22 @@ export function TicketWorkspacePage() {
                         {recipients.map((recipient) => (
                           <option key={recipient.id} value={recipient.id}>
                             {recipient.name} —{' '}
-                            {recipient.role === 'caller' ? 'on the ticket' : 'manager on file'} (
-                            {recipient.destination})
+                            {recipient.role === 'caller'
+                              ? 'on the ticket'
+                              : recipient.role === 'team'
+                                ? 'shared team line'
+                                : 'manager on file'}{' '}
+                            ({recipient.destination})
                           </option>
                         ))}
                       </select>
+
+                      {selectedRecipient?.role === 'team' ? (
+                        <p className={practice.mutedSmall}>
+                          {selectedRecipient.name} is shared: whoever is at that desk picks it up,
+                          so a call to it confirms a colleague rather than the person on this ticket.
+                        </p>
+                      ) : null}
                       <div className={practice.buttonRow}>
                         <button
                           type="button"
@@ -1432,7 +3017,7 @@ export function TicketWorkspacePage() {
                         </button>
                       </div>
 
-                      {selectedRecipient && !canSendCode ? (
+                      {selectedRecipient && !canSendCode && selectedRecipient.role !== 'team' ? (
                         <p className={practice.mutedSmall}>
                           {selectedRecipient.destination} cannot take a code. Ring it back instead.
                         </p>
@@ -1464,6 +3049,26 @@ export function TicketWorkspacePage() {
                           <p className={practice.mutedSmall}>
                             Code sent to {verification.active.recipientName} —{' '}
                             {verification.active.destination}.
+                          </p>
+                          {/*
+                            The clock is the simulation's, not the wall's — the code
+                            lives ten simulated minutes, and every command moves that
+                            clock a minute — so this is read from the view rather than
+                            ticking down on its own and claiming a deadline that has not
+                            arrived. Minutes are rounded up, so a code with half a
+                            minute left reads "1 min" rather than "0 min".
+                          */}
+                          <p
+                            className={
+                              verification.active.remainingMs === 0
+                                ? practice.warning
+                                : practice.mutedSmall
+                            }
+                            role="status"
+                          >
+                            {verification.active.remainingMs === 0
+                              ? `Expired at ${formatSimClock(verification.active.expiresAt)} — send a new code.`
+                              : `Expires in ${Math.ceil(verification.active.remainingMs / 60_000)} min, at ${formatSimClock(verification.active.expiresAt)}.`}
                           </p>
                           {verification.active.forCaller ? (
                             <p className={practice.callerReadBack}>
@@ -1715,10 +3320,9 @@ export function TicketWorkspacePage() {
                   )}
                 </>
               )}
-            </div>
+            </CaseSection>
 
-            <div className={practice.actionBlock}>
-              <h2>Ask the requester</h2>
+            <CaseSection title="Ask the requester" folded={folded}>
               <div className={practice.stackedButtons}>
                 {prompts.map((prompt) => (
                   <button
@@ -1732,10 +3336,13 @@ export function TicketWorkspacePage() {
                   </button>
                 ))}
               </div>
-            </div>
+            </CaseSection>
 
-            <div className={practice.actionBlock}>
-              <h2>Troubleshooting notes</h2>
+            <CaseSection
+              title="Troubleshooting notes"
+              headingId="troubleshooting-notes-heading"
+              folded={folded}
+            >
               <ul className={practice.savedNotes}>
                 {workspace.troubleshootingNotes.length === 0 ? (
                   <li className={practice.mutedSmall}>
@@ -1749,6 +3356,7 @@ export function TicketWorkspacePage() {
               </ul>
               <textarea
                 className={practice.noteInput}
+                aria-labelledby="troubleshooting-notes-heading"
                 placeholder="What did you check, what did you find, and what did you change?"
                 value={troubleshootingDraft}
                 onChange={(event) => setTroubleshootingDraft(event.target.value)}
@@ -1766,10 +3374,13 @@ export function TicketWorkspacePage() {
               >
                 Log troubleshooting note
               </button>
-            </div>
+            </CaseSection>
 
-            <div className={practice.actionBlock}>
-              <h2>Customer notes</h2>
+            <CaseSection
+              title="Customer notes"
+              headingId="customer-notes-heading"
+              folded={folded}
+            >
               <ul className={practice.savedNotes}>
                 {workspace.customerNotes.length === 0 ? (
                   <li className={practice.mutedSmall}>No customer-facing update yet.</li>
@@ -1781,6 +3392,7 @@ export function TicketWorkspacePage() {
               </ul>
               <textarea
                 className={practice.noteInput}
+                aria-labelledby="customer-notes-heading"
                 placeholder="Plain-language update for the requester."
                 value={customerDraft}
                 onChange={(event) => setCustomerDraft(event.target.value)}
@@ -1790,16 +3402,25 @@ export function TicketWorkspacePage() {
                 type="button"
                 className={practice.secondaryButton}
                 disabled={busy}
-                onClick={() =>
-                  void saveNote('customer', customerDraft, () => setCustomerDraft(''))
-                }
+                onClick={() => void saveNote('customer', customerDraft, () => setCustomerDraft(''))}
               >
                 Send customer note
               </button>
-            </div>
+            </CaseSection>
 
-            <form className={practice.actionBlock} onSubmit={(event) => void onResolve(event)}>
-              <h2>Close the ticket</h2>
+            <CaseSection
+              title={refusal ? 'Report the refusal' : 'Close the ticket'}
+              folded={folded}
+            >
+              <form className={practice.sectionForm} onSubmit={(event) => void onResolve(event)}>
+                {refusal ? (
+                <p className={practice.mutedSmall}>
+                  The request was refused, so this close is a report rather than a hand-off: no fix
+                  was made, and the account work on this ticket is over. A refusal is a decision,
+                  and Security needs it in writing — what was asked, what you checked before
+                  deciding, and what should happen next.
+                </p>
+              ) : null}
               <label className={practice.fieldLabel} htmlFor="closure-code">
                 Closure code
               </label>
@@ -1820,7 +3441,7 @@ export function TicketWorkspacePage() {
                 ))}
               </select>
               <label className={practice.fieldLabel} htmlFor="resolution-note">
-                Handoff note
+                {refusal ? 'Security report' : 'Handoff note'}
               </label>
               <textarea
                 id="resolution-note"
@@ -1833,7 +3454,11 @@ export function TicketWorkspacePage() {
                 }}
                 onBlur={() => void flushDraft()}
                 maxLength={CLOSURE_NOTE_LIMIT}
-                placeholder="What was reported, what you checked, and what the next team should do"
+                placeholder={
+                  refusal
+                    ? 'What was asked, what the caller claimed, what you checked, and what Security should do next'
+                    : 'What was reported, what you checked, and what the next team should do'
+                }
               />
               <p className={practice.mutedSmall}>
                 The code and note are saved with the attempt, so a reload brings this close back
@@ -1842,11 +3467,16 @@ export function TicketWorkspacePage() {
               {closureReview ? (
                 <div className={practice.closureNotice} role="alert">
                   <strong>
-                    {closureReview.blocking.length > 0 || !closureReview.passed
-                      ? 'This attempt would not pass yet'
-                      : 'The network proof bonus is still available'}
+                    {closureReview.report
+                      ? 'The security report is missing something'
+                      : closureReview.blocking.length > 0 || !closureReview.passed
+                        ? 'This attempt would not pass yet'
+                        : closureReview.partial.length > 0
+                          ? 'One step would only be partly credited'
+                          : 'The network proof bonus is still available'}
                   </strong>
-                  {closureReview.blocking.length > 0 ? (
+                  {closureReview.report ? <span>{closureReview.report.message}</span> : null}
+                  {closureReview.report ? null : closureReview.blocking.length > 0 ? (
                     <>
                       <span>
                         It would score {closureReview.total}/100. These critical steps are still
@@ -1861,17 +3491,33 @@ export function TicketWorkspacePage() {
                         ))}
                       </ul>
                     </>
-                  ) : closureReview.passed ? (
-                    <span>
-                      It would score {closureReview.total}/100 and pass, but closing now leaves the
-                      network proof bonus unclaimed.
-                    </span>
                   ) : (
                     <span>
-                      It would score {closureReview.total}/100, below the pass mark, and closing now
-                      also leaves the network proof bonus unclaimed.
+                      It would score {closureReview.total}/100
+                      {closureReview.passed ? ' and pass' : ', below the pass mark'}.
+                      {closureReview.pendingBonusXp > 0
+                        ? ' Closing now also leaves the network proof bonus unclaimed.'
+                        : ''}
                     </span>
                   )}
+                  {closureReview.partial.length > 0 ? (
+                    <>
+                      <span>
+                        {closureReview.partial.length === 1
+                          ? 'One step is only partly met'
+                          : `${closureReview.partial.length} steps are only partly met`}
+                        , so it pays part of the points:
+                      </span>
+                      <ul>
+                        {closureReview.partial.map((item) => (
+                          <li key={item.id}>
+                            {item.label} — {item.earned} of {item.weight} pts
+                            {item.reason ? `: ${item.reason}` : ''}
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  ) : null}
                   {closureReview.topology ? (
                     <>
                       <span>
@@ -1908,31 +3554,38 @@ export function TicketWorkspacePage() {
                     </>
                   ) : null}
                   <span>
-                    {closureReview.blocking.length > 0 || !closureReview.passed
+                    {closureReview.report
+                      ? 'Add the missing part and close again: a refusal is recorded with its report, not without one.'
+                      : closureReview.blocking.length > 0 || !closureReview.passed
                       ? 'Close anyway to record the attempt as it stands, or keep working and close when the steps are done.'
-                      : 'Keep working to prove the links, or close now and score what you have.'}
+                      : closureReview.pendingBonusXp > 0
+                        ? 'Keep working to prove the links, or close now and score what you have.'
+                        : 'Close now to score what you have, or un-run the refusal and record it under the reason the ticket needs.'}
                   </span>
                 </div>
               ) : null}
-              <button
-                type="submit"
-                className={practice.primaryButton}
-                disabled={busy}
-              >
+              <button type="submit" className={practice.primaryButton} disabled={busy}>
                 {closureReview
-                  ? closureReview.blocking.length > 0 || !closureReview.passed
+                  ? closureReview.report
+                    ? 'Close and report'
+                    : closureReview.blocking.length > 0 || !closureReview.passed
                     ? 'Close anyway and score'
-                    : 'Close without the bonus'
-                  : 'Resolve ticket'}
+                    : closureReview.pendingBonusXp > 0
+                      ? 'Close without the bonus'
+                      : 'Close and score'
+                  : refusal
+                    ? 'Close and report'
+                    : 'Resolve ticket'}
               </button>
               <p className={practice.mutedSmall}>
-                Required when you escalate: name the report, the evidence, and the next action.
-                Resolving closes the session and scores your evidence, notes, and decision.
-              </p>
-            </form>
+                {refusal
+                  ? 'A refusal cannot be recorded without its report. It has to say what was asked, what you checked before refusing, and the next action for Security — the close stops and names the part if one is missing.'
+                  : 'Required when you escalate: name the report, the evidence, and the next action. Resolving closes the session and scores your evidence, notes, and decision.'}
+                </p>
+              </form>
+            </CaseSection>
 
-            <div className={practice.actionBlock}>
-              <h2>Abandon the ticket</h2>
+            <CaseSection title="Abandon the ticket" folded={folded}>
               {confirmAbandon ? (
                 <>
                   <p className={practice.mutedSmall}>
@@ -1968,7 +3621,7 @@ export function TicketWorkspacePage() {
                   Abandon this ticket
                 </button>
               )}
-            </div>
+            </CaseSection>
 
             <details className={styles.cheatSheet}>
               <summary>Command cheat sheet</summary>
@@ -1998,7 +3651,61 @@ export function TicketWorkspacePage() {
           </section>
         </div>
 
+        {/* The trade between the two columns of the workspace, drawn like the
+            divider inside the card so the two are one gesture. */}
+        <div
+          className={styles.stageHandle}
+          ref={stageHandle}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize the case file and the tool card"
+          aria-valuemin={Math.round(STAGE_MIN_RATIO * 100)}
+          aria-valuemax={Math.round(STAGE_MAX_RATIO * 100)}
+          aria-valuenow={Math.round(stageRatio * 100)}
+          title="Drag to resize · arrow keys to adjust · double-click to reset"
+          tabIndex={0}
+          onKeyDown={onStageKeyDown}
+          onDoubleClick={() => setStageRatio(stageRatioWithin(STAGE_DEFAULT_RATIO))}
+          onPointerDown={onStagePointerDown}
+          onPointerMove={onStagePointerMove}
+          onPointerUp={onStagePointerUp}
+          onPointerCancel={onStagePointerUp}
+        >
+          <span className={styles.stageHandleGrip} aria-hidden="true" />
+        </div>
+
         <section className={styles.toolCard} aria-label="Simulated tools">
+          {/* The card's top edge on a phone: the workspace's third divider, and the
+              only one across. It is drawn above the card rather than inside it, so
+              dragging the seam never moves a line of the header under the finger. */}
+          <div
+            className={styles.dockHandle}
+            ref={dockHandle}
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label="Resize the tool card"
+            aria-valuemin={Math.round(DOCK_SHARE_MIN * 100)}
+            aria-valuemax={Math.round(DOCK_SHARE_MAX * 100)}
+            aria-valuenow={Math.round((dockShare ?? defaultDockShare) * 100)}
+            aria-valuetext={`The tool card takes ${Math.round(
+              (dockShare ?? defaultDockShare) * 100,
+            )}% of the screen`}
+            data-dragging={draggingDock ? 'true' : 'false'}
+            title="Drag to resize · arrow keys to adjust · double-click to reset"
+            tabIndex={0}
+            onKeyDown={onDockKeyDown}
+            onDoubleClick={() => setDockShare(defaultDockShare)}
+            onPointerDown={onDockPointerDown}
+            onPointerMove={onDockPointerMove}
+            onPointerUp={onDockPointerUp}
+            onPointerCancel={onDockPointerUp}
+          >
+            <span className={styles.dockHandleGrip} aria-hidden="true" />
+            {/* Only while the edge is held: the number a drag has come to. */}
+            <span className={styles.dockHandleShare} aria-hidden="true">
+              {Math.round((dockShare ?? defaultDockShare) * 100)}%
+            </span>
+          </div>
           <div className={styles.toolHead}>
             <div className={styles.toolIdentity}>
               <span className={styles.toolGlyph} aria-hidden="true">
@@ -2006,7 +3713,9 @@ export function TicketWorkspacePage() {
               </span>
               <span>
                 <span className={styles.toolEyebrow}>Service desk</span>
-                <span className={styles.toolTitle}>{openTool ? toolLabel(openTool) : 'Workstation'}</span>
+                <span className={styles.toolTitle}>
+                  {openTool ? toolLabel(openTool) : 'Workstation'}
+                </span>
               </span>
             </div>
             <div className={styles.toolHeadActions}>
@@ -2025,11 +3734,39 @@ export function TicketWorkspacePage() {
                 </span>
                 <span className={styles.splitToggleLabel}>Split screen view</span>
               </button>
+              {/* The divider's resting places, offered beside the switch that
+                  creates a divider. They run the way the divider does — console
+                  side, middle, log side — so the group reads as positions on the
+                  card rather than as a list of panes. */}
+              {splitView ? (
+                <div className={styles.splitStops} role="group" aria-label="Divider position">
+                  {SPLIT_STOP_BUTTONS.map((stop) => (
+                    <button
+                      key={stop.id}
+                      type="button"
+                      className={styles.splitStop}
+                      aria-label={stop.label}
+                      aria-pressed={splitRatio === stop.ratio}
+                      title={stop.hint}
+                      onClick={() => onSplitStop(stop.ratio)}
+                    >
+                      {stop.name}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
               <span className={styles.toolClock}>{formatSimClock(workspace.simulatedClock)}</span>
               <button
                 type="button"
                 className={styles.toolsMenuButton}
                 aria-expanded={toolMenuOpen}
+                // The key is named where the tools are, so the switcher is a
+                // shortcut rather than something to find out about by accident.
+                title={
+                  openTools.length > 0
+                    ? 'Every console this ticket has open · press T to jump to one by name'
+                    : undefined
+                }
                 onClick={() => setToolMenuOpen((open) => !open)}
               >
                 Tools <span aria-hidden="true">▾</span>
@@ -2050,15 +3787,112 @@ export function TicketWorkspacePage() {
                   </button>
                 </div>
                 <div className={styles.toolsMenuBody}>
-                  <ToolPicker
-                    groups={toolGroups}
-                    compact
-                    onOpen={(id) => void onShowConsole(id)}
-                  />
+                  <ToolPicker groups={toolGroups} compact onOpen={(id) => void onShowConsole(id)} />
                 </div>
               </div>
             ) : null}
           </div>
+
+          {switcherOpen ? (
+            <div
+              className={styles.switcherBackdrop}
+              // A click outside the panel is a cancel like Escape, and it is
+              // swallowed: where it landed is not a tool, and a click that fell
+              // through would move the workspace the panel was opened to change.
+              onMouseDown={(event) => {
+                if (event.target === event.currentTarget) {
+                  event.preventDefault()
+                  closeSwitcher(true)
+                }
+              }}
+            >
+              <div
+                className={styles.switcher}
+                role="dialog"
+                aria-modal="true"
+                aria-label="Switch tool"
+              >
+                <label className={styles.switcherLabel} htmlFor="tool-switcher-input">
+                  Switch to an open tool
+                </label>
+                <input
+                  id="tool-switcher-input"
+                  ref={switcherInput}
+                  className={styles.switcherInput}
+                  role="combobox"
+                  aria-expanded="true"
+                  aria-controls="tool-switcher-list"
+                  aria-autocomplete="list"
+                  aria-activedescendant={
+                    switcherTools[switcherIndex]
+                      ? `tool-switcher-${switcherTools[switcherIndex].id}`
+                      : undefined
+                  }
+                  value={switcherQuery}
+                  onChange={(event) => {
+                    setSwitcherQuery(event.target.value)
+                    // A narrower list is a new list; the arrows start at its top.
+                    setSwitcherIndex(0)
+                  }}
+                  onKeyDown={onSwitcherKeyDown}
+                  placeholder="Type a tool name"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                {switcherTools.length > 0 ? (
+                  <ul
+                    id="tool-switcher-list"
+                    className={styles.switcherList}
+                  role="listbox"
+                  // Not "Open tools": that is the strip's own name, and a
+                  // combobox list answering to it would be the second thing on
+                  // the card called that.
+                  aria-label="Matching tools"
+                >
+                    {switcherTools.map((tool, index) => {
+                      const hasNews =
+                        tool.id !== lookedConsole &&
+                        consoleHasNews(consoleReads, tool.id, consoleDigests[tool.id])
+                      return (
+                        <li
+                          key={tool.id}
+                          id={`tool-switcher-${tool.id}`}
+                          role="option"
+                          aria-selected={index === switcherIndex}
+                          aria-label={`${tool.label}${hasNews ? ', new' : ''}${
+                            tool.id === openTool ? ', open' : ''
+                          }`}
+                          className={
+                            index === switcherIndex
+                              ? `${styles.switcherOption} ${styles.switcherOptionActive}`
+                              : styles.switcherOption
+                          }
+                          // `mousedown` rather than `click`: the panel closes
+                          // before a click would be delivered, and the pick must
+                          // not be lost with the element it was aimed at.
+                          onMouseDown={(event) => {
+                            event.preventDefault()
+                            onSwitcherPick(tool.id)
+                          }}
+                        >
+                          <span className={styles.switcherName}>{tool.label}</span>
+                          {hasNews ? <span className={styles.switcherBadge}>new</span> : null}
+                          {tool.id === openTool ? (
+                            <span className={styles.switcherBadge}>open</span>
+                          ) : null}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                ) : (
+                  <p className={styles.switcherEmpty}>
+                    No open tool matches “{switcherQuery.trim()}”.
+                  </p>
+                )}
+                <p className={styles.switcherHint}>↑↓ to move · Enter to switch · Esc to close</p>
+              </div>
+            </div>
+          ) : null}
 
           {/* Split view shows both panes at once, so there is nothing left for the
               tabs to switch between. */}
@@ -2070,7 +3904,9 @@ export function TicketWorkspacePage() {
               aria-selected={paneMode === 'terminal'}
               aria-controls="pane-terminal"
               className={
-                paneMode === 'terminal' ? `${styles.toolTab} ${styles.toolTabActive}` : styles.toolTab
+                paneMode === 'terminal'
+                  ? `${styles.toolTab} ${styles.toolTabActive}`
+                  : styles.toolTab
               }
               onClick={() => setPaneMode('terminal')}
             >
@@ -2211,18 +4047,36 @@ export function TicketWorkspacePage() {
                 })}
                 <div ref={logEnd} />
               </div>
+              {workspace.denial ? (
+                <div
+                  className={styles.blockedNotice}
+                  role="status"
+                  aria-label="Commands the refusal stops"
+                >
+                  <p className={styles.blockedHeading}>
+                    Refusal stands — these commands will not run
+                  </p>
+                  <BlockedCommands commands={workspace.denial.blockedCommands} />
+                  <p className={styles.blockedNote}>
+                    Looking things up still works, so the log can carry what you checked. Then
+                    finish the paper: record what was asked and close the ticket as denied.
+                  </p>
+                </div>
+              ) : null}
               <div className={styles.quickRow} aria-label="Quick commands">
-                {['ipconfig /all', 'ipconfig /renew', 'ping 10.20.4.1', 'systeminfo', 'help'].map((entry) => (
-                  <button
-                    key={entry}
-                    type="button"
-                    className={styles.quickCommand}
-                    disabled={busy}
-                    onClick={() => setCommand(entry)}
-                  >
-                    {entry}
-                  </button>
-                ))}
+                {['ipconfig /all', 'ipconfig /renew', 'ping 10.20.4.1', 'systeminfo', 'help'].map(
+                  (entry) => (
+                    <button
+                      key={entry}
+                      type="button"
+                      className={styles.quickCommand}
+                      disabled={busy}
+                      onClick={() => setCommand(entry)}
+                    >
+                      {entry}
+                    </button>
+                  ),
+                )}
               </div>
               <form className={styles.commandForm} onSubmit={(event) => void onCommand(event)}>
                 <span className={styles.prompt}>PS&gt;</span>
@@ -2259,6 +4113,7 @@ export function TicketWorkspacePage() {
                 aria-valuemin={SPLIT_MIN_RATIO * 100}
                 aria-valuemax={SPLIT_MAX_RATIO * 100}
                 aria-valuenow={Math.round(splitRatio * 100)}
+                data-snapped={splitSnapped ? 'true' : undefined}
                 title="Drag to resize · arrow keys to adjust · double-click to reset"
                 tabIndex={0}
                 onKeyDown={onSplitKeyDown}
@@ -2283,24 +4138,174 @@ export function TicketWorkspacePage() {
               {/* One tab per console kept open, so the shelf is a place to go
                   rather than the only way to change tools. */}
               {openTools.length > 0 ? (
-                <div className={styles.consoleTabs} role="tablist" aria-label="Open tools">
-                  {openTools.map((consoleId) => (
-                    <button
-                      key={consoleId}
-                      type="button"
-                      role="tab"
-                      id={`console-tab-${consoleId}`}
-                      aria-selected={openTool === consoleId}
-                      className={
-                        openTool === consoleId
-                          ? `${styles.consoleTab} ${styles.consoleTabActive}`
-                          : styles.consoleTab
-                      }
-                      onClick={() => void onShowConsole(consoleId)}
-                    >
-                      {toolLabel(consoleId)}
-                    </button>
-                  ))}
+                <div
+                  className={styles.consoleTabs}
+                  role="tablist"
+                  aria-label="Open tools"
+                  // The strip's two shortcuts, advertised where the strip is: one
+                  // walks to the next tab with news, the other opens the panel
+                  // that takes a name instead of a walk.
+                  aria-keyshortcuts="N T"
+                  ref={stripRef}
+                  data-overflow={stripOverflow}
+                  // A tool carried out of the shelf lands on the strip; the caret
+                  // between two tabs says where, and the edge says the strip is
+                  // the thing being aimed at.
+                  data-drop-active={stripDropIndex === null ? undefined : 'true'}
+                  onScroll={showToolInStrip}
+                  onDragOver={(event) => {
+                    const consoleId = carriedTool(event)
+                    if (consoleId === null) {
+                      return
+                    }
+                    event.preventDefault()
+                    if (event.dataTransfer) {
+                      event.dataTransfer.dropEffect = 'copy'
+                    }
+                    setStripDropIndex(
+                      workspaceInsertIndex(workspaceLayout(), consoleId, stripDropPlace(event.clientX)),
+                    )
+                  }}
+                  onDragLeave={(event) => {
+                    if (draggingNewTool === null) {
+                      return
+                    }
+                    // Crossing the strip's own tabs is not leaving the strip, and
+                    // a caret that blinked off between them would read as a miss.
+                    const next = event.relatedTarget
+                    if (next instanceof Node && event.currentTarget.contains(next)) {
+                      return
+                    }
+                    setStripDropIndex(null)
+                  }}
+                  onDrop={(event) => {
+                    const consoleId = carriedTool(event)
+                    if (consoleId === null) {
+                      return
+                    }
+                    event.preventDefault()
+                    const index = stripDropPlace(event.clientX)
+                    setDraggingNewTool(null)
+                    setStripDropIndex(null)
+                    setDropTarget(null)
+                    onDropTool(consoleId, index)
+                  }}
+                >
+                  {openTools.map((consoleId, index) => {
+                    const isPinned = pinnedTools.includes(consoleId)
+                    // Something this console would print has changed since the
+                    // last time it was in front — and a tab being looked at is
+                    // never marked, even for the frame before its new page has
+                    // been filed as read.
+                    const hasNews =
+                      consoleId !== lookedConsole &&
+                      consoleHasNews(consoleReads, consoleId, consoleDigests[consoleId])
+                    // The first tab outside the held group opens the rest of the
+                    // strip, and is marked as the seam it is: the group is a
+                    // promise about the left of the strip, and a promise needs an
+                    // edge once there is more than one held tab.
+                    const opensTheFreeTabs =
+                      !isPinned && pinnedTools.length > 0 && index === pinnedTools.length
+                    // The place a carried tool would land: ahead of this tab, or
+                    // past the last one when the pointer is over the end of the
+                    // row.
+                    const caretAt =
+                      stripDropIndex === index
+                        ? 'start'
+                        : stripDropIndex === openTools.length && index === openTools.length - 1
+                          ? 'end'
+                          : null
+                    return (
+                      <button
+                        key={consoleId}
+                        type="button"
+                        role="tab"
+                        id={`console-tab-${consoleId}`}
+                        aria-selected={openTool === consoleId}
+                        // The dot says it in colour and the title says it on hover;
+                        // the name is what a screen reader reads out with the tab.
+                        aria-label={
+                          hasNews ? `${toolLabel(consoleId)}, new` : toolLabel(consoleId)
+                        }
+                        // A pinned tab is part of what holds the front, so only
+                        // the others move.
+                        draggable={openTools.length > 1 && !isPinned}
+                        onDragStart={() => setDraggingTool(index)}
+                        onDragOver={(event) => {
+                          if (draggingTool === null || draggingTool === index) {
+                            return
+                          }
+                          // Only a tab that could land here cancels the drop.
+                          event.preventDefault()
+                          setDropTarget(index)
+                        }}
+                        onDrop={(event) => {
+                          event.preventDefault()
+                          if (draggingTool !== null) {
+                            onReorderTool(draggingTool, index)
+                          }
+                          setDraggingTool(null)
+                          setDropTarget(null)
+                        }}
+                        onDragEnd={() => {
+                          setDraggingTool(null)
+                          setDropTarget(null)
+                        }}
+                        // The same move from the keyboard, because a drag is not
+                        // available to everybody: Ctrl/Cmd and an arrow puts the tab
+                        // one place along, and the pin stays where it is.
+                        onKeyDown={(event) => {
+                          if (!event.ctrlKey && !event.metaKey) {
+                            return
+                          }
+                          if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
+                            return
+                          }
+                          event.preventDefault()
+                          onReorderTool(index, index + (event.key === 'ArrowLeft' ? -1 : 1))
+                        }}
+                        title={`${toolLabel(consoleId)} — ${
+                          hasNews ? 'something new to show · press N to step to the next one · ' : ''
+                        }${
+                          isPinned
+                            ? 'held in the group at the left of the strip'
+                            : 'drag to reorder, or Ctrl with an arrow key'
+                        }`}
+                        className={[
+                          styles.consoleTab,
+                          openTool === consoleId ? styles.consoleTabActive : '',
+                          isPinned ? styles.consoleTabPinned : '',
+                          opensTheFreeTabs ? styles.consoleTabGroupStart : '',
+                          draggingTool === index ? styles.consoleTabDragging : '',
+                          dropTarget === index ? styles.consoleTabDropTarget : '',
+                        ]
+                          .filter(Boolean)
+                          .join(' ')}
+                        onClick={() => void onShowConsole(consoleId)}
+                      >
+                        {caretAt === null ? null : (
+                          <span
+                            className={
+                              caretAt === 'end'
+                                ? `${styles.consoleTabsCaret} ${styles.consoleTabsCaretEnd}`
+                                : styles.consoleTabsCaret
+                            }
+                            data-strip-caret={caretAt}
+                            aria-hidden="true"
+                          />
+                        )}
+                        {isPinned ? (
+                          <span className={styles.consoleTabPin} aria-hidden="true">
+                            ⇥
+                          </span>
+                        ) : null}
+                        {hasNews ? (
+                          <span className={styles.consoleTabDot} aria-hidden="true" />
+                        ) : null}
+                        {toolLabel(consoleId)}
+                      </button>
+                    )
+                  })}
                 </div>
               ) : null}
 
@@ -2321,7 +4326,18 @@ export function TicketWorkspacePage() {
                   </div>
                 ) : (
                   <div className={styles.pickerWrap}>
-                    <ToolPicker groups={toolGroups} onOpen={(id) => void onShowConsole(id)} />
+                    <ToolPicker
+                      groups={toolGroups}
+                      onOpen={(id) => void onShowConsole(id)}
+                      // The shelf sits under the strip, so a tool picked up here
+                      // has somewhere to be dropped; with no tabs there is no
+                      // strip and nothing to drag to.
+                      onDragTool={openTools.length > 0 ? setDraggingNewTool : undefined}
+                      onDragToolEnd={() => {
+                        setDraggingNewTool(null)
+                        setStripDropIndex(null)
+                      }}
+                    />
                   </div>
                 )
               ) : (
@@ -2335,7 +4351,22 @@ export function TicketWorkspacePage() {
                       ← All tools
                     </button>
                     <span className={styles.consoleBarActions}>
-                      <span className={styles.consoleName}>{toolLabel(openTool)}</span>
+                      <span className={styles.consoleName} title={toolLabel(openTool)}>
+                        {toolLabel(openTool)}
+                      </span>
+                      <button
+                        type="button"
+                        className={styles.consolePin}
+                        aria-pressed={pinnedTools.includes(openTool)}
+                        aria-label={
+                          pinnedTools.includes(openTool)
+                            ? `Unpin ${toolLabel(openTool)} from the left of the strip`
+                            : `Pin ${toolLabel(openTool)} to the left of the strip`
+                        }
+                        onClick={onTogglePin}
+                      >
+                        {pinnedTools.includes(openTool) ? 'Pinned' : 'Pin'}
+                      </button>
                       <button
                         type="button"
                         className={styles.consoleClose}
@@ -2354,6 +4385,11 @@ export function TicketWorkspacePage() {
                       runConsole(openTool, entryId, actionId, inputs)
                     }
                     onSubmitCommand={onDesktopCommand}
+                    onRead={(entryId) => onReadRecord(openTool, entryId)}
+                    // What this console was showing when it was last left, and
+                    // the way back out: a reopened ticket lands on the machine.
+                    focus={consoleFocus[openTool] ?? null}
+                    onFocusChange={reportConsoleFocus}
                   />
                 </div>
               )}

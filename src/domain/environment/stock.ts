@@ -10,11 +10,21 @@ import type { Site, StockItem, StockState, World } from './types'
  * run the same audited commands as the terminal, so the movement is in the log.
  */
 
-const STATE_LABELS: Record<StockState, string> = {
+/**
+ * What each shelf state is called, wherever a shelf state is shown or read.
+ * The bay, the asset record and the policy that stops a machine leaving the
+ * shelf all name the states from here, so a state cannot be described one way
+ * on the console and another way in the refusal that quotes it.
+ */
+export const STOCK_STATE_LABELS: Record<StockState, string> = {
   ready: 'Ready to go out',
   'needs-image': 'Needs imaging',
   'awaiting-parts': 'Waiting on parts',
   quarantined: 'Held, do not issue',
+}
+
+export function stockStateLabel(state: StockState): string {
+  return STOCK_STATE_LABELS[state]
 }
 
 /** The order a bay is worth reading in: what can leave first, held stock last. */
@@ -77,12 +87,12 @@ function bayEntry(site: Site, items: readonly StockItem[]): ConsoleEntry {
       { label: 'Site', value: site.name },
       { label: 'Machines held', value: String(items.length) },
       ...counts.map((group) => ({
-        label: STATE_LABELS[group.state],
+        label: stockStateLabel(group.state),
         value: String(group.items.length),
       })),
     ],
     groups: counts.map((group) => ({
-      label: `${STATE_LABELS[group.state]} (${group.items.length})`,
+      label: `${stockStateLabel(group.state)} (${group.items.length})`,
       items: group.items.map(describe),
       empty: 'Nothing in this state.',
     })),

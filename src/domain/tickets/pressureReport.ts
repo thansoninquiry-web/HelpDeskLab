@@ -82,6 +82,12 @@ function afterPhrase(step: PressureLogStep | undefined): string {
       return 'after you refused the request'
     case 'hint':
       return 'after you took a hint'
+    case 'console-read':
+      // The console is named by the read itself, not by this phrase: the debrief
+      // only has to say the caller cut in over a look, not which tool it was.
+      return step.input.entryId === undefined
+        ? 'after you opened a tool console'
+        : 'after you read a record in the tools'
     case 'rewind': {
       const dropped = typeof step.input.dropped === 'number' ? step.input.dropped : 0
       if (dropped <= 0) {

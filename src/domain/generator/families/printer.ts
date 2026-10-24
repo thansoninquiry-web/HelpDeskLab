@@ -129,6 +129,14 @@ const ANGRY_CALLER_PRESSURE: readonly PressureLine[] = [
       'You restarted the whole service without even opening the queue? So you still have no idea what was wrong. Brilliant.',
   },
   {
+    // The desk opened the printer's console: the caller can hear that the queue
+    // is on screen, and wants it fixed rather than studied.
+    id: 'angry-printer-read',
+    trigger: { kind: 'read', consoleId: 'printers' },
+    message:
+      'That is the one — the queue has not moved since nine. Do not just look at it, get the run out.',
+  },
+  {
     // The correct path is four steps, so the clock only starts on a desk that has
     // already spent more than that without getting anywhere.
     id: 'angry-stalled',

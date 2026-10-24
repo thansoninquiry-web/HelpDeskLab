@@ -113,6 +113,38 @@ describe('repositories', () => {
     ).rejects.toBeInstanceOf(NotFoundError)
   })
 
+  it('keeps where the desk was inside a console and drops it when the ticket closes', async () => {
+    const { persistence } = env
+    await persistence.tickets.create(makeTicket())
+    await persistence.sessions.create(makeSession())
+
+    // A row written before the focus existed has none, which is the same as a
+    // console that was never searched.
+    expect((await persistence.sessions.findById('session-1'))?.consoleFocus).toBeNull()
+
+    await persistence.sessions.saveConsoleFocus('session-1', {
+      directory: { query: 'kira', selectedId: 'user:kira-khan' },
+    })
+
+    expect((await persistence.sessions.findById('session-1'))?.consoleFocus).toEqual({
+      directory: { query: 'kira', selectedId: 'user:kira-khan' },
+    })
+
+    await persistence.sessions.finish('session-1', {
+      endedAt: 1_760_000_400_000,
+      resolution: 'restarted-spooler',
+      outcome: 'resolved',
+    })
+
+    // A finished ticket has no console to reopen, so its focus goes with the layout.
+    expect((await persistence.sessions.findById('session-1'))?.consoleFocus).toBeNull()
+    await expect(
+      persistence.sessions.saveConsoleFocus('session-1', {
+        directory: { query: 'late', selectedId: null },
+      }),
+    ).rejects.toBeInstanceOf(NotFoundError)
+  })
+
   it('remembers which attempts were sat as exams', async () => {
     const { persistence } = env
     await persistence.tickets.create(makeTicket())
@@ -150,6 +182,26 @@ describe('repositories', () => {
     await expect(persistence.actions.append(makeAction('missing'))).rejects.toBeInstanceOf(
       NotFoundError,
     )
+  })
+
+  it('stamps each step with the wall clock as well as the call clock', async () => {
+    const { persistence } = env
+    await persistence.tickets.create(makeTicket())
+    await persistence.sessions.create(makeSession())
+
+    const before = Date.now()
+    const stored = await persistence.actions.append(makeAction())
+    const after = Date.now()
+
+    // The call clock is the simulated minute the step sits on; the wall clock is
+    // when the row was written, which is what the caller's stall ladder reads.
+    expect(stored.atMs).toBe(1_760_000_160_000)
+    expect(stored.wallMs).not.toBeNull()
+    expect(stored.wallMs ?? 0).toBeGreaterThanOrEqual(before)
+    expect(stored.wallMs ?? 0).toBeLessThanOrEqual(after)
+
+    const [reloaded] = await persistence.actions.listBySession('session-1')
+    expect(reloaded?.wallMs).toBe(stored.wallMs)
   })
 
   it('stores one immutable score per session', async () => {
@@ -200,6 +252,9 @@ describe('repositories', () => {
       ['NET-01', 'bad-static-dns', 62],
       ['M365-01', 'smart-lockout', 91],
     ])
+    // The score names the attempt it belongs to, so a module can read anything
+    // the attempt recorded — how the ticket arrived, not only its family.
+    expect(history.map((entry) => entry.sessionId)).toEqual(['session-1', 'session-2'])
     expect(history[0]?.categoryScores?.documentation).toEqual({ earned: 6, possible: 20 })
     // Scores written before categories were stored simply report null.
     expect(history[1]?.categoryScores).toBeNull()
@@ -252,6 +307,229 @@ describe('repositories', () => {
     expect(await persistence.actions.listHints()).toEqual([
       { sessionId: 'session-1', itemId: 'verify-caller', hintIndex: 1 },
       { sessionId: 'session-1', itemId: 'unlock', hintIndex: 0 },
+    ])
+  })
+
+  it('reads every caller check by the method and the proof it produced', async () => {
+    const { persistence } = env
+    await persistence.tickets.create(makeTicket())
+    await persistence.sessions.create(makeSession())
+    await persistence.sessions.create(makeSession('ticket-1', { id: 'session-2' }))
+
+    await persistence.actions.append(
+      makeAction('session-1', {
+        kind: 'verify-caller',
+        input: { method: 'verification-code' },
+        output: { verified: true, result: 'verified' },
+      }),
+    )
+    // A callback a colleague answered: the check happened, and it proved
+    // somebody else, which is the distinction the scorer draws.
+    await persistence.actions.append(
+      makeAction('session-2', {
+        kind: 'verify-caller',
+        input: { method: 'callback' },
+        output: { verified: false, provesCaller: false, result: 'colleague-answered' },
+      }),
+    )
+    // A check that names no method this build offers is not attributed.
+    await persistence.actions.append(
+      makeAction('session-2', {
+        kind: 'verify-caller',
+        input: { employeeId: 'E-8842' },
+        output: { verified: true },
+      }),
+    )
+    await persistence.actions.append(makeAction('session-1'))
+
+    expect(await persistence.actions.listVerificationChecks()).toEqual([
+      { sessionId: 'session-1', method: 'verification-code', proved: true },
+      { sessionId: 'session-2', method: 'callback', proved: false },
+    ])
+  })
+
+  it('reads the rung count each score charged, beside the logged hints', async () => {
+    const { persistence } = env
+    await persistence.tickets.create(makeTicket())
+    await persistence.sessions.create(makeSession())
+    await persistence.sessions.create(makeSession('ticket-1', { id: 'session-2' }))
+    await persistence.sessions.create(makeSession('ticket-1', { id: 'session-3' }))
+    await persistence.scores.save(
+      makeScore('session-1', {
+        computedAt: 10,
+        rubric: { items: [{ id: 'unlock', label: 'Unlock the account' }], hintsUsed: 2 },
+      }),
+    )
+    // A score written before hints were counted keeps no number at all.
+    await persistence.scores.save(
+      makeScore('session-2', {
+        computedAt: 20,
+        rubric: { items: [{ id: 'unlock', label: 'Unlock the account' }] },
+      }),
+    )
+    await persistence.scores.save(
+      makeScore('session-3', {
+        computedAt: 30,
+        rubric: { items: [{ id: 'unlock', label: 'Unlock the account' }], hintsUsed: 0 },
+      }),
+    )
+
+    // Only the attempts that stored a count report one: absent is not zero, so
+    // a legacy score cannot be read as "took no hints".
+    expect(await persistence.scores.listScoredHintCounts()).toEqual([
+      { sessionId: 'session-1', hintsUsed: 2 },
+      { sessionId: 'session-3', hintsUsed: 0 },
+    ])
+  })
+
+  it('keeps a hint repair beside the score, and clears it again', async () => {
+    const { persistence } = env
+    await persistence.tickets.create(makeTicket())
+    await persistence.sessions.create(makeSession())
+    await persistence.scores.save(makeScore('session-1', { rubric: { items: [], hintsUsed: 2 } }))
+
+    const repair = {
+      placed: 0,
+      missing: 2,
+      rungs: [
+        { sequence: 1, cost: 5 },
+        { sequence: 2, cost: 5 },
+      ],
+      cost: 10,
+      charged: 10,
+      policy: { perHint: 5, cap: 15, budget: 0 },
+      repairedAt: 1_760_000_500_000,
+      source: 'policy' as const,
+    }
+
+    // A score with no repair is the ordinary case, not an error.
+    expect(await persistence.scores.findHintRepair('session-1')).toBeNull()
+
+    await persistence.scores.saveHintRepair('session-1', repair)
+    expect(await persistence.scores.findHintRepair('session-1')).toEqual(repair)
+    // The evaluation it was made beside has not moved.
+    expect((await persistence.scores.findBySession('session-1'))?.rubric).toEqual({
+      items: [],
+      hintsUsed: 2,
+    })
+
+    await persistence.scores.saveHintRepair('session-1', null)
+    expect(await persistence.scores.findHintRepair('session-1')).toBeNull()
+  })
+
+  it('refuses a repair for an attempt that has no score', async () => {
+    const { persistence } = env
+
+    await expect(
+      persistence.scores.saveHintRepair('session-missing', {
+        placed: 0,
+        missing: 1,
+        rungs: [{ sequence: 1, cost: 5 }],
+        cost: 5,
+        charged: 5,
+        policy: { perHint: 5, cap: 15, budget: 0 },
+        repairedAt: 1,
+        source: 'policy',
+      }),
+    ).rejects.toBeInstanceOf(NotFoundError)
+  })
+
+  it('reads a row it cannot parse as no repair rather than a broken one', async () => {
+    const driver = await createSqliteDriver(undefined, { wasmBinary: loadWasmBinary() })
+    runMigrations(driver)
+    const scoped = new SqlitePersistence(driver, new MemorySnapshotStore(), loadWasmBinary())
+    await scoped.tickets.create(makeTicket())
+    await scoped.sessions.create(makeSession())
+    await scoped.scores.save(makeScore())
+
+    driver.run("UPDATE scores SET hint_repair_json = 'not json' WHERE session_id = 'session-1'")
+    expect(await scoped.scores.findHintRepair('session-1')).toBeNull()
+
+    // Well-formed JSON that is not a repair is no repair either.
+    driver.run(
+      'UPDATE scores SET hint_repair_json = ? WHERE session_id = \'session-1\'',
+      [JSON.stringify({ missing: 2, rungs: [] })],
+    )
+    expect(await scoped.scores.findHintRepair('session-1')).toBeNull()
+
+    await scoped.close()
+  })
+
+  it('reads the cuts a log still holds, with the step each started at', async () => {
+    const { persistence } = env
+    await persistence.tickets.create(makeTicket())
+    await persistence.tickets.create(
+      makeTicket({
+        id: 'ticket-2',
+        scenarioId: 'PWD-01',
+        variantId: 'locked-out',
+        seed: 43,
+        signature: 'sig-0002',
+      }),
+    )
+    await persistence.sessions.create(makeSession())
+    await persistence.sessions.create(makeSession('ticket-2', { id: 'session-2' }))
+
+    await persistence.actions.append(
+      makeAction('session-1', {
+        kind: 'rewind',
+        atMs: 1_760_000_200_000,
+        input: {
+          dropped: 2,
+          fromSeq: 4,
+          removed: [
+            {
+              kind: 'command',
+              atMs: 1_760_000_190_000,
+              input: { command: 'unlock-account alice.cooper' },
+              output: {},
+            },
+            { kind: 'note', atMs: 1_760_000_195_000, input: { noteKind: 'resolution' }, output: {} },
+          ],
+        },
+      }),
+    )
+    // A marker written before the dropped steps were kept names a count and no
+    // step, and one that kept only the steps still counts what it dropped.
+    await persistence.actions.append(
+      makeAction('session-2', {
+        kind: 'rewind',
+        atMs: 1_760_000_300_000,
+        input: { dropped: 3, fromSeq: 2 },
+      }),
+    )
+    await persistence.actions.append(
+      makeAction('session-2', {
+        kind: 'rewind',
+        atMs: 1_760_000_400_000,
+        input: { fromSeq: 6, removed: [{ kind: 'hint', input: { itemId: 'probe' }, output: {} }] },
+      }),
+    )
+    // Not a cut: the same log holds commands, and they are not read as rewinds.
+    await persistence.actions.append(makeAction('session-1'))
+
+    expect(await persistence.actions.listRewinds()).toEqual([
+      {
+        sessionId: 'session-1',
+        scenarioId: 'NET-01',
+        atMs: 1_760_000_200_000,
+        dropped: 2,
+        boundary: { kind: 'command', command: 'unlock-account alice.cooper', noteKind: null },
+      },
+      {
+        sessionId: 'session-2',
+        scenarioId: 'PWD-01',
+        atMs: 1_760_000_300_000,
+        dropped: 3,
+        boundary: null,
+      },
+      {
+        sessionId: 'session-2',
+        scenarioId: 'PWD-01',
+        atMs: 1_760_000_400_000,
+        dropped: 1,
+        boundary: { kind: 'hint', command: null, noteKind: null },
+      },
     ])
   })
 

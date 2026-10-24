@@ -6,7 +6,7 @@ import { IntuneNav } from './IntuneNav'
 import { relativeTime, useIntune } from './useIntune'
 import { registerIntuneTicketTemplates } from '../tickets/registry'
 import { isIntuneTicketComplete } from '../tickets/registry'
-import type { IntuneScore } from '../tickets/scoring'
+import { INTUNE_CATEGORIES, INTUNE_CATEGORY_LABELS, type IntuneScore } from '../tickets/scoring'
 import type { IntuneTicketTemplate } from '../tickets/templates'
 import { appName } from '../logic/compliance'
 import styles from './intune.module.css'
@@ -25,12 +25,14 @@ function useTicketQueue(): readonly IntuneTicketTemplate[] {
 }
 
 export function IntuneTicketsPage() {
-  const { state, error, busy, act, service } = useIntune()
+  const { state, error, busy, act, review, service } = useIntune()
   const templates = useTicketQueue()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [startedAt, setStartedAt] = useState<number>(() => Date.now())
   const [score, setScore] = useState<IntuneScore | null>(null)
   const [scoring, setScoring] = useState(false)
+  /** What the console said when the record was read, for this attempt. */
+  const [readSummary, setReadSummary] = useState<string | null>(null)
 
   const selected = templates.find((template) => template.id === selectedId) ?? null
   const device = selected ? state?.devices.find((entry) => entry.id === selected.deviceId) : undefined
@@ -82,6 +84,7 @@ export function IntuneTicketsPage() {
                   setSelectedId(template.id)
                   setStartedAt(Date.now())
                   setScore(null)
+                  setReadSummary(null)
                 }}
               >
                 <span>{template.title}</span>
@@ -131,6 +134,29 @@ export function IntuneTicketsPage() {
                             .join(', ')}
                     </dd>
                   </dl>
+                  {/* The read step: the console records that the reasons were
+                      looked at, which is what diagnosis is scored from. */}
+                  <div>
+                    <button
+                      type="button"
+                      className={styles.button}
+                      disabled={busy}
+                      onClick={() => {
+                        void review(device.id).then((summary) => {
+                          if (summary) {
+                            setReadSummary(summary)
+                          }
+                        })
+                      }}
+                    >
+                      Read the device record
+                    </button>
+                    {readSummary ? (
+                      <p className={styles.note} role="status">
+                        {readSummary}
+                      </p>
+                    ) : null}
+                  </div>
                 </div>
 
                 <DeviceActions
@@ -163,6 +189,22 @@ export function IntuneTicketsPage() {
                     out of 100 · {score.band} {score.passed ? '· passed' : '· not passed'}
                   </span>
                 </div>
+                {/* The same rubric split the rest of the app keeps, so Progress can
+                    say which kind of work costs the marks. */}
+                <h3 className={styles.count}>By category</h3>
+                <dl className={`${styles.meta} ${styles.categories}`}>
+                  {INTUNE_CATEGORIES.flatMap((category) => {
+                    const entry = score.categoryScores[category]
+                    return [
+                      <dt key={`${category}-label`}>{INTUNE_CATEGORY_LABELS[category]}</dt>,
+                      <dd key={`${category}-value`}>
+                        {entry.possible === 0
+                          ? 'not scored in the console'
+                          : `${entry.earned} / ${entry.possible}`}
+                      </dd>,
+                    ]
+                  })}
+                </dl>
                 <ul className={styles.items}>
                   {score.items.map((item) => (
                     <li key={item.id} data-passed={item.passed}>

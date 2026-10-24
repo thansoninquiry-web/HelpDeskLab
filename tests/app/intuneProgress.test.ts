@@ -37,6 +37,7 @@ beforeEach(async () => {
 
 /** Works the first ticket the way the reference does, and scores it. */
 async function resolveBitlockerTicket(): Promise<void> {
+  await service.review('dev-lt-2207')
   await service.act({ deviceId: 'dev-lt-2207', action: 'sync' })
   await service.score('tpl-bitlocker-off', NOW - 60_000)
 }
@@ -52,6 +53,36 @@ describe('Intune work on Progress', () => {
     // Difficulty 1, passed, strong: the same terms as any ticket attempt.
     expect(entry?.xp).toBe(100)
     expect(entry?.passed).toBe(true)
+  })
+
+  it('publishes the rubric split, so a console attempt can be broken down', async () => {
+    await resolveBitlockerTicket()
+
+    const feed = await loadIntuneProgress()
+    const categories = feed.history[0]?.categoryScores
+    expect(categories?.diagnosis).toEqual({ earned: 10, possible: 10 })
+    expect(categories?.resolution).toEqual({ earned: 75, possible: 75 })
+    expect(categories?.safety).toEqual({ earned: 15, possible: 15 })
+    // Nothing in the console scores notes.
+    expect(categories?.documentation.possible).toBe(0)
+  })
+
+  it('puts a console attempt that fell short in the weak topics, linked to the console', async () => {
+    await service.act({ deviceId: 'dev-lt-2207', action: 'wipe' })
+    await service.score('tpl-bitlocker-off', NOW - 60_000)
+
+    const progress = await loadProgress()
+    const topic = progress.weakTopics.find((entry) => entry.scenarioId === 'tpl-bitlocker-off')
+    expect(topic).toBeDefined()
+    expect(topic?.scenarioTitle).toBe('Laptop reported as non-compliant')
+    // The wipe left diagnosis, resolution and safety all at zero, so there is a
+    // category to name even though no review step was taken.
+    expect(topic?.weakestCategory).not.toBeNull()
+    // Not a family the practice queue knows: the row has to open the console.
+    expect(topic?.href).toBe('/intune/tickets')
+    expect(topic?.simulator).toBe('intune')
+    expect(topic?.actionLabel).toBe('Open the console')
+    expect(topic?.recommendation).toContain('console ticket')
   })
 
   it('folds attempts into scenario stats with the family Leitner rule', async () => {
@@ -82,6 +113,7 @@ describe('Intune work on Progress', () => {
     const row = progress.rows.find((entry) => entry.scenarioId === 'tpl-bitlocker-off')
     expect(row?.scenarioTitle).toBe('Laptop reported as non-compliant')
     expect(row?.href).toBe('/intune/tickets')
+    expect(row?.simulator).toBe('intune')
     expect(progress.attempts).toBeGreaterThanOrEqual(1)
   })
 

@@ -1,21 +1,28 @@
 import { isJsonObject, type JsonObject, type JsonValue } from '../../domain/shared/json'
 import type {
   LeitnerBox,
+  RewindRecord,
   ScenarioStats,
   ScoreHistoryEntry,
+  ScoredAttemptHints,
   ScoredStep,
   TakenHint,
+  UnrunStep,
+  VerificationCheckRecord,
 } from '../../domain/progress/types'
+import { VERIFICATION_METHODS } from '../../domain/progress/verification'
+import type { VerificationMethod } from '../../domain/environment/types'
 import { hintPricingJson, normalizeHintPricing } from '../../domain/scoring/policy'
 import type { Score, ScoreBand } from '../../domain/scoring/types'
 import { JOB_STATUSES, type JobStatus, type JobTarget } from '../../domain/targets/types'
-import type {
-  ActionKind,
-  Session,
-  SessionAction,
-  SessionOutcome,
-  Ticket,
-  TicketStatus,
+import {
+  ACTION_KINDS,
+  type ActionKind,
+  type Session,
+  type SessionAction,
+  type SessionOutcome,
+  type Ticket,
+  type TicketStatus,
 } from '../../domain/tickets/types'
 import { DataCorruptionError } from '../errors'
 import type { Row, SqlValue } from '../sqlite'
@@ -122,6 +129,8 @@ export function mapSession(row: Row): Session {
   const rawOutcome = expectNullableText(row, 'outcome', 'sessions')
   const rawPolicy = expectNullableText(row, 'hint_policy_json', 'sessions')
   const rawDraft = expectNullableText(row, 'closure_draft_json', 'sessions')
+  const rawLayout = expectNullableText(row, 'workspace_layout_json', 'sessions')
+  const rawFocus = expectNullableText(row, 'console_focus_json', 'sessions')
   return {
     id: expectText(row, 'id', 'sessions'),
     ticketId: expectText(row, 'ticket_id', 'sessions'),
@@ -142,6 +151,16 @@ export function mapSession(row: Row): Session {
       rawDraft === null
         ? null
         : parseJsonObject(rawDraft, 'sessions.closure_draft_json'),
+    // Stored as written and read back through `normalizeWorkspaceLayout`, which
+    // is where a console this build no longer offers is dropped.
+    workspaceLayout:
+      rawLayout === null
+        ? null
+        : parseJsonObject(rawLayout, 'sessions.workspace_layout_json'),
+    // Stored as written and read back through `normalizeConsoleFocus`, which is
+    // where a console this build no longer offers is dropped.
+    consoleFocus:
+      rawFocus === null ? null : parseJsonObject(rawFocus, 'sessions.console_focus_json'),
     examMode: expectBoolean(row, 'exam_mode', 'sessions'),
     resolution: expectNullableText(row, 'resolution', 'sessions'),
     outcome: rawOutcome === null
@@ -156,20 +175,12 @@ export function mapAction(row: Row): SessionAction {
     sessionId: expectText(row, 'session_id', 'actions'),
     seq: expectInteger(row, 'seq', 'actions'),
     atMs: expectInteger(row, 'at_ms', 'actions'),
-    kind: oneOf(
-      expectText(row, 'kind', 'actions'),
-      [
-        'command',
-        'ask-user',
-        'verify-caller',
-        'deny-caller',
-        'note',
-        'hint',
-        'code-sent',
-        'rewind',
-      ] as const,
-      'actions.kind',
-    ) satisfies ActionKind,
+    // Rows written before the column existed read as null, which the caller's
+    // stall clock treats as "no wall time recorded" rather than as a time.
+    wallMs: expectNullableInteger(row, 'wall_ms', 'actions'),
+    // Read from the domain's list rather than repeated here: a kind added to the
+    // log without being added to the mapper would be written and then unreadable.
+    kind: oneOf(expectText(row, 'kind', 'actions'), ACTION_KINDS, 'actions.kind') satisfies ActionKind,
     input: parseJsonObject(row.input_json ?? null, 'actions.input_json'),
     output: parseJsonObject(row.output_json ?? null, 'actions.output_json'),
   }
@@ -221,6 +232,7 @@ export function mapScoreHistory(row: Row): ScoreHistoryEntry {
   const rubric = parseJsonObject(row.rubric_json ?? null, 'scores.rubric_json')
   const storedXp = rubric.xp
   return {
+    sessionId: expectText(row, 'session_id', 'scores'),
     scenarioId: expectText(row, 'scenario_id', 'tickets'),
     variantId: expectText(row, 'variant_id', 'tickets'),
     total: expectInteger(row, 'total', 'scores'),
@@ -260,6 +272,49 @@ export function mapScoredSteps(row: Row): ScoredStep[] {
 }
 
 /**
+ * The rung count a score charged, when it kept one. A score written before hints
+ * were counted has no number, and contributes nothing rather than a zero: an
+ * absent count must not read as "took no hints".
+ */
+export function mapScoredHintCounts(row: Row): ScoredAttemptHints[] {
+  const sessionId = expectText(row, 'session_id', 'scores')
+  const rubric = parseJsonObject(row.rubric_json ?? null, 'scores.rubric_json')
+  const hintsUsed = rubric.hintsUsed
+  if (typeof hintsUsed !== 'number' || !Number.isInteger(hintsUsed) || hintsUsed < 0) {
+    return []
+  }
+  return [{ sessionId, hintsUsed }]
+}
+
+/**
+ * One logged caller check, reduced to its method and outcome. Null when the row
+ * names no method this build offers: a check whose proof cannot be named is not
+ * put on a row rather than guessed at.
+ *
+ * `proved` follows the scorer's own rule: a check proves the person on the
+ * ticket when it did not fail and did not prove somebody else — a colleague
+ * answering a shared line is recorded as a check that proved nobody on it.
+ */
+export function mapVerificationCheck(row: Row): VerificationCheckRecord | null {
+  const sessionId = expectText(row, 'session_id', 'actions')
+  const input = parseJsonObject(row.input_json ?? null, 'actions.input_json')
+  const method = input.method
+  if (
+    typeof method !== 'string' ||
+    !VERIFICATION_METHODS.includes(method as VerificationMethod)
+  ) {
+    return null
+  }
+
+  const output = parseJsonObject(row.output_json ?? null, 'actions.output_json')
+  return {
+    sessionId,
+    method: method as VerificationMethod,
+    proved: output.verified !== false && output.provesCaller !== false,
+  }
+}
+
+/**
  * One logged hint, reduced to the step and rung it named. Null when the row
  * names no step: that hint cannot be attributed to a rubric item, so it is left
  * out of the habit rather than guessed at.
@@ -276,6 +331,50 @@ export function mapTakenHint(row: Row): TakenHint | null {
   const hintIndex =
     typeof rawIndex === 'number' && Number.isInteger(rawIndex) && rawIndex >= 0 ? rawIndex : 0
   return { sessionId, itemId, hintIndex }
+}
+
+/**
+ * The step a rewind marker started at: the first step it dropped. A marker
+ * written before the steps were kept names none, and contributes its count
+ * alone rather than failing the whole Progress page.
+ */
+function readUnrunStep(value: unknown): UnrunStep | null {
+  if (!isJsonObject(value)) {
+    return null
+  }
+  const kind = value.kind
+  if (typeof kind !== 'string' || kind.length === 0) {
+    return null
+  }
+  const command = value.input
+  const noteKind = isJsonObject(command) ? command.noteKind : null
+  return {
+    kind,
+    command: isJsonObject(command) && typeof command.command === 'string' ? command.command : null,
+    noteKind: typeof noteKind === 'string' && noteKind.length > 0 ? noteKind : null,
+  }
+}
+
+/**
+ * One rewind from the log, joined to the family its attempt was on. The steps
+ * the cut took are kept inside the marker's input, so the log itself says what
+ * was un-run without reading the attempt again.
+ */
+export function mapRewind(row: Row): RewindRecord {
+  const input = parseJsonObject(row.input_json ?? null, 'actions.input_json')
+  const removed = Array.isArray(input.removed) ? input.removed : []
+  const rawDropped = input.dropped
+
+  return {
+    sessionId: expectText(row, 'session_id', 'actions'),
+    scenarioId: expectText(row, 'scenario_id', 'tickets'),
+    atMs: expectInteger(row, 'at_ms', 'actions'),
+    dropped:
+      typeof rawDropped === 'number' && Number.isFinite(rawDropped)
+        ? Math.max(0, Math.round(rawDropped))
+        : removed.length,
+    boundary: readUnrunStep(removed[0]),
+  }
 }
 
 export function mapJobTarget(row: Row): JobTarget {

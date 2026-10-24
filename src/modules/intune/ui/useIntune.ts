@@ -13,6 +13,11 @@ export interface IntuneHandle {
     action: DeviceAction,
     options?: { userId?: string },
   ) => Promise<{ summary: string; status: 'applied' | 'refused' | 'failed' } | null>
+  /**
+   * Records the read step and returns the console's sentence about the record.
+   * Nothing on the device changes; the event is what the score reads.
+   */
+  review: (deviceId: string) => Promise<string | null>
   reset: () => Promise<void>
   reload: () => Promise<void>
   service: IntuneService | null
@@ -86,6 +91,27 @@ export function useIntune(): IntuneHandle {
     [service],
   )
 
+  const review = useCallback<IntuneHandle['review']>(
+    async (deviceId) => {
+      if (!service) {
+        return null
+      }
+      setBusy(true)
+      try {
+        const result = await service.review(deviceId)
+        setState(result.state)
+        setError(null)
+        return result.summary
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : 'The record could not be read.')
+        return null
+      } finally {
+        setBusy(false)
+      }
+    },
+    [service],
+  )
+
   const reset = useCallback(async () => {
     if (!service) {
       return
@@ -99,7 +125,7 @@ export function useIntune(): IntuneHandle {
     }
   }, [service])
 
-  return { state, error, busy, act, reset, reload, service }
+  return { state, error, busy, act, review, reset, reload, service }
 }
 
 /** `3 days ago`, which is how a console says a device has been quiet. */

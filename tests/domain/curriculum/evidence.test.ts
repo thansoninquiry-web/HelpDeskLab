@@ -13,6 +13,7 @@ function entry(
   overrides: Partial<ScoreHistoryEntry> = {},
 ): ScoreHistoryEntry {
   return {
+    sessionId: 'session-1',
     scenarioId,
     variantId: 'variant',
     total: 90,
@@ -35,6 +36,7 @@ function actionsFor(sessionId: string, steps: Step[]): SessionAction[] {
     sessionId,
     seq: index + 1,
     atMs: 1_760_000_100_000 + index,
+    wallMs: 1_760_000_100_000 + index,
     kind: step.kind,
     input: step.input ?? {},
     output: step.output ?? {},
@@ -459,6 +461,13 @@ describe('curriculum evidence', () => {
           input: { command: 'trace-message msg-3101' },
           output: { ok: true, lines: [] },
         },
+        // Listing mail by delivery state names ids and states; the path a
+        // message took is still only in the trace, so this is not a trace.
+        {
+          kind: 'command',
+          input: { command: 'get-messages deferred' },
+          output: { ok: true, lines: [] },
+        },
         {
           kind: 'command',
           input: { command: 'trace-message msg-9999' },
@@ -645,5 +654,103 @@ describe('curriculum evidence', () => {
     expect(evidence.listingsSaved).toBe(2)
     expect(evidence.listingsWithSkills).toBe(1)
     expect(evidence.demandedFamiliesPassed).toBe(1)
+  })
+})
+
+/**
+ * Module 5 is about how a ticket arrived, which no family and no score says on
+ * its own: the arrival is kept on the attempt's world, and everything the
+ * module counts is read from the attempt that carries it.
+ */
+describe('voicemail evidence', () => {
+  const ARRIVAL = {
+    leftAt: 1_760_000_000_000,
+    durationSeconds: 34,
+    callbackLine: 'desk' as const,
+  }
+
+  function messageSession(id: string): Session {
+    return makeSession('ticket-1', {
+      id,
+      world: { clock: 1_760_000_100_000, voicemail: ARRIVAL },
+    })
+  }
+
+  function liveSession(id: string): Session {
+    return makeSession('ticket-2', { id, world: { clock: 1_760_000_100_000 } })
+  }
+
+  it('counts a pass only on the attempt that arrived as a message', () => {
+    const evidence = derive({
+      history: [
+        entry('PWD-01', { sessionId: 's-message' }),
+        entry('PWD-01', { sessionId: 's-live' }),
+        entry('NET-01', { sessionId: 's-message', passed: false }),
+      ],
+      sessions: [messageSession('s-message'), liveSession('s-live')],
+    })
+
+    expect(evidence.voicemailPasses).toBe(1)
+    // The pass on the live ticket still counts for the course, just not here.
+    expect(evidence.passedAttempts).toBe(2)
+  })
+
+  it('counts a callback on a message attempt, whatever the line answered', () => {
+    const evidence = derive({
+      sessions: [messageSession('s-message'), liveSession('s-live')],
+      actions: [
+        ...actionsFor('s-message', [
+          { kind: 'verify-caller', input: { method: 'callback' }, output: { verified: false } },
+          { kind: 'verify-caller', input: { method: 'verification-code' }, output: { verified: true } },
+        ]),
+        ...actionsFor('s-live', [
+          { kind: 'verify-caller', input: { method: 'callback' }, output: { verified: true } },
+        ]),
+      ],
+    })
+
+    expect(evidence.voicemailCallbacks).toBe(1)
+    // A callback that reached the wrong person still proves the desk rang.
+    expect(evidence.callerVerifications).toBe(2)
+  })
+
+  it('counts the notes written on a message attempt, not the resolution', () => {
+    const note = (noteKind: string, text: string) => ({
+      kind: 'note' as const,
+      input: { noteKind, text },
+      output: { saved: true },
+    })
+
+    const evidence = derive({
+      sessions: [messageSession('s-message'), liveSession('s-live')],
+      actions: [
+        ...actionsFor('s-message', [
+          note('troubleshooting', 'Called the desk line back; directory showed the account locked.'),
+          note('customer', 'Your account is unlocked, and the desk line is still the way to reach you.'),
+          note('resolution', 'Unlocked after a callback, and confirmed the sign-in works.'),
+        ]),
+        ...actionsFor('s-live', [
+          note('troubleshooting', 'Live caller, walked through the sign-in and reset the password.'),
+        ]),
+      ],
+    })
+
+    expect(evidence.voicemailNotes).toBe(2)
+    expect(evidence.troubleshootingNotes).toBe(2)
+    expect(evidence.customerNotes).toBe(1)
+  })
+
+  it('reads a damaged arrival as a live ticket rather than guessing', () => {
+    const evidence = derive({
+      history: [entry('PWD-01', { sessionId: 's-broken' })],
+      sessions: [
+        makeSession('ticket-3', {
+          id: 's-broken',
+          world: { clock: 1, voicemail: { leftAt: 'soon', callbackLine: 'desk' } },
+        }),
+      ],
+    })
+
+    expect(evidence.voicemailPasses).toBe(0)
   })
 })

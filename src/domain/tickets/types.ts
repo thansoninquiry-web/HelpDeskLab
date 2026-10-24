@@ -26,6 +26,14 @@ export const ACTION_KINDS = [
    * attempt that edited its own history still reads honestly.
    */
   'rewind',
+  /**
+   * The desk opened a tool console or read one of its records. It changes no
+   * machine and issues no command, but it is the learner acting on the call: the
+   * caller can react to being looked up, and the stall clock restarts on it. The
+   * row is evidence only — it is never a step of the rubric, and a cut can still
+   * be put back after one, because it changes nothing in the world.
+   */
+  'console-read',
 ] as const
 
 export type ActionKind = (typeof ACTION_KINDS)[number]
@@ -65,6 +73,19 @@ export interface Session {
    */
   closureDraft: JsonObject | null
   /**
+   * Where the learner was working inside the ticket: the pane in front, the
+   * console showing, and the tabs open beside it. Null on rows written before
+   * the layout existed, and cleared when the session closes, because a finished
+   * ticket has no workspace left to reopen.
+   */
+  workspaceLayout: JsonObject | null
+  /**
+   * Where the learner was inside each console: the search typed there and the
+   * record left open, keyed by console id. Null on rows written before the focus
+   * existed, and cleared when the session closes, like the layout beside it.
+   */
+  consoleFocus: JsonObject | null
+  /**
    * True when the attempt was sat as an exam: hints stay closed for its whole
    * lifetime, whatever the setting says afterwards.
    */
@@ -77,10 +98,23 @@ export interface SessionAction {
   id: number
   sessionId: SessionId
   seq: number
+  /**
+   * Where the step sits on the call's own clock, which only moves when a command
+   * runs. It is what the timeline prints, and it cannot say how long the desk has
+   * been quiet: an idle minute does not move it.
+   */
   atMs: number
+  /**
+   * When the step was appended, in wall-clock milliseconds — the other clock a
+   * step keeps. The caller's stall ladder is measured from the learner's last
+   * step in real time, which `atMs` cannot answer. The repository stamps it, so
+   * a caller writes no timestamp of its own, and it is null on rows written
+   * before the column existed.
+   */
+  wallMs: number | null
   kind: ActionKind
   input: JsonObject
   output: JsonObject
 }
 
-export type NewSessionAction = Omit<SessionAction, 'id' | 'seq'>
+export type NewSessionAction = Omit<SessionAction, 'id' | 'seq' | 'wallMs'>

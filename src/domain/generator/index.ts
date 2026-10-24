@@ -4,6 +4,7 @@ import { teamShare } from '../environment/shares'
 import type { Device, Printer, Site, World } from '../environment/types'
 import type { JsonObject } from '../shared/json'
 import { hashSeed, createRng } from '../shared/rng'
+import { voicemailFor } from '../tickets/voicemail'
 import type { Rng } from '../shared/rng'
 import { deploymentFamily } from './families/deployment'
 import { dhcpFamily } from './families/dhcp'
@@ -25,7 +26,13 @@ import type {
 } from './types'
 
 export * from './types'
-export { CLOSURE_CODES, PASS_THRESHOLD, STRONG_THRESHOLD, closureCodesFor } from './rubric'
+export {
+  CLOSURE_CODES,
+  PASS_THRESHOLD,
+  STRONG_THRESHOLD,
+  closureCodesFor,
+  refusalClosureCodes,
+} from './rubric'
 export type { ClosureCode } from './rubric'
 
 export const SCENARIO_FAMILIES: readonly ScenarioFamily[] = [
@@ -147,6 +154,10 @@ function slotValues(
     sharePath: team?.share.path ?? String.raw`\\SRV-FS01\Finance`,
     groupName: team?.group.name ?? 'FS-All-Users',
     tenantName: context.world.m365.name,
+    // The shared line on the caller's record, named the same way the identity
+    // panel will list it, so a ticket that talks about the team line and the
+    // contact the desk can ring are the same line.
+    teamLine: context.world.sharedCallbackLine?.label ?? `${context.user.department} team line`,
     targetHostname: context.targetHostname ?? context.device.hostname,
     assetTag: context.targetAssetTag ?? 'the shelf machine',
   }
@@ -232,6 +243,16 @@ function buildTicket(seed: number, options: GenerateTicketOptions): GeneratedTic
     },
     reportedSymptoms: [...variant.symptoms],
     createdAt: clock,
+  }
+
+  // How the request arrived, decided after the fault is built: a variant that
+  // takes the handset out of action changes which line the message names.
+  const voicemail = voicemailFor(seed, clock, world.mobileOutOfAction === true)
+  if (voicemail) {
+    // In both places on purpose: the record travels with the attempt for the
+    // curriculum, and with the ticket so the queue can say how it arrived.
+    world.voicemail = voicemail
+    publicTicket.voicemail = voicemail
   }
 
   world.fault = {

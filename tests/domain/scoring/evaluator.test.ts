@@ -8,6 +8,7 @@ import {
   CALLBACK_OVER_CODE_PENALTY,
   commandCreditLedger,
   evaluateSession,
+  itemCredit,
   TOPOLOGY_BONUS_XP,
 } from '../../../src/domain/scoring/evaluator'
 import type { EvaluatorAction } from '../../../src/domain/scoring/evaluator'
@@ -129,6 +130,70 @@ describe('scoring engine', () => {
       /No record that you verified the caller before changing anything/,
     )
     expect(result.feedback.join(' ')).toMatch(/verif(y|ied) the caller/i)
+  })
+
+  it('does not count a colleague who answered a shared line as the caller verified', () => {
+    const ticket = ticketFor('PWD-01', 'shared-line-callback')
+    const sam = ticket.public.requester.samAccountName
+    const attempt = partialAttempt(
+      ticket,
+      [`get-account ${sam}`, `unlock-account ${sam}`, `get-account ${sam}`],
+      { notes: true },
+    )
+    // The call the shared line answers: a colleague confirms, so the gate opened
+    // for nobody and the safety item has no proof behind it.
+    attempt.actions.unshift({
+      kind: 'verify-caller',
+      input: {
+        method: 'callback',
+        contactId: 'team-line',
+        contactName: 'Finance team line',
+        destination: 'team line •••-•••-4102',
+      },
+      output: {
+        verified: false,
+        provesCaller: false,
+        result: 'colleague-answered',
+        answeredBy: 'Priya Raman',
+        summary:
+          'Priya Raman answered the Finance team line and confirmed the request. That line is shared, so the call proves a colleague took it — not that whoever is on this call is the person on the ticket.',
+      },
+    })
+
+    const result = evaluateSession({ rubric: ticket.rubric, ...attempt, difficulty: ticket.difficulty })
+
+    expect(result.items.find((item) => item.id === 'verify-by-code')?.passed).toBe(false)
+    expect(result.passed).toBe(false)
+    expect(result.criticalFailures.join(' ')).toMatch(
+      /No record that you verified the caller with a verification code/,
+    )
+    expect(result.violations.map((violation) => violation.id)).toEqual(
+      expect.arrayContaining(['callback-to-shared-line']),
+    )
+    const shared = result.violations.find((violation) => violation.id === 'callback-to-shared-line')
+    expect(shared?.points).toBe(5)
+    expect(shared?.detail).toMatch(/verified somebody else/)
+
+    // The change made on the strength of it is still priced as unverified.
+    expect(result.violations.map((violation) => violation.id)).toContain('unverified-change')
+  })
+
+  it('prices a shared-line callback without pretending it was the weaker check', () => {
+    const ticket = ticketFor('PWD-01', 'shared-line-callback')
+    const sam = ticket.public.requester.samAccountName
+    const attempt = partialAttempt(ticket, [`get-account ${sam}`], { notes: true })
+    attempt.actions.push({
+      kind: 'verify-caller',
+      input: { method: 'callback', contactId: 'team-line', contactName: 'Finance team line' },
+      output: { verified: false, provesCaller: false, result: 'colleague-answered' },
+    })
+
+    const result = evaluateSession({ rubric: ticket.rubric, ...attempt, difficulty: ticket.difficulty })
+
+    expect(result.violations.map((violation) => violation.id)).toEqual([
+      'callback-to-shared-line',
+    ])
+    expect(result.procedurePenalty).toBe(5)
   })
 
   it('scores below the pass mark for a lucky end state with no evidence', () => {
@@ -280,6 +345,99 @@ describe('scoring engine', () => {
     expect(result.criticalFailures.join(' ')).toMatch(/No record that you refused the request/)
   })
 
+  it('scores the reason a refusal was filed under, not only that one happened', () => {
+    const ticket = ticketFor('PWD-01', 'credential-readout')
+    const sam = ticket.public.requester.samAccountName
+    const attempt = partialAttempt(ticket, [`get-account ${sam}`], {
+      notes: true,
+      decision: 'escalated',
+      decisionCode: 'denied-social-engineering',
+    })
+
+    const wrongReason = evaluateSession({
+      rubric: ticket.rubric,
+      ...attempt,
+      difficulty: ticket.difficulty,
+      actions: [
+        ...attempt.actions,
+        {
+          kind: 'deny-caller',
+          input: { reason: 'unverified-identity' },
+          output: { denied: true },
+        },
+      ],
+    })
+    const refused = wrongReason.items.find(
+      (item) => item.id === 'refuse-credential-request',
+    )
+    // The act happened, so the step is not zeroed; the reason is wrong, so the
+    // step is not met either. Half of it is still owed.
+    expect(refused?.passed).toBe(false)
+    expect(refused?.credit).toBe(0.5)
+    expect(wrongReason.total).toBe(85)
+    // A wrong sentence in the report is not the same failure as reading the
+    // password out, so it must not stop the attempt from passing.
+    expect(wrongReason.criticalFailures).toEqual([])
+    expect(wrongReason.categoryScores.safety.earned).toBe(
+      wrongReason.categoryScores.safety.possible - 15,
+    )
+    // ...and the debrief has to say why, naming both reasons.
+    expect(wrongReason.feedback.join(' ')).toMatch(
+      /filed it as “Could not verify who is calling” rather than “Asked for a password or a code”/,
+    )
+    expect(wrongReason.feedback.join(' ')).toMatch(
+      /never reads out or accepts passwords or verification codes/,
+    )
+
+    const rightReason = evaluateSession({
+      rubric: ticket.rubric,
+      ...attempt,
+      difficulty: ticket.difficulty,
+      actions: [
+        ...attempt.actions,
+        {
+          kind: 'deny-caller',
+          input: { reason: 'credential-request' },
+          output: { denied: true },
+        },
+      ],
+    })
+    expect(
+      rightReason.items.find((item) => item.id === 'refuse-credential-request')?.passed,
+    ).toBe(true)
+    expect(rightReason.total).toBe(100)
+  })
+
+  it('gives no credit for a refusal the attempt never recorded', () => {
+    const ticket = ticketFor('PWD-01', 'credential-readout')
+    const sam = ticket.public.requester.samAccountName
+    const attempt = partialAttempt(ticket, [`get-account ${sam}`], {
+      notes: true,
+      decision: 'escalated',
+      decisionCode: 'denied-social-engineering',
+    })
+    const result = evaluateSession({
+      rubric: ticket.rubric,
+      ...attempt,
+      difficulty: ticket.difficulty,
+    })
+
+    expect(
+      result.items.find((item) => item.id === 'refuse-credential-request')?.credit,
+    ).toBe(0)
+    expect(result.criticalFailures.join(' ')).toMatch(
+      /No record that you refused the request — “Asked for a password or a code”/,
+    )
+  })
+
+  it('reads a score written before partial credit as all or nothing', () => {
+    expect(itemCredit({ passed: true })).toBe(1)
+    expect(itemCredit({ passed: false })).toBe(0)
+    expect(itemCredit({ passed: false, credit: 0.5 })).toBe(0.5)
+    // A stored share outside the scale cannot earn more than the step is worth.
+    expect(itemCredit({ passed: false, credit: 4 })).toBe(1)
+  })
+
   it('still fails when a reset lands before the caller is refused', () => {
     const ticket = ticketFor('PWD-01', 'third-party-reset')
     const target = thirdPartyTarget(ticket)
@@ -360,7 +518,7 @@ function attemptWithHandoff(ticket: GeneratedTicket, handoff: string) {
     } else if (step.type === 'deny-caller') {
       actions.push({
         kind: 'deny-caller',
-        input: { reason: 'third-party-request' },
+        input: { reason: step.reason ?? 'third-party-request' },
         output: { denied: true, summary: 'Refused the request.' },
       })
     } else if (step.type === 'ask-user') {
@@ -921,6 +1079,39 @@ describe('procedure penalties', () => {
     expect(result.violations.some((violation) => violation.id === 'callback-instead-of-code')).toBe(
       false,
     )
+  })
+
+  it('counts a delivery-state listing as the look a mail change needs first', () => {
+    const mail = ticketFor('MAILSEC-01', 'supplier-note-held')
+    const attempt = partialAttempt(
+      mail,
+      ['get-messages quarantined', 'release-quarantine msg-4101'],
+      { notes: true, verifyCaller: true },
+    )
+    const result = evaluateSession({
+      rubric: mail.rubric,
+      ...attempt,
+      difficulty: mail.difficulty,
+    })
+
+    expect(result.violations).toEqual([])
+    expect(result.procedurePenalty).toBe(0)
+  })
+
+  it('still prices a release that nobody looked up first', () => {
+    const mail = ticketFor('MAILSEC-01', 'supplier-note-held')
+    const attempt = partialAttempt(mail, ['release-quarantine msg-4101'], {
+      notes: true,
+      verifyCaller: true,
+    })
+    const result = evaluateSession({
+      rubric: mail.rubric,
+      ...attempt,
+      difficulty: mail.difficulty,
+    })
+
+    expect(result.violations.map((violation) => violation.id)).toEqual(['fix-before-evidence'])
+    expect(result.procedurePenalty).toBe(5)
   })
 })
 

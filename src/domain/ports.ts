@@ -1,5 +1,14 @@
 import type { JsonValue } from './shared/json'
-import type { ScenarioStats, ScoreHistoryEntry, ScoredStep, TakenHint } from './progress/types'
+import type {
+  RewindRecord,
+  ScenarioStats,
+  ScoreHistoryEntry,
+  ScoredAttemptHints,
+  ScoredStep,
+  TakenHint,
+  VerificationCheckRecord,
+} from './progress/types'
+import type { HintRepair } from './scoring/hints'
 import type { Score } from './scoring/types'
 import type { JobStatus, JobTarget } from './targets/types'
 import type {
@@ -34,6 +43,24 @@ export interface SessionRepository {
    * reload restores it. Null clears it; a closed session is not writable.
    */
   saveClosureDraft(id: SessionId, draft: Session['closureDraft']): Promise<void>
+  /**
+   * Saves where the learner was working — the pane, the console in front and the
+   * tabs beside it — so reopening the ticket puts them back there. Null clears
+   * it; a closed session is not writable.
+   */
+  saveWorkspaceLayout(
+    id: SessionId,
+    layout: Session['workspaceLayout'],
+  ): Promise<void>
+  /**
+   * Saves where the learner was *inside* the consoles — the search typed in each
+   * and the record left open — so a reopened ticket lands back on the machine
+   * rather than on a bare list. Null clears it; a closed session is not writable.
+   */
+  saveConsoleFocus(
+    id: SessionId,
+    focus: Session['consoleFocus'],
+  ): Promise<void>
   finish(
     id: SessionId,
     ending: { endedAt: number; resolution: string; outcome: SessionOutcome },
@@ -68,6 +95,11 @@ export interface ActionRepository {
     world: Session['world'],
   ): Promise<void>
   listBySession(sessionId: SessionId): Promise<SessionAction[]>
+  /**
+   * How many steps the log holds. The queue says how far into an open attempt
+   * the learner had got, and counting rows is cheaper than reading them.
+   */
+  countBySession(sessionId: SessionId): Promise<number>
   /** Most recent first. Used by the curriculum, which scans lifetime history. */
   listRecent(limit: number): Promise<SessionAction[]>
   /**
@@ -75,6 +107,18 @@ export interface ActionRepository {
    * named. Used by the Progress page, which reads habits across all attempts.
    */
   listHints(): Promise<TakenHint[]>
+  /**
+   * Every cut the logs still hold, oldest first, joined to the family its
+   * attempt was on and reduced to the step it started at. Used by the Progress
+   * page, which shows where each family keeps getting un-run.
+   */
+  listRewinds(): Promise<RewindRecord[]>
+  /**
+   * Every caller check the logs hold, oldest first, reduced to the method it
+   * used and whether it proved anybody. Used by the Progress page, which shows
+   * which proof this desk reaches for.
+   */
+  listVerificationChecks(): Promise<VerificationCheckRecord[]>
 }
 
 export interface ScoreRepository {
@@ -88,6 +132,22 @@ export interface ScoreRepository {
    * against one of these ids, so the label comes from the score it belongs to.
    */
   listScoredSteps(): Promise<ScoredStep[]>
+  /**
+   * How many rungs each scored attempt was charged, from the stored score. Read
+   * beside the logged hints so the habit page can tell a log that lost rows from
+   * a learner who took no hints. An attempt scored before hints were counted is
+   * absent rather than zero.
+   */
+  listScoredHintCounts(): Promise<ScoredAttemptHints[]>
+  /**
+   * The rungs a learner rebuilt for an attempt whose log lost them, or null when
+   * no repair was made. It is kept beside the score, never inside it: the
+   * evaluation as written is a fact about the attempt, and the repair is a later
+   * reading of what the log no longer holds.
+   */
+  findHintRepair(sessionId: SessionId): Promise<HintRepair | null>
+  /** Stores the repair, or clears it with null. */
+  saveHintRepair(sessionId: SessionId, repair: HintRepair | null): Promise<void>
 }
 
 export interface ProgressRepository {

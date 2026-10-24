@@ -1,7 +1,7 @@
 import { foldScenarioStats } from '../../domain/progress/leitner'
 import { attemptXp } from '../../domain/progress/xp'
 import type { ScoreHistoryEntry, ScenarioStats } from '../../domain/progress/types'
-import type { ScoreBand } from '../../domain/scoring/types'
+import type { CategoryScore, RubricCategory, ScoreBand } from '../../domain/scoring/types'
 import type { SessionId } from '../../domain/tickets/types'
 import type { IntuneAttemptRecord } from './persistence/store'
 import { findIntuneTemplate } from './tickets/registry'
@@ -25,6 +25,40 @@ interface StoredScore {
   band?: ScoreBand
   passed?: boolean
   resolved?: boolean
+  categoryScores?: Record<RubricCategory, CategoryScore>
+}
+
+const CATEGORIES: readonly RubricCategory[] = [
+  'diagnosis',
+  'documentation',
+  'resolution',
+  'safety',
+]
+
+/**
+ * The rubric split as stored, checked key by key. A row written before the
+ * categories existed has none, and one written by a future version could have a
+ * category this build does not know; both read as no split rather than as a
+ * number Progress would then add to the wrong place.
+ */
+function categoryScoresOf(raw: unknown): Record<RubricCategory, CategoryScore> | null {
+  if (typeof raw !== 'object' || raw === null) {
+    return null
+  }
+  const scored = {} as Record<RubricCategory, CategoryScore>
+  for (const category of CATEGORIES) {
+    const entry = (raw as Record<string, unknown>)[category]
+    if (typeof entry !== 'object' || entry === null) {
+      return null
+    }
+    const earned = Number((entry as Record<string, unknown>).earned)
+    const possible = Number((entry as Record<string, unknown>).possible)
+    if (!Number.isFinite(earned) || !Number.isFinite(possible)) {
+      return null
+    }
+    scored[category] = { earned, possible }
+  }
+  return scored
 }
 
 function parseScore(json: string | null): StoredScore {
@@ -63,7 +97,7 @@ export function intuneHistory(attempts: readonly IntuneAttemptRecord[]): ScoreHi
         passed,
         band: score.band ?? (passed ? 'pass' : 'fail'),
       }),
-      categoryScores: null,
+      categoryScores: categoryScoresOf(score.categoryScores),
     }
   })
 }

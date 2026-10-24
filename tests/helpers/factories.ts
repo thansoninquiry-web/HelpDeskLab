@@ -31,6 +31,8 @@ export function makeSession(ticketId = 'ticket-1', overrides: Partial<Session> =
     world: { clock: 1_760_000_100_000, currentDeviceId: 'lt-4471' },
     hintPolicy: { perHint: 5, cap: 15, budget: 0 },
     closureDraft: null,
+    workspaceLayout: null,
+    consoleFocus: null,
     examMode: false,
     resolution: null,
     outcome: null,

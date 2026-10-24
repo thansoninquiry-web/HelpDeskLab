@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { applyCommand } from '../../../src/domain/environment/reducer'
 import type { World } from '../../../src/domain/environment/types'
-import { generateTicket, listVariants, SCENARIO_FAMILIES } from '../../../src/domain/generator'
+import {
+  CLOSURE_CODES,
+  refusalClosureCodes,
+  generateTicket,
+  listVariants,
+  SCENARIO_FAMILIES,
+} from '../../../src/domain/generator'
 import type { GeneratedTicket, ReferenceStep } from '../../../src/domain/generator'
 import { evaluateSession } from '../../../src/domain/scoring/evaluator'
 import type { EvaluatorAction } from '../../../src/domain/scoring/evaluator'
@@ -53,7 +59,7 @@ function runSteps(
     } else if (step.type === 'deny-caller') {
       actions.push({
         kind: 'deny-caller',
-        input: { reason: 'third-party-request' },
+        input: { reason: step.reason ?? 'third-party-request' },
         output: { denied: true, summary: 'Refused the request.' },
       })
     } else if (step.type === 'ask-user') {
@@ -92,6 +98,132 @@ function evaluateSteps(ticket: GeneratedTicket, steps: readonly ReferenceStep[])
     },
   })
 }
+
+describe('the closing catalogue', () => {
+  it('marks the refusal code as the close a refusal takes', () => {
+    const [refusal] = refusalClosureCodes()
+
+    expect(refusalClosureCodes().map((entry) => entry.code)).toEqual([
+      'denied-social-engineering',
+    ])
+    // A refusal is handed on rather than resolved: the code is an escalation,
+    // which is the disposition its own scoring rule accepts for a refusal.
+    expect(refusal?.outcome).toBe('escalated')
+    expect(CLOSURE_CODES).toContainEqual(refusal)
+  })
+
+  it('asks for a credential request to be refused as a credential request', () => {
+    const ticket = ticketFor('PWD-01', 'credential-readout')
+
+    // It is a refusal, and it closes on the code a refusal takes.
+    expect(ticket.expectedOutcome).toBe('escalated')
+    expect(ticket.expectedCodes).toEqual(refusalClosureCodes().map((entry) => entry.code))
+
+    // The reason is part of the decision the rubric scores.
+    expect(
+      ticket.rubric.items.find((item) => item.id === 'refuse-credential-request')?.checks,
+    ).toContainEqual({ kind: 'deny-caller', reason: 'credential-request' })
+
+    // The account is healthy, so the path reads it and refuses rather than fixing.
+    expect(ticket.world.users.find(
+      (user) => user.samAccountName === ticket.public.requester.samAccountName,
+    )?.status).toBe('active')
+    // The close is the report Security reads, so the path leaves one: a
+    // refusal's own report is what the close records, and it has to say what
+    // was asked, what was checked, and what Security should do next.
+    expect(ticket.reference.map((step) => step.type)).toEqual([
+      'command',
+      'deny-caller',
+      'note',
+      'note',
+      'note',
+    ])
+    expect(evaluateReference(ticket).total).toBe(100)
+
+    // The same refusal, filed under a different reason, is not this decision.
+    const wrongReason = evaluateSteps(
+      ticket,
+      ticket.reference.map((step) =>
+        step.type === 'deny-caller'
+          ? { type: 'deny-caller' as const, reason: 'unverified-identity' as const }
+          : step,
+      ),
+    )
+    expect(
+      wrongReason.items.find((item) => item.id === 'refuse-credential-request')?.passed,
+    ).toBe(false)
+    expect(wrongReason.total).toBeLessThan(100)
+  })
+
+  it('asks every refusal for the reason that matches the pretext', () => {
+    const cases = [
+      ['third-party-reset', 'third-party-request'],
+      ['impersonated-caller', 'unverified-identity'],
+      ['credential-readout', 'credential-request'],
+      ['chat-relay-reset', 'third-party-request'],
+    ] as const
+
+    for (const [variantId, reason] of cases) {
+      const ticket = ticketFor('PWD-01', variantId)
+      const denyItems = ticket.rubric.items.filter((item) =>
+        item.checks.some((check) => check.kind === 'deny-caller'),
+      )
+
+      expect(denyItems).toHaveLength(1)
+      expect(denyItems[0]?.checks).toContainEqual({ kind: 'deny-caller', reason })
+      // The model answer has to file it under that reason, or the path the
+      // debrief recommends would not earn the step it teaches.
+      expect(ticket.reference.find((step) => step.type === 'deny-caller')).toMatchObject({
+        type: 'deny-caller',
+        reason,
+      })
+      expect(evaluateReference(ticket).total).toBe(100)
+    }
+  })
+
+  it('prices a mismatched reason on every refusal, not just the credential one', () => {
+    const cases = [
+      ['third-party-reset', 'unverified-identity', 'Asked for someone else’s account'],
+      ['impersonated-caller', 'third-party-request', 'Could not verify who is calling'],
+      ['credential-readout', 'pressure', 'Asked for a password or a code'],
+      ['chat-relay-reset', 'unverified-identity', 'Asked for someone else’s account'],
+    ] as const
+
+    for (const [variantId, wrongReason, neededLabel] of cases) {
+      const ticket = ticketFor('PWD-01', variantId)
+      const result = evaluateSteps(
+        ticket,
+        ticket.reference.map((step) =>
+          step.type === 'deny-caller'
+            ? { type: 'deny-caller' as const, reason: wrongReason }
+            : step,
+        ),
+      )
+      const denyItem = ticket.rubric.items.find((item) =>
+        item.checks.some((check) => check.kind === 'deny-caller'),
+      )
+      const met = result.items.find((item) => item.id === denyItem?.id)
+
+      // The refusal stopped the work, so the step is not zeroed; only half of it
+      // was earned, and the attempt can still pass — but not strongly.
+      expect(met?.passed).toBe(false)
+      expect(met?.credit).toBe(0.5)
+      expect(result.criticalFailures).toEqual([])
+      expect(result.passed).toBe(true)
+      expect(result.band).toBe('pass')
+      expect(result.feedback.join(' ')).toContain(`rather than “${neededLabel}”`)
+    }
+  })
+
+  it('opens a refused ticket on the code its own rubric expects', () => {
+    const ticket = ticketFor('PWD-01', 'impersonated-caller')
+
+    // The close the form opens on is the close this ticket scores: if the two
+    // ever disagree, the refusal path would guide the learner into a failure.
+    expect(ticket.expectedCodes).toEqual(refusalClosureCodes().map((entry) => entry.code))
+    expect(ticket.expectedOutcome).toBe(refusalClosureCodes()[0]?.outcome)
+  })
+})
 
 describe('ticket generator', () => {
   it('reproduces the exact same ticket for the same seed and family', () => {
@@ -241,6 +373,48 @@ describe('ticket generator', () => {
     expect(actedFirst.violations.map((violation) => violation.id)).toContain('unverified-change')
   })
 
+  it('puts a shared team line on the record whose answer is a colleague', () => {
+    const ticket = ticketFor('PWD-01', 'shared-line-callback')
+    const requester = ticket.world.users.find(
+      (user) => user.samAccountName === ticket.public.requester.samAccountName,
+    )
+    const line = ticket.world.sharedCallbackLine
+    if (!line || !requester) {
+      throw new Error('The variant did not put a shared line on the ticket')
+    }
+
+    // The line is named after the department and answered by a real colleague
+    // in it — not by the employee, and not by a name invented for the ticket.
+    expect(line.label).toBe(`${requester.department} team line`)
+    expect(line.answeredBy).not.toBe(ticket.public.requester.name)
+    expect(
+      ticket.world.users.some(
+        (user) => user.displayName === line.answeredBy && user.department === requester.department,
+      ),
+    ).toBe(true)
+
+    // The ticket talks about the same line the identity panel will list, and the
+    // proof it asks for is the read-back, not a call to the shared number.
+    expect(ticket.public.body).toContain(line.label)
+    const safety = ticket.rubric.items.find((item) => item.id === 'verify-by-code')
+    expect(safety?.checks).toContainEqual({
+      kind: 'ordered',
+      of: [
+        { kind: 'verify-caller', method: 'verification-code' },
+        { kind: 'effect', effect: 'account_unlocked', target: requester.samAccountName },
+      ],
+    })
+    expect(ticket.reference).toContainEqual({
+      type: 'verify-caller',
+      method: 'verification-code',
+    })
+
+    // The caller's own story is declared, so the debrief can set what a colleague
+    // confirmed beside what was claimed.
+    expect(ticket.world.callerClaims?.map((claim) => claim.identity)).toEqual([true])
+    expect(evaluateReference(ticket).total).toBe(100)
+  })
+
   it('carries each caller pressure script with the variant that declares it', () => {
     // The urgent account caller's script moved out of the service and onto the
     // variant, trigger rule included.
@@ -249,6 +423,7 @@ describe('ticket generator', () => {
       'pressured-reset',
       'pressured-unverified-change',
       'pressured-blind-change',
+      'pressured-directory-read',
       'pressured-ignored-warning',
       'pressured-hands-over',
       'pressured-waiting',
@@ -265,6 +440,9 @@ describe('ticket generator', () => {
     const angry = ticketFor('PRN-01', 'angry-caller')
     expect(angry.pressure?.map((line) => line.id)).toContain('angry-blind-restart')
     expect(angry.pressure?.some((line) => line.trigger.kind === 'acted-first')).toBe(true)
+    // Both scripts can react to a tool being opened, not only to a command.
+    expect(pressured.pressure?.some((line) => line.trigger.kind === 'read')).toBe(true)
+    expect(angry.pressure?.some((line) => line.trigger.kind === 'read')).toBe(true)
     expect(evaluateReference(angry).total).toBe(100)
 
     // A ticket whose caller does not press carries no script at all.

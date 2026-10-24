@@ -47,14 +47,135 @@ const APP_TITLES: Record<AppId, string> = {
   terminal: 'Terminal',
 }
 
-const APPS: ReadonlyArray<{ id: AppId; label: string; icon: string; detail: string }> = [
-  { id: 'explorer', label: 'This PC', icon: '▤', detail: 'Disks and device details' },
-  { id: 'settings', label: 'Settings', icon: '⚙', detail: 'System, network, accounts' },
-  { id: 'control', label: 'Control Panel', icon: '▦', detail: 'Classic device tools' },
-  { id: 'browser', label: 'Microsoft Edge', icon: '◎', detail: 'The company intranet' },
-  { id: 'printers', label: 'Printers', icon: '🖨', detail: 'Queues and the spooler' },
-  { id: 'terminal', label: 'Terminal', icon: '❯', detail: 'The same tools as the Terminal tab' },
+const APPS: ReadonlyArray<{ id: AppId; label: string; glyph: GlyphName; detail: string }> = [
+  { id: 'explorer', label: 'This PC', glyph: 'drives', detail: 'Disks and device details' },
+  { id: 'settings', label: 'Settings', glyph: 'gear', detail: 'System, network, accounts' },
+  { id: 'control', label: 'Control Panel', glyph: 'sliders', detail: 'Classic device tools' },
+  { id: 'browser', label: 'Microsoft Edge', glyph: 'globe', detail: 'The company intranet' },
+  { id: 'printers', label: 'Printers', glyph: 'printer', detail: 'Queues and the spooler' },
+  { id: 'terminal', label: 'Terminal', glyph: 'prompt', detail: 'The same tools as the Terminal tab' },
 ]
+
+/**
+ * Which drawing a desktop tile leads with, on the shell's 24px grid.
+ *
+ * These used to be typed characters — ▤ for a drive, ⚙ for settings, 🖨 for a
+ * printer — and a typed glyph is only as present as the font the browser
+ * happens to fall back to. A phone whose chain misses one showed an empty tile,
+ * which on the desktop meant an app you could not see to open. Drawn strokes
+ * render wherever the rest of the shell's icons do, at any text size.
+ */
+type GlyphName =
+  | 'drives'
+  | 'gear'
+  | 'sliders'
+  | 'globe'
+  | 'printer'
+  | 'prompt'
+  | 'system'
+  | 'refresh'
+  | 'apps'
+
+/** One desktop icon, drawn by the size its tile gives it. */
+function Glyph({ name, size = 20 }: { name: GlyphName; size?: number }) {
+  const common = {
+    width: size,
+    height: size,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1.6,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    'aria-hidden': true,
+  }
+
+  if (name === 'drives') {
+    return (
+      <svg {...common}>
+        <rect x="3" y="4" width="18" height="6.5" rx="1.6" />
+        <rect x="3" y="13.5" width="18" height="6.5" rx="1.6" />
+        <path d="M6.6 7.25h.01M6.6 16.75h.01" />
+      </svg>
+    )
+  }
+
+  if (name === 'gear') {
+    return (
+      <svg {...common}>
+        <circle cx="12" cy="12" r="3.1" />
+        <path d="M12 2.6v2.1M12 19.3v2.1M2.6 12h2.1M19.3 12h2.1M5.4 5.4l1.5 1.5M17.1 17.1l1.5 1.5M18.6 5.4l-1.5 1.5M6.9 17.1l-1.5 1.5" />
+      </svg>
+    )
+  }
+
+  if (name === 'sliders') {
+    return (
+      <svg {...common}>
+        <path d="M4 7h8M17 7h3M4 12h3M11 12h9M4 17h9M17 17h3" />
+        <circle cx="15" cy="7" r="2" />
+        <circle cx="9" cy="12" r="2" />
+        <circle cx="15" cy="17" r="2" />
+      </svg>
+    )
+  }
+
+  if (name === 'globe') {
+    return (
+      <svg {...common}>
+        <circle cx="12" cy="12" r="8.6" />
+        <path d="M3.4 12h17.2" />
+        <path d="M12 3.4c2.4 2.4 3.6 5.2 3.6 8.6s-1.2 6.2-3.6 8.6c-2.4-2.4-3.6-5.2-3.6-8.6S9.6 5.8 12 3.4Z" />
+      </svg>
+    )
+  }
+
+  if (name === 'printer') {
+    return (
+      <svg {...common}>
+        <path d="M7 9V4h10v5" />
+        <rect x="4" y="9" width="16" height="7" rx="1.6" />
+        <path d="M7 16h10v5H7z" />
+      </svg>
+    )
+  }
+
+  if (name === 'prompt') {
+    return (
+      <svg {...common}>
+        <path d="M5 7.5 9.5 12 5 16.5" />
+        <path d="M12.5 17h6" />
+      </svg>
+    )
+  }
+
+  if (name === 'system') {
+    return (
+      <svg {...common}>
+        <rect x="3" y="4.5" width="18" height="12" rx="1.6" />
+        <path d="M9 20h6M12 16.5V20" />
+      </svg>
+    )
+  }
+
+  if (name === 'refresh') {
+    return (
+      <svg {...common}>
+        <path d="M20 12a8 8 0 1 1-2.4-5.7" />
+        <path d="M20 4v4.2h-4.2" />
+      </svg>
+    )
+  }
+
+  return (
+    <svg {...common}>
+      <rect x="4" y="4" width="7" height="7" rx="1" />
+      <rect x="13" y="4" width="7" height="7" rx="1" />
+      <rect x="4" y="13" width="7" height="7" rx="1" />
+      <rect x="13" y="13" width="7" height="7" rx="1" />
+    </svg>
+  )
+}
 
 type BrowserPage = 'home' | 'support' | 'software'
 
@@ -220,7 +341,13 @@ export function FakeDesktop({
   const spoolerRunning = desktop.spoolerStatus === 'running'
 
   return (
-    <section className={styles.desktop} aria-label={`Remote desktop for ${desktop.hostname}`}>
+    // The marker is what the phone dock reads to give the desktop the screen room
+    // a desktop needs: the card is otherwise sized for a log, not for a window.
+    <section
+      className={styles.desktop}
+      data-desktop=""
+      aria-label={`Remote desktop for ${desktop.hostname}`}
+    >
       <div className={styles.sessionBar}>
         <span className={styles.sessionBadge}>
           <span className={styles.sessionDot} aria-hidden="true" />
@@ -268,7 +395,7 @@ export function FakeDesktop({
               onClick={() => open(entry.id)}
             >
               <span className={styles.iconGlyph} aria-hidden="true">
-                {entry.icon}
+                <Glyph name={entry.glyph} />
               </span>
               <span className={styles.iconLabel}>{entry.label}</span>
             </button>
@@ -483,7 +610,7 @@ export function FakeDesktop({
                   <div className={styles.controlGrid}>
                     <div className={styles.controlCard}>
                       <span className={styles.controlIcon} aria-hidden="true">
-                        ▣
+                        <Glyph name="system" size={24} />
                       </span>
                       <strong>System</strong>
                       <span>{desktop.os}</span>
@@ -495,7 +622,7 @@ export function FakeDesktop({
                       onClick={() => open('printers')}
                     >
                       <span className={styles.controlIcon} aria-hidden="true">
-                        🖨
+                        <Glyph name="printer" size={24} />
                       </span>
                       <strong>Devices and Printers</strong>
                       <span>
@@ -506,7 +633,7 @@ export function FakeDesktop({
                     </button>
                     <div className={styles.controlCard}>
                       <span className={styles.controlIcon} aria-hidden="true">
-                        ⚙
+                        <Glyph name="gear" size={24} />
                       </span>
                       <strong>Administrative Tools</strong>
                       <span>Print Spooler: {desktop.spoolerStatus}</span>
@@ -526,7 +653,7 @@ export function FakeDesktop({
                     </div>
                     <div className={styles.controlCard}>
                       <span className={styles.controlIcon} aria-hidden="true">
-                        ↻
+                        <Glyph name="refresh" size={24} />
                       </span>
                       <strong>Windows Update</strong>
                       <span>{updateText(desktop)}</span>
@@ -954,7 +1081,7 @@ export function FakeDesktop({
                   onClick={() => open(entry.id)}
                 >
                   <span className={styles.startIcon} aria-hidden="true">
-                    {entry.icon}
+                    <Glyph name={entry.glyph} size={16} />
                   </span>
                   <span>{entry.label}</span>
                 </button>
@@ -995,7 +1122,7 @@ export function FakeDesktop({
             onClick={() => setStartOpen((openNow) => !openNow)}
           >
             <span className={styles.windowsMark} aria-hidden="true">
-              ▦
+              <Glyph name="apps" size={18} />
             </span>
             Start
           </button>

@@ -1,11 +1,20 @@
 import type { ConsoleId, ToolGroupView } from '../../app/practiceService'
 import styles from './ToolPicker.module.css'
+import { TOOL_DRAG_TYPE } from './toolDrag'
 
 interface ToolPickerProps {
   groups: readonly ToolGroupView[]
   onOpen: (consoleId: ConsoleId) => void
   /** Drop the descriptions, for the narrow dropdown in the tool header. */
   compact?: boolean
+  /**
+   * Makes every tool draggable, so it can be carried onto the tab strip and
+   * opened at the place it is dropped. Left out where there is nothing to drop
+   * onto: the dropdown in the card header covers the strip, so a drag started
+   * there would have nowhere to land and would only look broken.
+   */
+  onDragTool?: (consoleId: ConsoleId) => void
+  onDragToolEnd?: () => void
 }
 
 /** A small console glyph per group, drawn on the same grid as the shell icons. */
@@ -71,9 +80,20 @@ function GroupIcon({ group }: { group: string }) {
  * Every entry opens a console. The shelf is deliberately flat — no dead links,
  * no "coming soon" — so what the menu offers is exactly what the desk can do.
  */
-export function ToolPicker({ groups, onOpen, compact = false }: ToolPickerProps) {
+export function ToolPicker({
+  groups,
+  onOpen,
+  compact = false,
+  onDragTool,
+  onDragToolEnd,
+}: ToolPickerProps) {
   return (
     <div className={compact ? `${styles.picker} ${styles.compact}` : styles.picker}>
+      {onDragTool ? (
+        <p className={styles.dragHint}>
+          Drag a tool onto the strip above to open it where you drop it.
+        </p>
+      ) : null}
       {groups.map((group) => (
         <section className={styles.group} key={group.id} aria-labelledby={`tool-group-${group.id}`}>
           <h3 className={styles.groupLabel} id={`tool-group-${group.id}`}>
@@ -84,8 +104,24 @@ export function ToolPicker({ groups, onOpen, compact = false }: ToolPickerProps)
               <li key={tool.id}>
                 <button
                   type="button"
-                  className={styles.tool}
+                  className={onDragTool ? `${styles.tool} ${styles.toolDraggable}` : styles.tool}
                   onClick={() => onOpen(tool.id)}
+                  draggable={onDragTool ? true : undefined}
+                  title={onDragTool ? 'Drag onto the strip to open it there' : undefined}
+                  onDragStart={
+                    onDragTool
+                      ? (event) => {
+                          // The strip reads the tool back off the drag, so the id
+                          // travels with the pointer rather than only in state.
+                          event.dataTransfer?.setData(TOOL_DRAG_TYPE, tool.id)
+                          if (event.dataTransfer) {
+                            event.dataTransfer.effectAllowed = 'copy'
+                          }
+                          onDragTool(tool.id)
+                        }
+                      : undefined
+                  }
+                  onDragEnd={onDragTool ? () => onDragToolEnd?.() : undefined}
                 >
                   <span className={styles.toolIcon}>
                     <GroupIcon group={group.id} />

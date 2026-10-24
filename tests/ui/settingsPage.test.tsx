@@ -14,6 +14,9 @@ const settingsStore = vi.hoisted(() => ({
   theme: null as unknown,
   schedule: null as unknown,
   terminal: null as unknown,
+  textSize: null as unknown,
+  /** Set by the tests that need a write to fail, as a full disk would. */
+  failWrite: false,
   writes: [] as unknown[],
 }))
 
@@ -37,12 +40,18 @@ vi.mock('../../src/app/persistenceService', () => ({
         if (key === 'terminalSurface') {
           return settingsStore.terminal
         }
+        if (key === 'textSize') {
+          return settingsStore.textSize
+        }
         if (key === 'examMode') {
           return settingsStore.exam
         }
         return key === 'hintPolicies' ? settingsStore.prices : settingsStore.hint
       },
       set: async (key: string, value: unknown) => {
+        if (settingsStore.failWrite) {
+          throw new Error('IndexedDB is unavailable')
+        }
         settingsStore.writes.push(value)
         if (key === 'theme') {
           settingsStore.theme = value
@@ -50,6 +59,8 @@ vi.mock('../../src/app/persistenceService', () => ({
           settingsStore.schedule = value
         } else if (key === 'terminalSurface') {
           settingsStore.terminal = value
+        } else if (key === 'textSize') {
+          settingsStore.textSize = value
         } else if (key === 'examMode') {
           settingsStore.exam = value
         } else if (key === 'hintPolicies') {
@@ -113,10 +124,13 @@ beforeEach(async () => {
   settingsStore.theme = null
   settingsStore.schedule = null
   settingsStore.terminal = null
+  settingsStore.textSize = null
+  settingsStore.failWrite = false
   settingsStore.writes = []
   localStorage.clear()
   delete document.documentElement.dataset.theme
   delete document.documentElement.dataset.terminal
+  delete document.documentElement.dataset.textSize
 
   const maintenance = await import('../../src/app/maintenanceService')
   vi.mocked(maintenance.exportBackupFile).mockResolvedValue({
@@ -500,6 +514,73 @@ describe('SettingsPage', () => {
     expect(
       screen.getByText('The workspace is always dark, whatever your system prefers.'),
     ).toBeInTheDocument()
+  })
+
+  it('offers the text sizes and opens on the size the layout was designed at', async () => {
+    render(<SettingsPage />)
+
+    const group = await screen.findByRole('radiogroup', { name: 'Text size' })
+    expect(within(group).getAllByRole('radio')).toHaveLength(3)
+    expect(screen.getByRole('radio', { name: 'Default' })).toBeChecked()
+    expect(screen.getByRole('radio', { name: 'Small' })).not.toBeChecked()
+    expect(screen.getByRole('radio', { name: 'Large' })).not.toBeChecked()
+    expect(
+      screen.getByText('The workspace is at the size it was laid out at.'),
+    ).toBeInTheDocument()
+    // The attribute the stylesheet scales from is on the document, not on a
+    // component, so the whole workspace moves with it.
+    expect(document.documentElement.dataset.textSize).toBe('default')
+  })
+
+  it('scales the workspace from one choice and remembers it', async () => {
+    render(<SettingsPage />)
+
+    fireEvent.click(await screen.findByRole('radio', { name: 'Large' }))
+
+    await waitFor(() => {
+      expect(settingsStore.textSize).toBe('large')
+    })
+    expect(document.documentElement.dataset.textSize).toBe('large')
+    expect(localStorage.getItem('helpdesklab.textSize')).toBe('large')
+    expect(
+      screen.getByText(
+        'The workspace is scaled up, spacing included, so the same layout takes more room.',
+      ),
+    ).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Small' }))
+
+    await waitFor(() => {
+      expect(settingsStore.textSize).toBe('small')
+    })
+    expect(document.documentElement.dataset.textSize).toBe('small')
+    expect(localStorage.getItem('helpdesklab.textSize')).toBe('small')
+  })
+
+  it('opens on a saved text size', async () => {
+    settingsStore.textSize = 'small'
+    render(<SettingsPage />)
+
+    expect(await screen.findByRole('radio', { name: 'Small' })).toBeChecked()
+    expect(document.documentElement.dataset.textSize).toBe('small')
+    expect(
+      screen.getByText(
+        'The workspace is scaled down, spacing included, so more of it fits on the screen.',
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('puts the size it had back when the choice cannot be saved', async () => {
+    render(<SettingsPage />)
+    expect(await screen.findByRole('radio', { name: 'Default' })).toBeChecked()
+
+    settingsStore.failWrite = true
+    fireEvent.click(screen.getByRole('radio', { name: 'Large' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('IndexedDB is unavailable')
+    expect(document.documentElement.dataset.textSize).toBe('default')
+    expect(screen.getByRole('radio', { name: 'Default' })).toBeChecked()
+    expect(screen.getByRole('radio', { name: 'Large' })).not.toBeChecked()
   })
 
   it('lets the terminal keep its dark surface, as its own choice', async () => {

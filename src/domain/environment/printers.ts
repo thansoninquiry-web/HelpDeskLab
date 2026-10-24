@@ -27,6 +27,7 @@ function printerEntry(world: World, printer: Printer): ConsoleEntry {
 
   return {
     id: printer.id,
+    icon: 'printer',
     title: printer.name,
     subtitle: `${site?.name ?? printer.siteId} · ${printer.model}`,
     facts: [
@@ -64,6 +65,7 @@ function currentMachineEntry(world: World, device: Device): ConsoleEntry {
 
   return {
     id: device.id,
+    icon: 'machine',
     title: device.hostname,
     subtitle: `This machine · ${site?.name ?? device.siteId}`,
     facts: [

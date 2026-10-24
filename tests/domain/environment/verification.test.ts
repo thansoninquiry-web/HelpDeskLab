@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   CALLER_DESK_RECIPIENT_ID,
   CALLER_RECIPIENT_ID,
+  SHARED_LINE_RECIPIENT_ID,
   badgeIdFor,
   badgeMessage,
   callbackMessage,
@@ -21,6 +22,8 @@ import {
   letterPinMessage,
   nextVerificationCode,
   usableCallerVerificationMethods,
+  VERIFICATION_CODE_TTL_MS,
+  verificationCodeRemainingMs,
   verificationMessage,
   verificationRecipients,
 } from '../../../src/domain/environment/verification'
@@ -156,6 +159,59 @@ describe('callback verification', () => {
     )
   })
 
+  it('lists a shared team line as the team’s line, and names the colleague who answers it', () => {
+    const withTeamLine = verificationRecipients({
+      name: 'Dana Whitfield',
+      employeeId: 'E-8842',
+      managerName: null,
+      sharedLine: { label: 'Finance team line', answeredBy: 'Priya Raman' },
+    })
+    const line = findRecipient(withTeamLine, SHARED_LINE_RECIPIENT_ID)
+    if (!line) {
+      throw new Error('The shared line is missing')
+    }
+
+    // The record says whose line it is, not that it reaches Dana.
+    expect(line).toMatchObject({
+      name: 'Finance team line',
+      role: 'team',
+      answeredBy: 'Priya Raman',
+      reachable: true,
+      methods: ['callback'],
+    })
+    expect(line.destination).toMatch(/^team line •••-•••-\d{4}$/)
+    // A hunt group takes a call for the team; a code for one person cannot go to it.
+    expect(line.methods).not.toContain('verification-code')
+  })
+
+  it('turns a call to a shared line into the colleague it reached, never the caller', () => {
+    const withTeamLine = verificationRecipients({
+      name: 'Dana Whitfield',
+      employeeId: 'E-8842',
+      managerName: null,
+      sharedLine: { label: 'Finance team line', answeredBy: 'Priya Raman' },
+    })
+    const line = findRecipient(withTeamLine, SHARED_LINE_RECIPIENT_ID)
+    if (!line) {
+      throw new Error('The shared line is missing')
+    }
+
+    const check = checkCallback(line)
+    expect(check).toEqual({
+      result: 'colleague-answered',
+      contactName: 'Finance team line',
+      answeredBy: 'Priya Raman',
+    })
+    // Even a caller who is exactly who they say they are cannot be proven by it.
+    expect(checkCallback(line, { callerImpersonating: false }).result).toBe(
+      'colleague-answered',
+    )
+    expect(callbackMessage(check, line.destination)).toContain(
+      'Priya Raman answered the Finance team line and confirmed the request.',
+    )
+    expect(callbackMessage(check, line.destination)).toMatch(/not that whoever is on this call/)
+  })
+
   it('exposes the impersonator the code could never reach', () => {
     const check = checkCallback(recipientFor(CALLER), { callerImpersonating: true })
 
@@ -280,6 +336,44 @@ describe('callback verification', () => {
   })
 })
 
+describe('how long a code has left', () => {
+  it('counts down on the attempt’s clock, and reads zero at the boundary the check uses', () => {
+    const state = issuedTo(CALLER)
+    const active = state.active
+    if (!active) {
+      throw new Error('The code was not issued')
+    }
+
+    // Ten minutes when it is sent...
+    expect(verificationCodeRemainingMs(active, NOW)).toBe(VERIFICATION_CODE_TTL_MS)
+    // ...six once four simulated minutes of work have gone by...
+    expect(verificationCodeRemainingMs(active, NOW + 4 * 60_000)).toBe(6 * 60_000)
+    // ...and none at the instant the read-back stops being accepted.
+    expect(verificationCodeRemainingMs(active, active.expiresAt)).toBe(0)
+    expect(verificationCodeRemainingMs(active, active.expiresAt + 60_000)).toBe(0)
+  })
+
+  it('agrees with the check, so a countdown of zero is never a code that still works', () => {
+    const state = issuedTo(CALLER)
+    const active = state.active
+    if (!active) {
+      throw new Error('The code was not issued')
+    }
+
+    const oneMinuteLeft = checkVerificationCode(state, active.code, {
+      now: active.expiresAt - 60_000,
+      callerId: CALLER,
+    })
+    expect(oneMinuteLeft.result).toBe('verified')
+
+    const expired = checkVerificationCode(state, active.code, {
+      now: active.expiresAt,
+      callerId: CALLER,
+    })
+    expect(expired.result).toBe('expired')
+  })
+})
+
 describe('verification code generation', () => {
   it('is deterministic for a replay and different for each send', () => {
     const first = nextVerificationCode('ticket-1:42', 0)
@@ -381,6 +475,29 @@ describe('caller claims', () => {
           'The live code went to Dana Whitfield’s own contact on the ticket, and the caller could not read it back.',
       },
     ])
+  })
+
+  it('names the colleague a shared line put on the record as the wrong person verified', () => {
+    const findings = contradictedClaims(
+      [
+        {
+          id: 'claimed-team-vouch',
+          account: 'dwhitfield',
+          statement: 'Ring the Finance team line and whoever answers will confirm it is me.',
+          identity: true,
+        },
+      ],
+      {
+        ...evidence,
+        callbackWrongPerson: { answeredBy: 'Priya Raman', line: 'Finance team line' },
+      },
+    )
+
+    expect(findings).toHaveLength(1)
+    expect(findings[0]?.evidence).toContain(
+      'Priya Raman answered the Finance team line and confirmed the request',
+    )
+    expect(findings[0]?.evidence).toContain('that colleague is not Dana Whitfield')
   })
 
   it('keeps both gate findings when a code and a callback both answered the claim', () => {

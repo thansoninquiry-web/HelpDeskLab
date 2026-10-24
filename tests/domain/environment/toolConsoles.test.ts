@@ -64,6 +64,59 @@ describe('mail commands', () => {
     expect(text(result)).toMatch(/No message 'msg-9999' is recorded/)
   })
 
+  it('lists every recorded message when no state is given', () => {
+    const result = applyCommand(createLarkspurWorld(), 'get-messages')
+
+    expect(result.ok).toBe(true)
+    expect(text(result)).toContain('Messages        : 6')
+    expect(text(result)).toContain('msg-1001')
+    expect(text(result)).toContain('msg-1006')
+  })
+
+  it('narrows the list to one delivery state', () => {
+    const result = applyCommand(createLarkspurWorld(), 'get-messages quarantined')
+    const output = text(result)
+
+    expect(result.ok).toBe(true)
+    expect(output).toContain('Messages        : 2 (quarantined)')
+    expect(output).toContain('msg-1002')
+    expect(output).toContain('msg-1003')
+    expect(output).not.toContain('msg-1001')
+    expect(output).not.toContain('msg-1004')
+  })
+
+  it('rejects a state the tenant does not record', () => {
+    const result = applyCommand(createLarkspurWorld(), 'get-messages lost')
+
+    expect(result.ok).toBe(false)
+    expect(text(result)).toMatch(/'lost' is not a delivery state/)
+  })
+
+  it('says so when no mail is recorded in the state asked for', () => {
+    const world = createLarkspurWorld()
+    world.mail.messages = world.mail.messages.filter((message) => message.state !== 'blocked')
+
+    const result = applyCommand(world, 'get-messages blocked')
+
+    expect(result.ok).toBe(true)
+    expect(text(result)).toMatch(/No mail is recorded as blocked/)
+  })
+
+  it('takes at most one state', () => {
+    const result = applyCommand(createLarkspurWorld(), 'get-messages delivered quarantined')
+
+    expect(result.ok).toBe(false)
+    expect(text(result)).toMatch(/get-messages \[delivered\|quarantined\|blocked\|deferred\]/)
+  })
+
+  it('does not change any message when listing them', () => {
+    const world = createLarkspurWorld()
+    const before = JSON.stringify(world.mail.messages)
+    applyCommand(world, 'get-messages deferred')
+
+    expect(JSON.stringify(world.mail.messages)).toBe(before)
+  })
+
   it('releases a held message and records the effect', () => {
     const world = createLarkspurWorld()
     const result = applyCommand(world, 'release-quarantine msg-1002')
@@ -181,7 +234,7 @@ describe('remote desktop commands', () => {
     const result = applyCommand(createLarkspurWorld(), 'use-remote-session LT-4472')
 
     expect(result.ok).toBe(false)
-    expect(text(result)).toMatch(/No remote session is open on LT-4472/)
+    expect(text(result)).toMatch(/No active remote session is open on LT-4472/)
     expect(text(result)).toMatch(/connect-remote LT-4472/)
   })
 

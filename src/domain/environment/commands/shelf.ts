@@ -1,4 +1,6 @@
 import { errorLine, line, mutedLine, successLine } from '../output'
+import { stockPolicy } from '../policy'
+import { stockStateLabel } from '../stock'
 import type { Device, Site, StockItem, StockState, World } from '../types'
 import type { CommandContext, CommandDefinition, CommandOutcome } from './types'
 import { failed, succeeded, usageFailure } from './types'
@@ -12,13 +14,6 @@ import { failed, succeeded, usageFailure } from './types'
 
 /** What can leave first, and what must not leave at all. */
 const STATE_ORDER: readonly StockState[] = ['ready', 'needs-image', 'awaiting-parts', 'quarantined']
-
-const STATE_LABELS: Record<StockState, string> = {
-  ready: 'Ready to go out',
-  'needs-image': 'Needs imaging',
-  'awaiting-parts': 'Waiting on parts',
-  quarantined: 'Held, do not issue',
-}
 
 function resolveSite(context: CommandContext, value: string): Site | undefined {
   const needle = value.trim().toLowerCase()
@@ -93,7 +88,7 @@ function getShelf(context: CommandContext): CommandOutcome {
     line(`Machines held : ${items.length}`),
     ...STATE_ORDER.map((state) =>
       line(
-        `${STATE_LABELS[state].padEnd(18)}: ${items.filter((item) => item.state === state).length}`,
+        `${stockStateLabel(state).padEnd(18)}: ${items.filter((item) => item.state === state).length}`,
       ),
     ),
   ]
@@ -108,7 +103,7 @@ function getShelf(context: CommandContext): CommandOutcome {
     const task = context.world.deploymentTasks.find((entry) => entry.assetTag === item.id)
     output.push(
       line(`${item.id} · ${item.kind} · ${item.model}`),
-      line(`  State      : ${STATE_LABELS[item.state]}`),
+      line(`  State      : ${stockStateLabel(item.state)}`),
       line(`  Days held  : ${item.daysOnShelf}`),
       line(`  Shelf note : ${item.notes}`),
       line(
@@ -137,15 +132,12 @@ function bookShelfMachine(context: CommandContext): CommandOutcome {
     ])
   }
 
-  if (item.state !== 'ready') {
-    return failed([
-      errorLine(`${item.id} cannot be issued: ${STATE_LABELS[item.state].toLowerCase()}.`),
-      mutedLine(
-        item.state === 'needs-image'
-          ? `Finish an imaging run first: start-deployment ${item.id}.`
-          : item.notes,
-      ),
-    ])
+  // The state of the machine is the shelf's own decision about it, and the
+  // imaging run reads the same rule: `stockPolicy` is what "held" and "waiting
+  // on parts" stop, written once for both commands.
+  const unavailable = stockPolicy(item, 'issue')
+  if (unavailable) {
+    return failed(unavailable.lines)
   }
 
   // A machine already on a prepared or moving outbound shipment is not on the
@@ -218,7 +210,7 @@ function bookShelfMachine(context: CommandContext): CommandOutcome {
       line(`Hostname      : ${device.hostname}`),
       line(`Site          : ${site?.name ?? item.siteId}`),
       line(`Model         : ${item.model}`),
-      line(`Register      : ${STATE_LABELS.ready} → in service, holder ${user.samAccountName}`),
+      line(`Register      : ${stockStateLabel('ready')} → in service, holder ${user.samAccountName}`),
       mutedLine('The machine has left the shelf. Record the tag and the holder in the ticket note.'),
     ],
     [

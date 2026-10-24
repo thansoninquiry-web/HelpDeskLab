@@ -1,14 +1,21 @@
 import { errorLine, line, mutedLine, successLine } from '../output'
 import { focusedRemoteSession } from '../remoteDesktop'
-import type { Device, Printer, RemoteSession } from '../types'
+import type { Device, Printer, RemoteSession, World } from '../types'
 import type { CommandContext, CommandDefinition, CommandOutcome } from './types'
 import { failed, succeeded, usageFailure } from './types'
 
-function findDevice(context: CommandContext, value: string): Device | undefined {
-  const needle = value.trim().toLowerCase()
-  return context.world.devices.find(
+function namedDevice(world: World, args: readonly string[]): Device | undefined {
+  const needle = (args[0] ?? '').trim().toLowerCase()
+  if (!needle) {
+    return undefined
+  }
+  return world.devices.find(
     (device) => device.hostname.toLowerCase() === needle || device.id.toLowerCase() === needle,
   )
+}
+
+function findDevice(context: CommandContext, value: string): Device | undefined {
+  return namedDevice(context.world, [value])
 }
 
 function sessionFor(context: CommandContext, device: Device): RemoteSession | undefined {
@@ -38,22 +45,26 @@ function isServer(device: Device): boolean {
 }
 
 /**
- * Resolves the machine a desktop action is aimed at, and refuses unless a
- * support session to it is open. Every action on the fake desktop goes through
- * this gate, so the interface cannot change a machine it is not connected to.
+ * The machine a desktop action acts on. Every desktop action carries
+ * `targetDevice` on the registry, so the reducer has already resolved the name it
+ * was given and handed the machine here — this reads that answer instead of
+ * looking the name up again, which is what keeps the session rule in `policy.ts`
+ * and the change it guards acting on the same machine. The session itself is that
+ * rule's to refuse; what is left here is the machine's own kind, because a server
+ * is not a desktop and the way out is the server room, not `connect-remote`.
  */
-function activeTarget(
+function desktopTarget(
   context: CommandContext,
   usage: string,
 ): { ok: true; device: Device } | { ok: false; outcome: CommandOutcome } {
-  const target = context.args[0]
-  if (!target) {
+  const named = context.args[0]
+  if (!named) {
     return { ok: false, outcome: usageFailure(usage) }
   }
 
-  const device = findDevice(context, target)
+  const device = context.target
   if (!device) {
-    return { ok: false, outcome: missingDevice(target) }
+    return { ok: false, outcome: missingDevice(named) }
   }
   if (isServer(device)) {
     return {
@@ -61,17 +72,6 @@ function activeTarget(
       outcome: failed([
         errorLine(`${device.hostname} is a server; it is managed from the server room.`),
         mutedLine('A desktop session never opens to a server.'),
-      ]),
-    }
-  }
-
-  const session = sessionFor(context, device)
-  if (session?.state !== 'active') {
-    return {
-      ok: false,
-      outcome: failed([
-        errorLine(`No active remote session is open on ${device.hostname}.`),
-        mutedLine(`Open one first: connect-remote ${device.hostname}`),
       ]),
     }
   }
@@ -263,23 +263,19 @@ function endRemoteSession(context: CommandContext): CommandOutcome {
  * the desk is looking at is world state, and the fold has to reproduce it.
  */
 function useRemoteSession(context: CommandContext): CommandOutcome {
-  const target = context.args[0]
-  if (!target || context.args.length > 1) {
+  if (context.args.length !== 1) {
     return usageFailure('use-remote-session <hostname>')
   }
 
-  const device = findDevice(context, target)
-  if (!device) {
-    return missingDevice(target)
+  const resolved = desktopTarget(context, 'use-remote-session <hostname>')
+  if (!resolved.ok) {
+    return resolved.outcome
   }
 
-  const session = sessionFor(context, device)
-  if (session?.state !== 'active') {
-    return failed([
-      errorLine(`No remote session is open on ${device.hostname}.`),
-      mutedLine(`Open one first: connect-remote ${device.hostname}`),
-    ])
-  }
+  const { device } = resolved
+  // The session is the registry's rule, asked before this runs: choosing a
+  // desktop is naming one, so what is left to answer is whether it is already
+  // the one in front.
   if (focusedRemoteSession(context.world)?.machineId === device.id) {
     return succeeded([mutedLine(`${device.hostname} is already the desktop in front of you.`)])
   }
@@ -329,7 +325,7 @@ function checkUpdates(context: CommandContext): CommandOutcome {
     return usageFailure('remote-check-updates <hostname>')
   }
 
-  const resolved = activeTarget(context, 'remote-check-updates <hostname>')
+  const resolved = desktopTarget(context, 'remote-check-updates <hostname>')
   if (!resolved.ok) {
     return resolved.outcome
   }
@@ -370,7 +366,7 @@ function freeDiskSpace(context: CommandContext): CommandOutcome {
     return usageFailure('remote-cleanup <hostname>')
   }
 
-  const resolved = activeTarget(context, 'remote-cleanup <hostname>')
+  const resolved = desktopTarget(context, 'remote-cleanup <hostname>')
   if (!resolved.ok) {
     return resolved.outcome
   }
@@ -406,7 +402,7 @@ function flushRemoteDns(context: CommandContext): CommandOutcome {
     return usageFailure('remote-flush-dns <hostname>')
   }
 
-  const resolved = activeTarget(context, 'remote-flush-dns <hostname>')
+  const resolved = desktopTarget(context, 'remote-flush-dns <hostname>')
   if (!resolved.ok) {
     return resolved.outcome
   }
@@ -426,7 +422,7 @@ function renewRemoteLease(context: CommandContext): CommandOutcome {
     return usageFailure('remote-renew-lease <hostname>')
   }
 
-  const resolved = activeTarget(context, 'remote-renew-lease <hostname>')
+  const resolved = desktopTarget(context, 'remote-renew-lease <hostname>')
   if (!resolved.ok) {
     return resolved.outcome
   }
@@ -471,7 +467,7 @@ function signOutRemoteUser(context: CommandContext): CommandOutcome {
     return usageFailure('remote-sign-out <hostname>')
   }
 
-  const resolved = activeTarget(context, 'remote-sign-out <hostname>')
+  const resolved = desktopTarget(context, 'remote-sign-out <hostname>')
   if (!resolved.ok) {
     return resolved.outcome
   }
@@ -504,7 +500,7 @@ function setRemoteDefaultPrinter(context: CommandContext): CommandOutcome {
     return usageFailure('remote-set-default-printer <hostname> <printerName>')
   }
 
-  const resolved = activeTarget(context, 'remote-set-default-printer <hostname> <printerName>')
+  const resolved = desktopTarget(context, 'remote-set-default-printer <hostname> <printerName>')
   if (!resolved.ok) {
     return resolved.outcome
   }
@@ -535,18 +531,14 @@ function clearRemotePrintQueue(context: CommandContext): CommandOutcome {
     return usageFailure('remote-clear-printqueue <hostname> <printerName>')
   }
 
-  const resolved = activeTarget(context, 'remote-clear-printqueue <hostname> <printerName>')
+  const resolved = desktopTarget(context, 'remote-clear-printqueue <hostname> <printerName>')
   if (!resolved.ok) {
     return resolved.outcome
   }
 
   const { device } = resolved
-  if (device.spoolerStatus === 'stopped') {
-    return failed([
-      errorLine(`The Print Spooler on ${device.hostname} is stopped, so there is no queue to clear.`),
-      mutedLine(`Restart it first: remote-restart-spooler ${device.hostname}`),
-    ])
-  }
+  // The stopped-spooler rule is the same one the local queue commands hit, read
+  // from the registry flag and applied in the reducer before this runs.
 
   const reference = context.args[1] ?? ''
   const printer = sitePrinter(context, device, reference)
@@ -585,7 +577,7 @@ function restartRemoteSpooler(context: CommandContext): CommandOutcome {
     return usageFailure('remote-restart-spooler <hostname>')
   }
 
-  const resolved = activeTarget(context, 'remote-restart-spooler <hostname>')
+  const resolved = desktopTarget(context, 'remote-restart-spooler <hostname>')
   if (!resolved.ok) {
     return resolved.outcome
   }
@@ -645,6 +637,10 @@ export const remoteCommands: readonly CommandDefinition[] = [
   },
   {
     name: 'use-remote-session',
+    // Switching the desktop names a desktop, so it is gated with the actions on
+    // it: there is no session to bring forward unless one is open.
+    needsRemoteSession: true,
+    targetDevice: namedDevice,
     aliases: [],
     group: 'remote',
     access: 'read',
@@ -663,6 +659,10 @@ export const remoteCommands: readonly CommandDefinition[] = [
   },
   {
     name: 'remote-check-updates',
+    // Every desktop action names the machine it acts on once, here: the session
+    // rule reads the resolved target, and so does the command.
+    needsRemoteSession: true,
+    targetDevice: namedDevice,
     aliases: [],
     group: 'remote',
     access: 'change',
@@ -672,6 +672,8 @@ export const remoteCommands: readonly CommandDefinition[] = [
   },
   {
     name: 'remote-cleanup',
+    needsRemoteSession: true,
+    targetDevice: namedDevice,
     aliases: [],
     group: 'remote',
     access: 'change',
@@ -681,6 +683,8 @@ export const remoteCommands: readonly CommandDefinition[] = [
   },
   {
     name: 'remote-flush-dns',
+    needsRemoteSession: true,
+    targetDevice: namedDevice,
     aliases: [],
     group: 'remote',
     access: 'change',
@@ -690,6 +694,8 @@ export const remoteCommands: readonly CommandDefinition[] = [
   },
   {
     name: 'remote-renew-lease',
+    needsRemoteSession: true,
+    targetDevice: namedDevice,
     aliases: [],
     group: 'remote',
     access: 'change',
@@ -699,6 +705,8 @@ export const remoteCommands: readonly CommandDefinition[] = [
   },
   {
     name: 'remote-sign-out',
+    needsRemoteSession: true,
+    targetDevice: namedDevice,
     aliases: [],
     group: 'remote',
     access: 'change',
@@ -708,6 +716,8 @@ export const remoteCommands: readonly CommandDefinition[] = [
   },
   {
     name: 'remote-set-default-printer',
+    needsRemoteSession: true,
+    targetDevice: namedDevice,
     aliases: [],
     group: 'remote',
     access: 'change',
@@ -717,6 +727,12 @@ export const remoteCommands: readonly CommandDefinition[] = [
   },
   {
     name: 'remote-clear-printqueue',
+    needsSpooler: true,
+    needsRemoteSession: true,
+    // The queue belongs to the named machine, so the rules read that machine's
+    // spooler and that machine's session — not the desk's, which is where this
+    // command was typed.
+    targetDevice: namedDevice,
     aliases: [],
     group: 'remote',
     access: 'change',
@@ -726,6 +742,8 @@ export const remoteCommands: readonly CommandDefinition[] = [
   },
   {
     name: 'remote-restart-spooler',
+    needsRemoteSession: true,
+    targetDevice: namedDevice,
     aliases: [],
     group: 'remote',
     access: 'change',

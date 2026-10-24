@@ -9,6 +9,7 @@ import { SqlitePersistence, openPersistence, type Persistence } from '../../src/
 import { runMigrations } from '../../src/persistence/migrations'
 import { MemorySnapshotStore } from '../../src/persistence/snapshotStore'
 import { createSqliteDriver } from '../../src/persistence/sqlite'
+import { makeScore } from '../helpers/factories'
 import { loadWasmBinary } from '../helpers/sqlite'
 
 const holder = vi.hoisted(() => ({ current: null as Persistence | null }))
@@ -33,6 +34,7 @@ import {
   clearActiveAttempt,
   computeWeakTopics,
   createTickets,
+  denialReasons,
   denyCaller,
   findActiveSessionId,
   getWorkspace,
@@ -44,6 +46,8 @@ import {
   openSession,
   placeCallback,
   reapplyRewind,
+  recordConsoleRead,
+  repairHintRecord,
   resolveAttempt,
   recordInPersonVisit,
   revealHint,
@@ -53,6 +57,9 @@ import {
   RewindRefusedError,
   runConsoleAction,
   saveClosureDraft,
+  saveConsoleFocus,
+  saveWorkspaceLayout,
+  type WorkspaceLayout,
   searchConsole,
   sendVerificationCode,
   sortQueue,
@@ -67,6 +74,17 @@ import {
   type WorkspaceView,
 } from '../../src/app/practiceService'
 import { saveExamMode, saveFamilyHintPolicy, saveHintPolicy } from '../../src/app/settingsService'
+
+/** The first ticket of a family that came in live, for the queue-reuse tests. */
+function liveTicketFor(scenarioId: string): GeneratedTicket {
+  for (let seed = 1; seed < 600; seed += 1) {
+    const ticket = generateTicket(seed, { familyId: scenarioId })
+    if (ticket.public.voicemail === undefined) {
+      return ticket
+    }
+  }
+  throw new Error(`No live ${scenarioId} ticket was generated`)
+}
 
 function generatedFor(scenarioId: string, variantId: string): GeneratedTicket {
   for (let seed = 1; seed < 600; seed += 1) {
@@ -180,6 +198,31 @@ describe('practice service', () => {
     expect(workspace.ticket.id).not.toBe('ticket-wrong-variant')
     expect(workspace.ticket.scenarioId).toBe('DEP-01')
     expect(workspace.ticket.variantId).toBe(HELD_SHELF_VARIANT)
+  })
+
+  it('opens Voicemails on a ticket that arrived as a message', async () => {
+    const workspace = await startModulePractice('voicemails')
+
+    expect(workspace.ticket.scenarioId).toBe('PWD-01')
+    expect(workspace.ticket.voicemail).not.toBeNull()
+
+    // The arrival is drawn from the seed the queue stores, so reopening the
+    // ticket plays the same message rather than a different one.
+    const stored = await persistence.tickets.findById(workspace.ticket.id)
+    expect(stored).not.toBeNull()
+    const rebuilt = generateTicket(stored?.seed ?? 0, { familyId: 'PWD-01' })
+    expect(rebuilt.public.voicemail).toEqual(workspace.ticket.voicemail)
+  })
+
+  it('does not hand the voicemail module a live ticket from the queue', async () => {
+    await insertTicket(persistence, liveTicketFor('PWD-01'), 'ticket-live')
+
+    const workspace = await startModulePractice('voicemails')
+
+    expect(workspace.ticket.id).not.toBe('ticket-live')
+    expect(workspace.ticket.voicemail).not.toBeNull()
+    // The live ticket is still on the queue, not consumed by the module.
+    expect(await persistence.tickets.listRecent(60)).toHaveLength(2)
   })
 
   it('refuses a module that is practised from job targets', async () => {
@@ -298,6 +341,142 @@ describe('practice service', () => {
     }
   })
 
+  it('reads which proof the desk reaches for, and whether it proved anybody', async () => {
+    // One attempt proved by a code read-back.
+    await insertTicket(persistence, generatedFor('PWD-01', 'account-lockout'), 'ticket-method-1')
+    await startAttempt('ticket-method-1')
+    await verifyCallerByCode()
+    await resolveAttempt({ code: 'escalated-tier2', note: '' })
+
+    // A second attempt rang a shared line first: a colleague answered, which is
+    // a check that happened and proved somebody else, then the code proved the
+    // caller.
+    await insertTicket(
+      persistence,
+      generatedFor('PWD-01', 'shared-line-callback'),
+      'ticket-method-2',
+    )
+    await startAttempt('ticket-method-2')
+    await placeCallback('team-line')
+    await verifyCallerByCode()
+    await resolveAttempt({ code: 'escalated-tier2', note: '' })
+
+    const progress = await loadProgress()
+
+    expect(progress.verificationSummary).toMatchObject({
+      checks: 3,
+      proved: 2,
+      attempts: 2,
+      provedPercent: 67,
+    })
+    const [code, callback] = progress.verificationHabits
+    // The method used most often leads, and both kinds of check are counted.
+    expect(code).toMatchObject({
+      method: 'verification-code',
+      label: 'Code read-back',
+      checks: 2,
+      proved: 2,
+      failed: 0,
+      attempts: 2,
+    })
+    expect(callback).toMatchObject({
+      method: 'callback',
+      label: 'Callback',
+      checks: 1,
+      proved: 0,
+      failed: 1,
+      attempts: 1,
+    })
+  })
+
+  it('reports a charged rung whose hint the log no longer holds', async () => {
+    const generated = generatedFor('PWD-01', 'account-lockout')
+    await insertTicket(persistence, generated, 'ticket-lost-hint')
+    const workspace = await startAttempt('ticket-lost-hint')
+
+    // The score keeps the charge; the action log it was scored from is then
+    // gone, which is what a pruned or restored-without-rows log looks like.
+    await persistence.scores.save(
+      makeScore(workspace.sessionId, {
+        rubric: {
+          items: [{ id: 'unlock', label: 'Unlock the account', passed: true }],
+          hintsUsed: 2,
+        },
+      }),
+    )
+
+    const progress = await loadProgress()
+
+    // The rows can only place what the log holds, so the summary carries the
+    // difference instead of showing a smaller number with no explanation.
+    expect(progress.hintHabitSummary.rungs).toBe(0)
+    expect(progress.hintHabitSummary.unaccountedRungs).toBe(2)
+    expect(progress.hintHabitSummary.attemptsWithUnaccountedHints).toBe(1)
+  })
+
+  it('reads back where a learner keeps un-running, family by family', async () => {
+    const generated = generatedFor('PWD-01', 'account-lockout')
+    const sam = generated.public.requester.samAccountName
+
+    // Two sittings of the same family, both cut at the same unlock: that is the
+    // step this learner keeps backing out of, not the account they aimed at.
+    for (const ticketId of ['ticket-rewind-1', 'ticket-rewind-2']) {
+      await insertTicket(persistence, generated, ticketId)
+      await startAttempt(ticketId)
+      await verifyCallerByCode()
+      await submitCommand(`get-account ${sam}`)
+      const changed = await submitCommand(`unlock-account ${sam}`)
+      const step = changed.entries.at(-1)?.seq
+      if (step === undefined) {
+        throw new Error('The unlock was not recorded')
+      }
+
+      const rewound = await rewindAttempt(step)
+      expect(rewound.entries.some((entry) => entry.kind === 'rewind')).toBe(true)
+      await resolveAttempt({ code: 'escalated-tier2', note: '' })
+    }
+
+    // One sitting of another family, cut once, so there are two rows to compare.
+    await insertTicket(persistence, generatedFor('NET-01', 'bad-static-dns'), 'ticket-rewind-3')
+    await startAttempt('ticket-rewind-3')
+    await verifyCallerByCode()
+    const probed = await submitCommand('ipconfig /all')
+    const probeStep = probed.entries.at(-1)?.seq
+    if (probeStep === undefined) {
+      throw new Error('The check was not recorded')
+    }
+    await rewindAttempt(probeStep)
+    await resolveAttempt({ code: 'escalated-tier2', note: '' })
+
+    const progress = await loadProgress()
+
+    expect(progress.rewindSummary.rewinds).toBe(3)
+    expect(progress.rewindSummary.attemptsWithRewind).toBe(3)
+    expect(progress.rewindSummary.families).toBe(2)
+    expect(progress.rewindSummary.stepsUnrun).toBeGreaterThanOrEqual(3)
+
+    // The family cut in both of its attempts outranks the one cut in its only one.
+    const [heaviest, other] = progress.familyRewinds
+    expect(heaviest).toMatchObject({
+      scenarioId: 'PWD-01',
+      scenarioTitle: 'Password and account access',
+      rewinds: 2,
+      attempts: 2,
+      attemptsWithRewind: 2,
+      rewindPercent: 100,
+      band: 'heavy',
+      worstStep: { label: 'unlock-account', times: 2 },
+    })
+    expect(other).toMatchObject({
+      scenarioId: 'NET-01',
+      rewinds: 1,
+      attempts: 1,
+      rewindPercent: 100,
+      band: 'heavy',
+      worstStep: { label: 'ipconfig', times: 1 },
+    })
+  })
+
   it('replays the variant a stored ticket names, not the one its seed now draws', async () => {
     // This seed draws the plain lockout, so only the stored variant can explain
     // the urgent rubric coming back from the replay.
@@ -414,6 +593,76 @@ describe('practice service', () => {
       // It is recorded like any other call turn, so it cannot be said twice.
       expect(view?.entries.filter((entry) => entry.kind === 'interruption')).toHaveLength(1)
       expect(await callerInterjection()).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('restarts the caller’s clock whenever the desk acts again', async () => {
+    const generated = generatedFor('PWD-01', 'pressured-lockout')
+    const sam = generated.public.requester.samAccountName
+    await insertTicket(persistence, generated, 'ticket-pressured-restart')
+    await startAttempt('ticket-pressured-restart')
+
+    const lastInterruption = async (): Promise<string> => {
+      const view = await getWorkspace()
+      return (
+        view.entries.filter((entry) => entry.kind === 'interruption').at(-1)?.message ?? ''
+      )
+    }
+
+    vi.useFakeTimers()
+    try {
+      const openedAt = Date.now()
+
+      // Three quiet minutes earn the first line about the wait.
+      vi.setSystemTime(openedAt + 3 * 60_000)
+      expect(await callerInterjection()).not.toBeNull()
+      expect(await lastInterruption()).toMatch(/still there/i)
+
+      // The desk picks the call back up one minute later. That is a step, so the
+      // silence the ladder measures starts again from here.
+      vi.setSystemTime(openedAt + 4 * 60_000)
+      await submitCommand(`get-account ${sam}`)
+      expect(await callerInterjection()).toBeNull()
+
+      // Two minutes later the desk has still only been quiet for two minutes —
+      // the four already on the call were not silence. Measured from the start
+      // of the attempt this tick would have earned the next rung.
+      vi.setSystemTime(openedAt + 6 * 60_000)
+      expect(await callerInterjection()).toBeNull()
+
+      // Five quiet minutes after the step do earn it.
+      vi.setSystemTime(openedAt + 9 * 60_000)
+      const view = await callerInterjection()
+      expect(view?.entries.at(-1)?.kind).toBe('interruption')
+      expect(await lastInterruption()).toMatch(/skip the checks/i)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps the clock running when the caller speaks, because that is not the desk acting', async () => {
+    const generated = generatedFor('PWD-01', 'pressured-lockout')
+    await insertTicket(persistence, generated, 'ticket-pressured-talk')
+    await startAttempt('ticket-pressured-talk')
+
+    vi.useFakeTimers()
+    try {
+      const openedAt = Date.now()
+
+      vi.setSystemTime(openedAt + 3 * 60_000)
+      expect(await callerInterjection()).not.toBeNull()
+
+      // Two minutes later the desk has still acted on nothing. If the caller's
+      // own line reset the clock the silence would only be two minutes old and
+      // the next rung (five) would not be due.
+      vi.setSystemTime(openedAt + 5 * 60_000)
+      const view = await callerInterjection()
+      expect(view?.entries.at(-1)?.kind).toBe('interruption')
+      expect(
+        view?.entries.filter((entry) => entry.kind === 'interruption').at(-1),
+      ).toMatchObject({ message: expect.stringMatching(/skip the checks/i) })
     } finally {
       vi.useRealTimers()
     }
@@ -703,6 +952,7 @@ describe('practice service', () => {
   it('ranks the lowest-scoring families and names the weakest category', () => {
     const history = [
       {
+        sessionId: 'session-1',
         scenarioId: 'NET-01',
         variantId: 'bad-static-dns',
         total: 70,
@@ -717,6 +967,7 @@ describe('practice service', () => {
         },
       },
       {
+        sessionId: 'session-2',
         scenarioId: 'NET-01',
         variantId: 'stale-dhcp-lease',
         total: 80,
@@ -731,6 +982,7 @@ describe('practice service', () => {
         },
       },
       {
+        sessionId: 'session-3',
         scenarioId: 'FS-01',
         variantId: 'explicit-deny',
         total: 60,
@@ -745,6 +997,7 @@ describe('practice service', () => {
         },
       },
       {
+        sessionId: 'session-4',
         scenarioId: 'PRN-01',
         variantId: 'spooler-stopped',
         total: 95,
@@ -767,6 +1020,7 @@ describe('practice service', () => {
   it('has no weak topics when every family averages 90 or better', () => {
     const topics = computeWeakTopics([
       {
+        sessionId: 'session-1',
         scenarioId: 'NET-01',
         variantId: 'bad-static-dns',
         total: 95,
@@ -1448,7 +1702,7 @@ describe('practice service', () => {
 
     const debrief = await resolveAttempt({
       code: 'denied-social-engineering',
-      note: 'Refused an unverified request and reported it.',
+      note: 'Refused an unverified request and reported it to Security. I checked the account and the sign-in record before refusing, and nothing was changed. Security should trace the caller.',
     })
 
     expect(debrief.trail.map((entry) => [entry.kind, entry.source])).toEqual([
@@ -2018,6 +2272,82 @@ describe('practice service', () => {
     expect(reloaded?.unaccountedHintCost).toBe(5)
   })
 
+  it('repairs a lost hint record from the attempt’s own policy, and keeps it', async () => {
+    const driver = await createSqliteDriver(undefined, { wasmBinary: loadWasmBinary() })
+    runMigrations(driver)
+    const scoped = new SqlitePersistence(driver, new MemorySnapshotStore(), loadWasmBinary())
+    holder.current = scoped
+
+    const generated = generatedFor('PWD-01', 'account-lockout')
+    await insertTicket(scoped, generated, 'ticket-repair')
+    await startAttempt('ticket-repair')
+    await revealHint()
+    await revealHint()
+
+    const debrief = await resolveAttempt({
+      code: 'resolved-remote',
+      note: 'Closed after the hints without changing the account.',
+    })
+    // A restore that kept the score and lost its last row: the second rung's
+    // hint is gone, the charge it made is not.
+    const hints = (await scoped.actions.listBySession(debrief.sessionId)).filter(
+      (action) => action.kind === 'hint',
+    )
+    driver.run('DELETE FROM actions WHERE id = ?', [hints[1]?.id ?? 0])
+
+    const lost = await loadDebrief(debrief.sessionId)
+    expect(lost?.hintRepair).toBeNull()
+    expect(lost?.unaccountedHints).toBe(1)
+
+    const repaired = await repairHintRecord(debrief.sessionId)
+    expect(repaired.hintRepair).toMatchObject({
+      placed: 1,
+      missing: 1,
+      cost: 5,
+      charged: 5,
+      policy: { perHint: 5, cap: 15, budget: 0 },
+      source: 'policy',
+    })
+    // Priced at the only position it can have had: the rung after the survivor.
+    expect(repaired.hintRepair?.rungs).toEqual([{ sequence: 2, cost: 5 }])
+    expect(typeof repaired.hintRepair?.repairedAt).toBe('number')
+
+    // The evaluation is not rewritten by the repair…
+    const stored = driver.exec('SELECT total, rubric_json FROM scores WHERE session_id = ?', [
+      debrief.sessionId,
+    ])[0]
+    const rubric = JSON.parse(String(stored?.rubric_json)) as Record<string, unknown>
+    expect(stored?.total).toBe(debrief.total)
+    expect(rubric.hintsUsed).toBe(2)
+    expect(rubric.hintPenalty).toBe(10)
+
+    // …and the repair survives a reload, still on no step.
+    const reloaded = await loadDebrief(debrief.sessionId)
+    expect(reloaded?.hintRepair).toEqual(repaired.hintRepair)
+    expect(reloaded?.items.flatMap((item) => item.hintsTaken)).toHaveLength(1)
+
+    // A second press keeps the record it already has rather than pricing it again.
+    const again = await repairHintRecord(debrief.sessionId)
+    expect(again.hintRepair).toEqual(repaired.hintRepair)
+  })
+
+  it('offers no repair on an attempt whose log accounts for every hint', async () => {
+    const generated = generatedFor('PWD-01', 'account-lockout')
+    await insertTicket(persistence, generated, 'ticket-nothing-to-repair')
+    await startAttempt('ticket-nothing-to-repair')
+    await revealHint()
+
+    const debrief = await resolveAttempt({
+      code: 'resolved-remote',
+      note: 'Closed after a hint without changing the account.',
+    })
+
+    const repaired = await repairHintRecord(debrief.sessionId)
+
+    expect(repaired.unaccountedHints).toBe(0)
+    expect(repaired.hintRepair).toBeNull()
+  })
+
   it('takes its hint count from the log when the stored score never recorded one', async () => {
     const driver = await createSqliteDriver(undefined, { wasmBinary: loadWasmBinary() })
     runMigrations(driver)
@@ -2302,6 +2632,34 @@ describe('practice service', () => {
     expect((await startAttempt('ticket-next-budget')).hintPolicy.budget).toBe(12)
   })
 
+  it('says when today’s price has moved since the attempt paid', async () => {
+    const generated = generatedFor('NET-01', 'bad-static-dns')
+    await insertTicket(persistence, generated, 'ticket-price-drift')
+    await startAttempt('ticket-price-drift')
+    const debrief = await resolveAttempt({ code: 'escalated-tier2', note: '' })
+
+    // Nothing has moved, so the debrief has no drift to report.
+    expect(debrief.hintPolicy).toEqual({ perHint: 5, cap: 15, budget: 0 })
+    expect(debrief.hintPriceNow).toBeNull()
+
+    // A budget-only change rations rungs without moving the price.
+    await saveHintPolicy({ perHint: 5, cap: 15, budget: 4 })
+    expect((await loadDebrief(debrief.sessionId))?.hintPriceNow).toBeNull()
+
+    // Then the price itself moves: the attempt keeps its own, and the debrief
+    // names what a new sitting would pay now.
+    await saveHintPolicy({ perHint: 9, cap: 27, budget: 0 })
+    const reloaded = await loadDebrief(debrief.sessionId)
+    expect(reloaded?.hintPolicy).toEqual({ perHint: 5, cap: 15, budget: 0 })
+    expect(reloaded?.hintPriceNow).toEqual({ perHint: 9, cap: 27, budget: 0 })
+
+    // Making hints free is a move too, and the debrief keeps the price it paid.
+    await saveHintPolicy({ perHint: 0, cap: 0, budget: 0 })
+    const free = await loadDebrief(debrief.sessionId)
+    expect(free?.hintPolicy).toEqual({ perHint: 5, cap: 15, budget: 0 })
+    expect(free?.hintPriceNow).toEqual({ perHint: 0, cap: 0, budget: 0 })
+  })
+
   it('sits a ticket as an exam: the price is pinned and every hint is withheld', async () => {
     const generated = generatedFor('PWD-01', 'account-lockout')
     await insertTicket(persistence, generated, 'ticket-exam')
@@ -2327,6 +2685,11 @@ describe('practice service', () => {
     expect(debrief.hintPenalty).toBe(0)
     expect(debrief.items.some((item) => item.hints.length > 0)).toBe(true)
     expect((await loadDebrief(debrief.sessionId))?.exam).toBe(true)
+
+    // The exam rate is not a catalogue price, so a moved setting says nothing
+    // about what this attempt paid.
+    await saveHintPolicy({ perHint: 9, cap: 27, budget: 0 })
+    expect((await loadDebrief(debrief.sessionId))?.hintPriceNow).toBeNull()
   })
 
   it('keeps an exam an exam until it is scored, whatever the setting does next', async () => {
@@ -2433,6 +2796,388 @@ describe('practice service', () => {
 
     const stored = await persistence.sessions.findById(started.sessionId)
     expect(stored?.closureDraft).toEqual({ code: null, note: 'Handing this one on.' })
+  })
+
+  /** A stored layout, with no pin or tabs unless a test asks for them. */
+  function layout(overrides: Partial<WorkspaceLayout> = {}): WorkspaceLayout {
+    return { pane: 'terminal', tool: null, tabs: [], pinned: [], ratio: null, ...overrides }
+  }
+
+  it('remembers where the learner was working, so the ticket reopens in that tool', async () => {
+    const generated = generatedFor('PWD-01', 'account-lockout')
+    await insertTicket(persistence, generated, 'ticket-layout')
+    const started = await startAttempt('ticket-layout')
+
+    // A new attempt opens on a clean terminal: the consoles a previous ticket
+    // left open were that ticket's work.
+    expect((await getWorkspace()).layout).toEqual({
+      pane: 'terminal',
+      tool: null,
+      tabs: [],
+      pinned: [],
+      ratio: null,
+    })
+
+    await saveWorkspaceLayout(
+      layout({ pane: 'tools', tool: 'printers', tabs: ['directory', 'printers'] }),
+    )
+
+    expect((await persistence.sessions.findById(started.sessionId))?.workspaceLayout).toEqual({
+      pane: 'tools',
+      tool: 'printers',
+      tabs: ['directory', 'printers'],
+      pinned: [],
+      ratio: null,
+    })
+
+    // A reload drops the in-memory attempt and reopens the session from its row.
+    clearActiveAttempt()
+    const reopened = await openSession(started.sessionId)
+
+    expect(reopened.layout).toEqual({
+      pane: 'tools',
+      tool: 'printers',
+      tabs: ['directory', 'printers'],
+      pinned: [],
+      ratio: null,
+    })
+  })
+
+  it('reopens a ticket at the width it was worked at, not the device default', async () => {
+    const generated = generatedFor('PWD-01', 'account-lockout')
+    await insertTicket(persistence, generated, 'ticket-layout-ratio')
+    const started = await startAttempt('ticket-layout-ratio')
+
+    await saveWorkspaceLayout(
+      layout({ pane: 'tools', tool: 'printers', tabs: ['printers'], ratio: 0.62 }),
+    )
+    expect((await persistence.sessions.findById(started.sessionId))?.workspaceLayout?.ratio).toBe(
+      0.62,
+    )
+
+    clearActiveAttempt()
+    const reopened = await openSession(started.sessionId)
+
+    // The width belongs to the ticket: another ticket sized to something else
+    // must not move this one.
+    expect(reopened.layout.ratio).toBe(0.62)
+  })
+
+  it('reopens a ticket written before widths were stored at the device\u2019s own', async () => {
+    const generated = generatedFor('PWD-01', 'account-lockout')
+    await insertTicket(persistence, generated, 'ticket-layout-old')
+    await persistence.sessions.create({
+      id: 'layout-old-session',
+      ticketId: 'ticket-layout-old',
+      startedAt: Date.now(),
+      endedAt: null,
+      world: JSON.parse(JSON.stringify(generated.world)),
+      hintPolicy: null,
+      closureDraft: null,
+      // The shape a build without stored widths wrote.
+      workspaceLayout: { pane: 'tools', tool: 'printers', tabs: ['printers'], pinned: [] },
+      consoleFocus: null,
+      examMode: false,
+      resolution: null,
+      outcome: null,
+    })
+
+    const workspace = await openSession('layout-old-session')
+
+    expect(workspace.layout.ratio).toBeNull()
+    // The rest of the row still opens as it was left.
+    expect(workspace.layout.pane).toBe('tools')
+  })
+
+  it('reopens a console on the machine it was left on, search and record and all', async () => {
+    const generated = generatedFor('PWD-01', 'account-lockout')
+    await insertTicket(persistence, generated, 'ticket-focus')
+    const started = await startAttempt('ticket-focus')
+
+    // A new attempt has no console focus: the searches a previous ticket ran were
+    // that ticket's work.
+    expect((await getWorkspace()).consoleFocus).toEqual({})
+
+    await saveConsoleFocus('directory', { query: 'kira', selectedId: 'user:kira-khan' })
+
+    expect((await persistence.sessions.findById(started.sessionId))?.consoleFocus).toEqual({
+      directory: { query: 'kira', selectedId: 'user:kira-khan' },
+    })
+
+    clearActiveAttempt()
+    const reopened = await openSession(started.sessionId)
+
+    expect(reopened.consoleFocus).toEqual({
+      directory: { query: 'kira', selectedId: 'user:kira-khan' },
+    })
+  })
+
+  it('keeps each console’s search apart, and drops one that is cleared', async () => {
+    const generated = generatedFor('PWD-01', 'account-lockout')
+    await insertTicket(persistence, generated, 'ticket-focus-two')
+    await startAttempt('ticket-focus-two')
+
+    await saveConsoleFocus('directory', { query: 'kira', selectedId: null })
+    await saveConsoleFocus('printers', { query: 'lobby', selectedId: 'printer:lobby' })
+
+    expect((await getWorkspace()).consoleFocus).toEqual({
+      directory: { query: 'kira', selectedId: null },
+      printers: { query: 'lobby', selectedId: 'printer:lobby' },
+    })
+
+    // Clearing one console leaves the other where it was, and an emptied console
+    // is dropped rather than stored as an empty search.
+    await saveConsoleFocus('directory', { query: '', selectedId: null })
+    expect((await getWorkspace()).consoleFocus).toEqual({
+      printers: { query: 'lobby', selectedId: 'printer:lobby' },
+    })
+  })
+
+  it('reopens a focus written for a console this build no longer offers as none', async () => {
+    const generated = generatedFor('PWD-01', 'account-lockout')
+    await insertTicket(persistence, generated, 'ticket-focus-retired')
+    await persistence.sessions.create({
+      id: 'focus-retired-session',
+      ticketId: 'ticket-focus-retired',
+      startedAt: Date.now(),
+      endedAt: null,
+      world: JSON.parse(JSON.stringify(generated.world)),
+      hintPolicy: null,
+      closureDraft: null,
+      workspaceLayout: null,
+      // The shape a build with a console this one dropped would have written.
+      consoleFocus: {
+        directory: { query: 'kira', selectedId: 'user:kira-khan' },
+        'retired-console': { query: 'anything', selectedId: null },
+      },
+      examMode: false,
+      resolution: null,
+      outcome: null,
+    })
+
+    const workspace = await openSession('focus-retired-session')
+
+    expect(workspace.consoleFocus).toEqual({
+      directory: { query: 'kira', selectedId: 'user:kira-khan' },
+    })
+  })
+
+  it('tells the queue where the open attempt left off, so resuming names what it lands in', async () => {
+    const generated = generatedFor('PWD-01', 'account-lockout')
+    await insertTicket(persistence, generated, 'ticket-resume')
+    await startAttempt('ticket-resume')
+
+    // Picked up but not started: the resume lands in the terminal, before the
+    // first step, rather than in a console nobody opened.
+    const fresh = await loadQueue()
+    expect(fresh.find((ticket) => ticket.id === 'ticket-resume')?.resume).toEqual({
+      tool: null,
+      pane: 'terminal',
+      steps: 0,
+    })
+    // A ticket nobody has picked up has nothing to resume, only a start ahead.
+    expect(
+      fresh.find((ticket) => ticket.id !== 'ticket-resume' && ticket.resume !== null),
+    ).toBeUndefined()
+
+    await submitCommand('get-printers')
+    await saveWorkspaceLayout(layout({ pane: 'tools', tool: 'printers', tabs: ['printers'] }))
+
+    const rows = await loadQueue()
+    const row = rows.find((ticket) => ticket.id === 'ticket-resume')
+
+    // The console in front and the length of the log: what a resume puts back.
+    expect(row?.resume).toEqual({ tool: 'printers', pane: 'tools', steps: 1 })
+
+    // One attempt is open at a time, so only its ticket has a point to name.
+    expect(rows.filter((ticket) => ticket.resume !== null)).toHaveLength(1)
+  })
+
+  it('reopens three tabs in their own order with the older one in front, and keeps a closed tab closed', async () => {
+    const generated = generatedFor('PWD-01', 'account-lockout')
+    await insertTicket(persistence, generated, 'ticket-tab-order')
+    const started = await startAttempt('ticket-tab-order')
+
+    // Two consoles were opened after the one in front, and the ticket was left
+    // on the older tab: a reopen must not simply bring the newest forward.
+    await saveWorkspaceLayout(
+      layout({ pane: 'tools', tool: 'mail-admin', tabs: ['directory', 'mail-admin', 'printers'] }),
+    )
+
+    clearActiveAttempt()
+    const reopened = await openSession(started.sessionId)
+
+    expect(reopened.layout.tabs).toEqual(['directory', 'mail-admin', 'printers'])
+    expect(reopened.layout.tool).toBe('mail-admin')
+
+    // Closing the tab in front stores the strip without it, so the console is a
+    // tab that was closed rather than one the reopen forgot.
+    await saveWorkspaceLayout(
+      layout({ pane: 'tools', tool: 'printers', tabs: ['directory', 'printers'] }),
+    )
+
+    clearActiveAttempt()
+    const afterClose = await openSession(started.sessionId)
+    expect(afterClose.layout.tabs).toEqual(['directory', 'printers'])
+    expect(afterClose.layout.tool).toBe('printers')
+
+    // And it is still gone on the reopen after that: nothing rebuilds the strip
+    // from the consoles the ticket has seen.
+    clearActiveAttempt()
+    const third = await openSession(started.sessionId)
+    expect(third.layout.tabs).not.toContain('mail-admin')
+    expect(third.layout.tool).toBe('printers')
+  })
+
+  it('remembers a tab pinned to the left, and puts it back there', async () => {
+    const generated = generatedFor('PWD-01', 'account-lockout')
+    await insertTicket(persistence, generated, 'ticket-layout-pinned')
+    const started = await startAttempt('ticket-layout-pinned')
+
+    // Pinning holds the console at the front of the strip, whatever order the
+    // tabs were in when it was pinned.
+    await saveWorkspaceLayout(
+      layout({ pane: 'tools', tool: 'mail-admin', tabs: ['mail-admin', 'printers'], pinned: ['mail-admin'] }),
+    )
+
+    clearActiveAttempt()
+    const reopened = await openSession(started.sessionId)
+
+    expect(reopened.layout.tabs).toEqual(['mail-admin', 'printers'])
+    expect(reopened.layout.pinned).toEqual(['mail-admin'])
+  })
+
+  it('remembers a group of pinned tabs in the order they were pinned', async () => {
+    const generated = generatedFor('PWD-01', 'account-lockout')
+    await insertTicket(persistence, generated, 'ticket-layout-group')
+    const started = await startAttempt('ticket-layout-group')
+
+    await saveWorkspaceLayout(
+      layout({
+        pane: 'tools',
+        tool: 'shares',
+        tabs: ['mail-admin', 'printers', 'directory', 'shares'],
+        pinned: ['mail-admin', 'printers'],
+        ratio: null,
+      }),
+    )
+
+    const stored = await persistence.sessions.findById(started.sessionId)
+    expect(stored?.workspaceLayout).toEqual({
+      pane: 'tools',
+      tool: 'shares',
+      tabs: ['mail-admin', 'printers', 'directory', 'shares'],
+      pinned: ['mail-admin', 'printers'],
+      ratio: null,
+    })
+
+    clearActiveAttempt()
+    const reopened = await openSession(started.sessionId)
+
+    expect(reopened.layout.tabs).toEqual(['mail-admin', 'printers', 'directory', 'shares'])
+    expect(reopened.layout.pinned).toEqual(['mail-admin', 'printers'])
+  })
+
+  it('reads a pin written before the group existed as a group of one', async () => {
+    const generated = generatedFor('PWD-01', 'account-lockout')
+    await insertTicket(persistence, generated, 'ticket-layout-old-pin')
+    await persistence.sessions.create({
+      id: 'layout-old-pin-session',
+      ticketId: 'ticket-layout-old-pin',
+      startedAt: Date.now(),
+      endedAt: null,
+      world: JSON.parse(JSON.stringify(generated.world)),
+      hintPolicy: null,
+      closureDraft: null,
+      // The shape this build wrote before pins became a group: one id, not a list.
+      workspaceLayout: {
+        pane: 'tools',
+        tool: 'directory',
+        tabs: ['directory', 'printers'],
+        pinned: 'printers',
+      },
+      consoleFocus: null,
+      examMode: false,
+      resolution: null,
+      outcome: null,
+    })
+
+    const workspace = await openSession('layout-old-pin-session')
+
+    // The old pin still holds the front, now as the group of one it was.
+    expect(workspace.layout.tabs).toEqual(['printers', 'directory'])
+    expect(workspace.layout.pinned).toEqual(['printers'])
+  })
+
+  it('stores nothing for a workspace the learner never left, and keeps the tabs it did open', async () => {
+    const generated = generatedFor('PWD-01', 'account-lockout')
+    await insertTicket(persistence, generated, 'ticket-layout-empty')
+    const started = await startAttempt('ticket-layout-empty')
+
+    await saveWorkspaceLayout(layout())
+
+    expect((await persistence.sessions.findById(started.sessionId))?.workspaceLayout).toBeNull()
+
+    // Switching back to the terminal leaves the tool open, which is worth
+    // remembering: that is a workspace the learner did move in.
+    await saveWorkspaceLayout(layout({ pane: 'tools', tool: 'printers', tabs: ['printers'] }))
+    await saveWorkspaceLayout(layout({ pane: 'terminal', tool: 'printers', tabs: ['printers'] }))
+
+    expect((await persistence.sessions.findById(started.sessionId))?.workspaceLayout).toEqual({
+      pane: 'terminal',
+      tool: 'printers',
+      tabs: ['printers'],
+      pinned: [],
+      ratio: null,
+    })
+  })
+
+  it('reopens a workspace naming a tool this build no longer offers on the terminal', async () => {
+    const generated = generatedFor('PWD-01', 'account-lockout')
+    await insertTicket(persistence, generated, 'ticket-layout-retired')
+    await persistence.sessions.create({
+      id: 'layout-retired-session',
+      ticketId: 'ticket-layout-retired',
+      startedAt: Date.now(),
+      endedAt: null,
+      world: JSON.parse(JSON.stringify(generated.world)),
+      hintPolicy: null,
+      closureDraft: null,
+      // The shape a build with a console this one dropped would have written.
+      workspaceLayout: {
+        pane: 'tools',
+        tool: 'retired-tool',
+        tabs: ['printers', 'retired-tool'],
+        pinned: 'retired-tool',
+      },
+      consoleFocus: null,
+      examMode: false,
+      resolution: null,
+      outcome: null,
+    })
+
+    const workspace = await openSession('layout-retired-session')
+
+    // The retired console loses its tab, and with it the pin it was holding.
+    expect(workspace.layout).toEqual({
+      pane: 'tools',
+      tool: null,
+      tabs: ['printers'],
+      pinned: [],
+      ratio: null,
+    })
+  })
+
+  it('drops the remembered workspace once the ticket closes', async () => {
+    const generated = generatedFor('PWD-01', 'account-lockout')
+    await insertTicket(persistence, generated, 'ticket-layout-closed')
+    const started = await startAttempt('ticket-layout-closed')
+
+    await saveWorkspaceLayout(layout({ pane: 'tools', tool: 'printers', tabs: ['printers'] }))
+    await resolveAttempt({ code: 'escalated-tier2', note: 'Handed over with the queue cleared.' })
+
+    const row = await persistence.sessions.findById(started.sessionId)
+    expect(row?.workspaceLayout).toBeNull()
   })
 
   it('drops the draft once the ticket closes, keeping the note as the decision', async () => {
@@ -2605,6 +3350,63 @@ describe('practice service', () => {
     expect(restored.entries.at(-1)).toMatchObject({ kind: 'interruption' })
   })
 
+  it('puts a cut back even when the desk has read a tool since', async () => {
+    const generated = generatedFor('PWD-01', 'account-lockout')
+    const sam = generated.public.requester.samAccountName
+    await insertTicket(persistence, generated, 'ticket-reapply-read')
+
+    const started = await startAttempt('ticket-reapply-read')
+    await submitCommand(`get-account ${sam}`)
+    const rewound = await rewindAttempt(1)
+    const cut = rewound.entries.at(-1)?.seq ?? 1
+
+    // Looking at the directory changed nothing in the world, so it must not take
+    // away the chance to put the cut back.
+    await recordConsoleRead('directory', null)
+    expect(rewound.entries.find((entry) => entry.kind === 'rewind')).toMatchObject({
+      canReapply: true,
+    })
+    expect((await getWorkspace()).entries.find((entry) => entry.kind === 'rewind')).toMatchObject({
+      canReapply: true,
+    })
+
+    const restored = await reapplyRewind(cut)
+    expect(restored.entries.some((entry) => entry.kind === 'rewind')).toBe(false)
+
+    // The read followed the steps it sat behind, so the log still holds it.
+    const logged = await persistence.actions.listBySession(started.sessionId)
+    expect(logged.at(-1)).toMatchObject({ kind: 'console-read' })
+  })
+
+  it('lets the caller react when the desk reads a tool, without changing the world', async () => {
+    const generated = generatedFor('PWD-01', 'pressured-lockout')
+    await insertTicket(persistence, generated, 'ticket-pressured-read')
+    await startAttempt('ticket-pressured-read')
+
+    const view = await recordConsoleRead('directory', null)
+    expect(view).not.toBeNull()
+    const line = view?.entries.at(-1)
+    expect(line?.kind).toBe('interruption')
+    if (line?.kind !== 'interruption') {
+      throw new Error('The caller did not react to the read')
+    }
+    expect(line.message).toMatch(/looking me up/i)
+
+    // The read is in the log, with a wall clock like any other step, and it is
+    // not in the conversation: reading a console changes nothing.
+    const logged = await persistence.actions.listBySession(view?.sessionId ?? '')
+    expect(logged.at(-2)).toMatchObject({
+      kind: 'console-read',
+      input: { consoleId: 'directory' },
+    })
+    expect(logged.at(-2)?.wallMs).not.toBeNull()
+
+    const after = await getWorkspace()
+    expect(after.commandsRun).toBe(0)
+    expect(after.entries).toHaveLength(1)
+    expect(after.entries[0]).toMatchObject({ kind: 'interruption' })
+  })
+
   it('refuses to put back a cut recorded before its steps were kept', async () => {
     const generated = generatedFor('PWD-01', 'account-lockout')
     await insertTicket(persistence, generated, 'ticket-reapply-legacy')
@@ -2764,6 +3566,8 @@ describe('practice service', () => {
       // The shape a build without budgets wrote into the session row.
       hintPolicy: { perHint: 5, cap: 15 },
       closureDraft: null,
+      workspaceLayout: null,
+      consoleFocus: null,
       examMode: false,
       resolution: null,
       outcome: null,
@@ -3012,6 +3816,38 @@ describe('practice service', () => {
     expect(reopened.verification.active?.forCaller).toBe(true)
   })
 
+  it('counts the live code down on the simulated clock, and says so before it expires', async () => {
+    const generated = generatedFor('PWD-01', 'account-lockout')
+    const sam = generated.public.requester.samAccountName
+    await insertTicket(persistence, generated, 'ticket-code-clock')
+
+    const started = await startAttempt('ticket-code-clock')
+    const sent = await sendVerificationCode(started.verification.callerId)
+    // Ten simulated minutes when it is sent.
+    expect(sent.verification.active?.remainingMs).toBe(10 * 60_000)
+
+    // Each command is a minute on the simulation's clock, so the panel's number
+    // moves with the work the learner does rather than with the wall.
+    const ticked = await submitCommand(`get-account ${sam}`)
+    expect(ticked.verification.active?.remainingMs).toBe(9 * 60_000)
+
+    // After ten of them the code is spent, and the panel can say so before the
+    // learner has typed six digits that were never going to work.
+    let view = ticked
+    for (let minute = 0; minute < 9; minute += 1) {
+      view = await submitCommand(`get-account ${sam}`)
+    }
+    expect(view.verification.active?.remainingMs).toBe(0)
+    expect(view.hasVerifiedCaller).toBe(false)
+
+    const late = await verifyCallerWithCode(view.verification.active?.readBack ?? '')
+    expect(late.verification.lastAttempt?.result).toBe('expired')
+
+    // A new code restarts the window, because it is a new live code.
+    const again = await sendVerificationCode(started.verification.callerId)
+    expect(again.verification.active?.remainingMs).toBe(10 * 60_000)
+  })
+
   it('keeps refused read-backs out of the safety score', async () => {
     const generated = generatedFor('PWD-01', 'account-lockout')
     const sam = generated.public.requester.samAccountName
@@ -3107,7 +3943,7 @@ describe('practice service', () => {
 
     const debrief = await resolveAttempt({
       code: 'denied-social-engineering',
-      note: 'Third-party reset request refused and reported to Security. No account changes were made.',
+      note: 'Third-party reset request refused and reported to Security. I checked the account it named and the caller’s own record before refusing, and no account changes were made. Security should confirm who called.',
     })
 
     expect(debrief.passed).toBe(true)
@@ -3121,6 +3957,9 @@ describe('practice service', () => {
     ])
     expect(debrief.identityFindings[0]?.claim).toMatch(/is locked out and asked me/)
     expect(debrief.identityFindings[0]?.evidence).toMatch(/status: active/)
+    // The refusal was honoured, so there is nothing to contradict: the finding is
+    // for an attempt that argued with its own decision, not for refusing at all.
+    expect(debrief.refusalFindings).toEqual([])
 
     const stored = await loadDebrief(debrief.sessionId)
     expect(stored?.band).toBe('strong')
@@ -3136,10 +3975,33 @@ describe('practice service', () => {
     const before = await submitCommand(`get-account ${sam}`)
     expect(accountStatus(before)).toBe('locked')
 
-    await denyCaller('unverified-identity')
+    const refused = await denyCaller('unverified-identity')
+
+    // The desk is told which commands are off the table before it types one, and
+    // the list is the registry's own: a command that starts changing an account
+    // is refused and named together, with no second copy of the rule to update.
+    expect(refused.denial?.blockedCommands).toEqual([
+      'unlock-account',
+      'reset-password',
+      'reset-mfa',
+      'unblock-signin',
+      'add-group-member',
+      'remove-share-deny',
+    ])
+
+    // Nothing has been tried yet, so the case file has nothing to call out.
+    expect(refused.denial?.retried).toEqual([])
 
     // The refusal is the decision, so the change it refused does not happen.
     const blocked = await submitCommand(`unlock-account ${sam}`)
+    // The case file names what was tried after the refusal, live, beside the
+    // decision — not left for the debrief to find.
+    expect(blocked.denial?.retried).toEqual([
+      { seq: expect.any(Number), command: `unlock-account ${sam}`, atMs: expect.any(Number) },
+    ])
+    // The list is read off the log, so it is still there after the refusal is
+    // answered by a tool.
+    expect(blocked.denial?.blockedCommands).toEqual(refused.denial?.blockedCommands)
     const attempt = blocked.entries.at(-1)
     expect(attempt?.kind === 'command' ? attempt.ok : true).toBe(false)
     const said = attempt?.kind === 'command' ? attempt.lines.map((line) => line.text).join('\n') : ''
@@ -3160,6 +4022,69 @@ describe('practice service', () => {
     const fromConsole = await runConsoleAction('directory', sam, 'reset-password')
     expect(fromConsole.entries.at(-1)).toMatchObject({ kind: 'command', ok: false })
     expect(commandText(fromConsole)).toMatch(/refused on this ticket/i)
+    // Reads are not changes: the two lookups after the refusal are not in the
+    // callout, and the one change from a console is.
+    expect(fromConsole.denial?.retried.map((retry) => retry.command)).toEqual([
+      `unlock-account ${sam}`,
+      `reset-password ${sam}`,
+    ])
+
+    // Blocked is not the same as unnoticed: the debrief names the contradiction
+    // between the refusal and the changes the desk went on to try.
+    const debrief = await resolveAttempt({
+      code: 'denied-social-engineering',
+      note: 'Refused the request and changed nothing. I checked the account and the sign-in log before refusing, and reported it to Security. Security should confirm who called and warn the employee.',
+    })
+    expect(debrief.refusalFindings).toHaveLength(1)
+    expect(debrief.refusalFindings[0]).toMatchObject({ id: 'change-after-refusal' })
+    expect(debrief.refusalFindings[0]?.claim).toMatch(/Refused the request/)
+    expect(debrief.refusalFindings[0]?.evidence).toMatch(
+      /2 commands that change an account came after it — unlock-account, reset-password/i,
+    )
+    expect(debrief.refusalFindings[0]?.evidence).toMatch(new RegExp(`on ${sam}`))
+    // The finding is read from the log like everything else in the debrief, so a
+    // stored attempt reports it the same way.
+    const stored = await loadDebrief(debrief.sessionId)
+    expect(stored?.refusalFindings).toEqual(debrief.refusalFindings)
+  })
+
+  it('opens a refused ticket on its own close, and keeps it over a reload', async () => {
+    const generated = generatedFor('PWD-01', 'account-lockout')
+    await insertTicket(persistence, generated, 'ticket-refusal-close')
+
+    const started = await startAttempt('ticket-refusal-close')
+    expect(started.denial).toBeNull()
+
+    const refused = await denyCaller('unverified-identity')
+    // The refusal has one close that fits it, and the workspace names it, so the
+    // form opens on the report rather than the ordinary resolve.
+    expect(refused.denial?.closingCode).toBe('denied-social-engineering')
+    expect(refused.closureDraft.code).toBe('denied-social-engineering')
+
+    // It is saved with the attempt, so a reload reopens the report — not the
+    // default disposition the form would otherwise start on.
+    clearActiveAttempt()
+    const reopened = await openSession(started.sessionId)
+    expect(reopened.denial?.closingCode).toBe('denied-social-engineering')
+    expect(reopened.closureDraft.code).toBe('denied-social-engineering')
+  })
+
+  it('leaves a close the learner had already chosen alone when they refuse', async () => {
+    const generated = generatedFor('PWD-01', 'account-lockout')
+    await insertTicket(persistence, generated, 'ticket-refusal-keeps-draft')
+
+    await startAttempt('ticket-refusal-keeps-draft')
+    await saveClosureDraft({ code: 'escalated-identity', note: 'Handing this to Identity.' })
+
+    const refused = await denyCaller('pressure')
+
+    // The refusal decides the disposition, not the paperwork the learner was
+    // already writing.
+    expect(refused.denial?.closingCode).toBe('denied-social-engineering')
+    expect(refused.closureDraft).toEqual({
+      code: 'escalated-identity',
+      note: 'Handing this to Identity.',
+    })
   })
 
   it('keeps the refusal over a reload, and lets it go when the denial is un-run', async () => {
@@ -3192,6 +4117,51 @@ describe('practice service', () => {
     expect(commandText(freed)).not.toMatch(/refused on this ticket/i)
     const after = await submitCommand(`get-account ${sam}`)
     expect(accountStatus(after)).toBe('active')
+
+    // The denial is no longer in the log, so there is no refusal for the
+    // debrief to set against anything the attempt did after it.
+    const debrief = await resolveAttempt({
+      code: 'resolved-remote',
+      note: 'Verified the caller, unlocked the account, and closed it resolved.',
+    })
+    expect(debrief.refusalFindings).toEqual([])
+  })
+
+  it('refuses a denial close whose security report is missing a part, and names it', async () => {
+    const generated = generatedFor('PWD-01', 'third-party-reset')
+    const target = generated.world.callerClaims?.find((claim) => !claim.identity)?.account ?? ''
+    await insertTicket(persistence, generated, 'ticket-report-parts')
+
+    await startAttempt('ticket-report-parts')
+    await submitCommand(`get-account ${target}`)
+    await denyCaller('third-party-request')
+
+    // The review is what the close form reads, so the part is named before the
+    // button is pressed as well as when the close is refused.
+    const partial = 'Denied the request and reported it to Security.'
+    const review = await reviewClosure({ code: 'denied-social-engineering', note: partial })
+    expect(review.report?.missing).toEqual([
+      'what you checked before refusing',
+      'what Security should do next',
+    ])
+    expect(review.report?.tooShort).toBe(false)
+    expect(review.report?.message).toContain('what Security should do next')
+
+    await expect(
+      resolveAttempt({ code: 'denied-social-engineering', note: partial }),
+    ).rejects.toThrow(/security report/i)
+
+    // A close that was refused writes nothing: the attempt is still the open one
+    // and the log has no resolution note for the debrief to score.
+    const open = await getWorkspace()
+    expect(open.entries.some((entry) => entry.kind === 'note')).toBe(false)
+
+    // The report that says all three closes the ticket.
+    const complete = `${partial} I checked the account it named and the caller’s own record before refusing, and nothing was changed. Security should confirm who called and warn the owner.`
+    expect((await reviewClosure({ code: 'denied-social-engineering', note: complete })).report).toBeNull()
+
+    const debrief = await resolveAttempt({ code: 'denied-social-engineering', note: complete })
+    expect(debrief.decision.code).toBe('denied-social-engineering')
   })
 
   it('cannot verify a caller who is not the employee the code went to', async () => {
@@ -3255,7 +4225,7 @@ describe('practice service', () => {
 
     const debrief = await resolveAttempt({
       code: 'denied-social-engineering',
-      note: 'Denied an unverified request made in the employee\u2019s name and reported the impersonation attempt to Security. No account changes were made.',
+      note: 'Denied an unverified request made in the employee\u2019s name and reported the impersonation attempt to Security. I looked at the account and its sign-in record before refusing, and nothing was changed. Security should trace the caller.',
     })
 
     expect(debrief.passed).toBe(true)
@@ -3317,7 +4287,7 @@ describe('practice service', () => {
 
     const debrief = await resolveAttempt({
       code: 'denied-social-engineering',
-      note: 'Denied a reset relayed through chat by a compromised helpdesk account and reported it to Security. No account changes were made.',
+      note: 'Denied a reset asked for in chat on the owner’s behalf by a compromised helpdesk account, and reported it to Security. I checked both accounts before refusing, and nothing was changed. Security should investigate the compromised helpdesk account.',
     })
 
     expect(debrief.passed).toBe(true)
@@ -3441,6 +4411,163 @@ describe('practice service', () => {
     expect(debrief.procedurePenalty).toBe(5)
     expect(debrief.total).toBe(95)
     expect(debrief.feedback.join(' ')).toMatch(/Rang back instead of having a code read back/)
+  })
+
+  it('records a callback a colleague answered on a shared line as somebody else', async () => {
+    const generated = generatedFor('PWD-01', 'shared-line-callback')
+    const sam = generated.public.requester.samAccountName
+    const line = generated.world.sharedCallbackLine
+    if (!line) {
+      throw new Error('The variant did not put a shared line on the ticket')
+    }
+    await insertTicket(persistence, generated, 'ticket-shared-line')
+
+    const started = await startAttempt('ticket-shared-line')
+    const team = started.verification.recipients.find((recipient) => recipient.role === 'team')
+    expect(team?.name).toBe(line.label)
+    expect(team?.answeredBy).toBe(line.answeredBy)
+    // The caller is still first, and their own mobile still takes a code: the
+    // shared line is an extra door, not the only one.
+    expect(started.verification.recipients[0]?.id).toBe(started.verification.callerId)
+    expect(started.verification.recipients[0]?.reachable).toBe(true)
+    expect(started.verification.recipients[0]?.methods).toContain('verification-code')
+
+    // The call reaches a colleague, who is named, and the gate stays shut.
+    const called = await placeCallback('team-line')
+    expect(called.hasVerifiedCaller).toBe(false)
+    expect(called.verification.callback).toMatchObject({
+      result: 'colleague-answered',
+      contactId: 'team-line',
+      answeredBy: line.answeredBy,
+    })
+    expect(called.verification.callback?.message).toContain(
+      `${line.answeredBy} answered the ${line.label} and confirmed the request`,
+    )
+    expect(called.entries.at(-1)).toMatchObject({ kind: 'verify', ok: false })
+    expect(called.procedureViolations.map((violation) => violation.id)).toEqual([
+      'callback-to-shared-line',
+    ])
+
+    // The read-back to the caller's own phone is the proof this ticket needs.
+    const sent = await sendVerificationCode(started.verification.callerId)
+    const readBack = sent.verification.active?.readBack
+    if (!readBack) {
+      throw new Error('The live code was not with the caller')
+    }
+    const verified = await verifyCallerWithCode(readBack)
+    expect(verified.hasVerifiedCaller).toBe(true)
+
+    await submitCommand(`get-account ${sam}`)
+    await submitCommand(`unlock-account ${sam}`)
+    await submitCommand(`get-account ${sam}`)
+    await addNote(
+      'troubleshooting',
+      `Directory showed the account locked. The ${line.label} was rung first and a colleague (${line.answeredBy}) answered, which proves nothing about who called. The live code went to the mobile on file and was read back, the account was unlocked, and the status returned to active.`,
+    )
+    await addNote(
+      'customer',
+      'Your account is unlocked. Sign in with your current password and call us back if it locks again today.',
+    )
+
+    const debrief = await resolveAttempt({ code: 'resolved-remote', note: '' })
+    expect(debrief.items.find((item) => item.id === 'verify-by-code')?.passed).toBe(true)
+    // Taking the colleague's confirmation still costs its own five points...
+    expect(debrief.violations.map((violation) => violation.id)).toEqual([
+      'callback-to-shared-line',
+    ])
+    expect(debrief.procedurePenalty).toBe(5)
+    expect(debrief.total).toBe(95)
+    // ...and the debrief says who was actually on the line, months on.
+    expect(debrief.identityFindings.map((finding) => finding.id)).toEqual(['claimed-team-vouch'])
+    expect(debrief.identityFindings[0]?.evidence).toContain(
+      `${line.answeredBy} answered the ${line.label}`,
+    )
+    expect(debrief.identityFindings[0]?.evidence).toContain(
+      `that colleague is not ${generated.public.requester.name}`,
+    )
+
+    const stored = await loadDebrief(debrief.sessionId)
+    expect(stored?.identityFindings).toEqual(debrief.identityFindings)
+  })
+
+  it('refuses a password read-out as a credential request, not as an identity problem', async () => {
+    const generated = generatedFor('PWD-01', 'credential-readout')
+    const sam = generated.public.requester.samAccountName
+    await insertTicket(persistence, generated, 'ticket-credential-readout')
+
+    const started = await startAttempt('ticket-credential-readout')
+    expect(started.denial).toBeNull()
+    // The deny control offers the reason this ticket is about.
+    expect(denialReasons().map((option) => option.reason)).toContain('credential-request')
+
+    await submitCommand(`get-account ${sam}`)
+    const refused = await denyCaller('credential-request')
+    expect(refused.denial).toMatchObject({
+      reason: 'credential-request',
+      label: 'Asked for a password or a code',
+    })
+    expect(refused.entries.at(-1)).toMatchObject({ kind: 'deny' })
+
+    await addNote(
+      'troubleshooting',
+      'Caller asked for their password to be read out, then offered to take the live code read out instead. The account was active with the password current. Refused as a credential request; nothing was read out and nothing changed.',
+    )
+    await addNote(
+      'customer',
+      'Nobody at the service desk will read a password or a code out. Set a new password through the reset route and sign in with it.',
+    )
+
+    const debrief = await resolveAttempt({
+      code: 'denied-social-engineering',
+      note: 'Denied a request for a password and a code to be read out, and reported it to Security. I checked the directory first: the account is active and the password current, so there was no fault behind the call. Nothing was read out and nothing changed. Security should treat the call as a credential harvest.',
+    })
+    expect(debrief.passed).toBe(true)
+    expect(debrief.items.find((item) => item.id === 'refuse-credential-request')?.passed).toBe(
+      true,
+    )
+    expect(debrief.items.find((item) => item.id === 'diagnose-account')?.passed).toBe(true)
+    expect(debrief.violations).toEqual([])
+    expect(debrief.total).toBe(100)
+  })
+
+  it('scores half the safety step when a credential request is refused for the wrong reason', async () => {
+    const generated = generatedFor('PWD-01', 'credential-readout')
+    const sam = generated.public.requester.samAccountName
+    await insertTicket(persistence, generated, 'ticket-credential-wrong-reason')
+
+    await startAttempt('ticket-credential-wrong-reason')
+    await submitCommand(`get-account ${sam}`)
+    // The right act for the wrong reason: the caller asked for a credential, and
+    // the desk recorded that the concern was who was calling.
+    const refused = await denyCaller('unverified-identity')
+    expect(refused.denial?.reason).toBe('unverified-identity')
+
+    await addNote(
+      'troubleshooting',
+      'Caller asked for their password to be read out. The account is active and the password current. Refused the request and made no changes.',
+    )
+    await addNote('customer', 'Set a new password through the reset route and sign in with it.')
+
+    const debrief = await resolveAttempt({
+      code: 'denied-social-engineering',
+      note: 'Denied a request for a password and a code to be read out, and reported it to Security. I checked the directory first: the account is active and the password current, so there was no fault behind the call. Nothing was read out and nothing changed. Security should treat the call as a credential harvest.',
+    })
+    const step = debrief.items.find((item) => item.id === 'refuse-credential-request')
+    // Refused, so the account was protected; filed under the wrong pretext, so
+    // half of the step is still owed.
+    expect(step?.passed).toBe(false)
+    expect(step?.credit).toBe(0.5)
+    expect(debrief.criticalFailures).toEqual([])
+    expect(debrief.total).toBe(85)
+    expect(debrief.categoryScores.safety).toEqual({ earned: 30, possible: 45 })
+    // The debrief names the ask that was missed and the rule behind it, so the
+    // point that went missing is not invisible.
+    expect(debrief.feedback.join(' ')).toMatch(
+      /filed it as “Could not verify who is calling” rather than “Asked for a password or a code”/,
+    )
+    expect(debrief.feedback.join(' ')).toMatch(
+      /never reads out or accepts passwords or verification codes/,
+    )
   })
 
   it('will not score a code read-back as a callback', async () => {

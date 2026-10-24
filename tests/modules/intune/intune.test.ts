@@ -234,15 +234,48 @@ describe('tickets and scoring', () => {
     expect(isIntuneTicketComplete('tpl-bitlocker-off', result.state)).toBe(true)
   })
 
+  it('records the read step without changing the device', async () => {
+    const result = await service.review('dev-lt-2207')
+
+    expect(result.summary).toContain('Windows baseline: BitLocker is off')
+    const event = result.state.events.at(-1)
+    expect(event?.action).toBe('review')
+    expect(event?.summary).toBe(result.summary)
+    // A read is not a fix: the device is exactly as it was.
+    expect(device(result.state, 'dev-lt-2207')).toEqual(device(state, 'dev-lt-2207'))
+  })
+
   it('awards full marks for the reference path', async () => {
     const startedAt = NOW - 60_000
+    // The reference path starts by reading the record, then fixes it.
+    await service.review('dev-lt-2207')
     await service.act({ deviceId: 'dev-lt-2207', action: 'sync' })
     const { score } = await service.score('tpl-bitlocker-off', startedAt)
 
     expect(score.resolved).toBe(true)
-    expect(score.total).toBeGreaterThanOrEqual(90)
+    expect(score.total).toBe(100)
     expect(score.band).toBe('strong')
     expect(score.deductions).toHaveLength(0)
+    // The rubric split the rest of the app keeps: reading first is diagnosis,
+    // the actions and the end state are resolution, and safety pays its own 15.
+    expect(score.categoryScores.diagnosis).toEqual({ earned: 10, possible: 10 })
+    expect(score.categoryScores.resolution).toEqual({ earned: 75, possible: 75 })
+    expect(score.categoryScores.safety).toEqual({ earned: 15, possible: 15 })
+    expect(score.categoryScores.documentation.possible).toBe(0)
+  })
+
+  it('withholds the diagnosis points when the fix comes before the record', async () => {
+    const startedAt = NOW - 60_000
+    await service.act({ deviceId: 'dev-lt-2207', action: 'sync' })
+    await service.review('dev-lt-2207')
+    const { score } = await service.score('tpl-bitlocker-off', startedAt)
+
+    // The ticket is still resolved by the right action, but the reasoning was
+    // never shown: 90, with diagnosis reading zero.
+    expect(score.resolved).toBe(true)
+    expect(score.total).toBe(90)
+    expect(score.categoryScores.diagnosis).toEqual({ earned: 0, possible: 10 })
+    expect(score.items.find((item) => item.id === 'read-first')?.passed).toBe(false)
   })
 
   it('charges for a wipe the ticket never asked for', async () => {
@@ -254,6 +287,10 @@ describe('tickets and scoring', () => {
     expect(score.penalty).toBe(40)
     expect(score.total).toBeLessThan(75)
     expect(score.deductions[0]).toContain('not needed for this ticket')
+    // The charge lands in the category it damaged, as the app's evaluator does.
+    expect(score.categoryScores.safety).toEqual({ earned: 0, possible: 15 })
+    expect(score.categoryScores.resolution).toEqual({ earned: 0, possible: 75 })
+    expect(score.categoryScores.diagnosis).toEqual({ earned: 0, possible: 10 })
   })
 
   it('records an attempt once per start, so re-checking does not duplicate it', async () => {

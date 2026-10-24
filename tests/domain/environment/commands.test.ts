@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { BASE_CLOCK, CLOCK_STEP_MS, createLarkspurWorld } from '../../../src/domain/environment/fixtures'
 import { resolveName } from '../../../src/domain/environment/network'
+import {
+  COMMANDS,
+  accountChangingCommands,
+  findCommand,
+  isAccountChanging,
+} from '../../../src/domain/environment/commands'
 import { applyCommand } from '../../../src/domain/environment/reducer'
 import type { CommandResult, Device, World } from '../../../src/domain/environment/types'
 
@@ -225,6 +231,59 @@ describe('a refused request', () => {
     // A printer or a lease has nothing to do with the refused account work.
     const spooler = applyCommand(refused, 'restart-spooler')
     expect(spooler.ok).toBe(true)
+  })
+
+  it('names exactly the commands it stops, so the workspace cannot misname one', () => {
+    const refused = refusedWorld()
+    const named = accountChangingCommands()
+    expect(named.length).toBeGreaterThan(0)
+
+    // The list is what the terminal prints and the case file lists, so every
+    // entry has to be a command that really does nothing on a refused ticket.
+    // The line is built from the registry's own usage, so an argument the
+    // command needs is never the reason it came back refused.
+    for (const name of named) {
+      const definition = findCommand(name)
+      expect(definition, name).toBeDefined()
+      const usageLine = (definition?.usage ?? '')
+        .replace(/<samAccountName>/g, 'mchen')
+        .replace(/<group>/g, 'Operations')
+        .replace(/<share>/g, 'Operations')
+      // Every placeholder this build declares is angle-bracketed, so a leftover
+      // one is a command the test would be refusing for the wrong reason.
+      expect(usageLine, name).not.toMatch(/</)
+
+      const result = applyCommand(refused, usageLine)
+      expect(result.ok, usageLine).toBe(false)
+      expect(result.effects, usageLine).toEqual([])
+    }
+
+    // Nothing that only reads is on it: a refused ticket still has a log to fill.
+    for (const read of ['get-account', 'get-signin-log', 'get-share-access']) {
+      expect(named, read).not.toContain(read)
+    }
+  })
+
+  it('answers for a typed line the same thing the registry says in its definition', () => {
+    // The debrief reports an attempt the block stopped, so the two have to read
+    // the same flag: a name, an alias, or the same name with a typed `.exe`.
+    const accountChanging = COMMANDS.filter((command) => command.changesAccount === true)
+    expect(accountChanging.length).toBeGreaterThan(0)
+
+    for (const definition of accountChanging) {
+      expect(isAccountChanging(definition.name), definition.name).toBe(true)
+      for (const alias of definition.aliases) {
+        expect(isAccountChanging(alias), alias).toBe(true)
+      }
+      expect(isAccountChanging(`${definition.name}.exe on-someone`), definition.name).toBe(true)
+    }
+
+    // The commands a refusal leaves alone, and the lines no rule reaches: reads,
+    // changes that are not account work, and anything the registry never knew.
+    expect(isAccountChanging('get-account mchen')).toBe(false)
+    expect(isAccountChanging('ipconfig /renew')).toBe(false)
+    expect(isAccountChanging('not-a-command mchen')).toBe(false)
+    expect(isAccountChanging('   ')).toBe(false)
   })
 
   it('runs the same commands when no refusal is recorded', () => {

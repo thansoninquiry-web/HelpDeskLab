@@ -705,9 +705,13 @@ export interface ReferenceStepView {
   detail?: string
 }
 
+export type SimulatorId = 'service-desk' | 'intune'
+
 export interface ProgressRow {
   scenarioId: string
   scenarioTitle: string
+  /** Which simulator the attempts were made in. */
+  simulator: SimulatorId
   /** Where "practise this again" should go, when it is not the ticket queue. */
   href?: string
   attempts: number
@@ -732,6 +736,12 @@ export interface WeakTopic {
     percent: number
   } | null
   recommendation: string
+  /** Which simulator this family is practised in. */
+  simulator: SimulatorId
+  /** Where this family is practised: the queue, or the Intune console. */
+  href: string
+  /** The action beside the row, named for the surface it opens. */
+  actionLabel: string
 }
 
 /** One family's rewinding, with the family's title, ready for the page. */
@@ -4136,11 +4146,27 @@ const CATEGORY_LABELS: Record<RubricCategory, string> = {
 const WEAK_TOPIC_THRESHOLD = 90
 const MAX_WEAK_TOPICS = 2
 
+export interface WeakTopicOptions {
+  /** Scenario id to title, for families whose title is not the app's own. */
+  titles?: Record<string, string>
+  /** Scenarios practised in the Intune console rather than the ticket queue. */
+  intuneScenarioIds?: ReadonlySet<string>
+}
+
 /**
  * Families are ranked by average score, then by pass rate, so the suggestion is
  * driven by what was actually scored rather than by how often it was tried.
+ *
+ * History includes the Intune console's attempts, so a console ticket that keeps
+ * falling short appears here too; its row opens the console, because its
+ * scenario id names a template the practice queue has never heard of.
  */
-export function computeWeakTopics(history: readonly ScoreHistoryEntry[]): WeakTopic[] {
+export function computeWeakTopics(
+  history: readonly ScoreHistoryEntry[],
+  options: WeakTopicOptions = {},
+): WeakTopic[] {
+  const titles = options.titles ?? SCENARIO_TITLES
+  const intune = options.intuneScenarioIds ?? new Set<string>()
   const byScenario = new Map<string, ScoreHistoryEntry[]>()
   for (const entry of history) {
     const existing = byScenario.get(entry.scenarioId)
@@ -4197,19 +4223,29 @@ export function computeWeakTopics(history: readonly ScoreHistoryEntry[]): WeakTo
       }
     }
 
+    const console = intune.has(scenarioId)
     const recommendation =
       weakestCategory && weakestCategory.percent < 100
-        ? `You lose the most marks on ${weakestCategory.label}. Practise a ${scenarioId} ticket and work on that before retrying.`
-        : `Your average is ${averageScore}. Retry a ${scenarioId} ticket to keep the pattern fresh.`
+        ? console
+          ? `You lose the most marks on ${weakestCategory.label}. Work this console ticket again with that in mind before retrying.`
+          : `You lose the most marks on ${weakestCategory.label}. Practise a ${scenarioId} ticket and work on that before retrying.`
+        : console
+          ? `Your average is ${averageScore}. Work this console ticket again to keep the pattern fresh.`
+          : `Your average is ${averageScore}. Retry a ${scenarioId} ticket to keep the pattern fresh.`
 
     topics.push({
       scenarioId,
-      scenarioTitle: titleFor(scenarioId),
+      scenarioTitle: titleFor(scenarioId, titles),
       attempts,
       averageScore,
       passRate,
       weakestCategory,
       recommendation,
+      simulator: console ? 'intune' : 'service-desk',
+      href: console
+        ? '/intune/tickets'
+        : `/practice?family=${encodeURIComponent(scenarioId)}`,
+      actionLabel: console ? 'Open the console' : `Practise ${scenarioId}`,
     })
   }
 
@@ -4258,20 +4294,23 @@ export async function loadProgress(): Promise<ProgressView> {
   const summary = summarizeHistory(mergedHistory, Date.now())
   const verificationSummary = summarizeVerificationChecks(verificationChecks)
 
-  const rows: ProgressRow[] = mergedStats.map((entry) => ({
-    scenarioId: entry.scenarioId,
-    scenarioTitle: titleFor(entry.scenarioId, titles),
+  const rows: ProgressRow[] = mergedStats.map((entry) => {
     // Ticket families are practised from the queue; an Intune scenario only
-    // exists in its console, so its row links there instead.
-    ...(intune.titles[entry.scenarioId] ? { href: '/intune/tickets' } : {}),
-    attempts: entry.attempts,
-    passes: entry.passes,
-    bestScore: entry.bestScore,
-    lastPlayedAt: entry.lastPlayedAt,
-    leitnerBox: entry.leitnerBox,
-    dueAt: entry.dueAt,
-  }))
-
+    // exists in its console, so its row links there and says so.
+    const console = intune.titles[entry.scenarioId] !== undefined
+    return {
+      scenarioId: entry.scenarioId,
+      scenarioTitle: titleFor(entry.scenarioId, titles),
+      simulator: console ? 'intune' : 'service-desk',
+      ...(console ? { href: '/intune/tickets' } : {}),
+      attempts: entry.attempts,
+      passes: entry.passes,
+      bestScore: entry.bestScore,
+      lastPlayedAt: entry.lastPlayedAt,
+      leitnerBox: entry.leitnerBox,
+      dueAt: entry.dueAt,
+    }
+  })
   const attempts = rows.reduce((total, row) => total + row.attempts, 0)
   const passes = rows.reduce((total, row) => total + row.passes, 0)
   const bestScore = rows.reduce((best, row) => Math.max(best, row.bestScore), 0)
@@ -4289,7 +4328,12 @@ export async function loadProgress(): Promise<ProgressView> {
     rank: summary.rank,
     streakDays: summary.streakDays,
     rows,
-    weakTopics: computeWeakTopics(history),
+    // The merged history, not only the ticket table: an Intune attempt carries
+    // the same rubric split, so it belongs in the same weak-topic ranking.
+    weakTopics: computeWeakTopics(mergedHistory, {
+      titles,
+      intuneScenarioIds: new Set(Object.keys(intune.titles)),
+    }),
     hintHabits: hintHabits(scoredSteps, takenHints),
     hintHabitSummary: summarizeHintHabits(scoredSteps, takenHints, scoredHintCounts),
     ...rewindRows(mergedStats, rewindRecords),

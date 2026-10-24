@@ -37,12 +37,21 @@ describe('printersConsoleEntries', () => {
         'actions',
         'facts',
         'groups',
+        'icon',
         'id',
         'note',
         'subtitle',
         'title',
       ])
     }
+  })
+
+  it('says what each record is, because one list holds two kinds', () => {
+    const current = entries.find((entry) => entry.id === world.currentDeviceId)
+    const printer = entries.find((entry) => entry.id !== world.currentDeviceId)
+
+    expect(current?.icon).toBe('machine')
+    expect(printer?.icon).toBe('printer')
   })
 
   it('maps every action onto a registered command for its own entry', () => {

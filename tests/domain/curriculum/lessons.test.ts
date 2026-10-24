@@ -138,6 +138,20 @@ describe('module lessons', () => {
     }
   })
 
+  it('opens Voicemails on a ticket that arrived as a message, and only there', () => {
+    const asking: string[] = []
+    for (const module of playable) {
+      const practice = lessonFor(module.id)?.practice
+      if (practice?.kind === 'tickets' && practice.arrival === 'voicemail') {
+        asking.push(module.id)
+      }
+    }
+
+    // The arrival is drawn from the ticket's seed, so asking for one is how the
+    // module opens on the thing it teaches without pinning a family's variant.
+    expect(asking).toEqual(['voicemails'])
+  })
+
   it('keeps the targets practice to the module that is judged on listings', () => {
     const targets = playable.filter(
       (module) => lessonFor(module.id)?.practice.kind === 'targets',

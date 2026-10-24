@@ -48,7 +48,9 @@ function ModuleRow({
           type="button"
           className={styles.moduleToggle}
           aria-expanded={open}
-          aria-controls={panelId}
+          // Only while the panel exists: a reference to an unmounted id names
+          // nothing, and `aria-expanded` already carries the state.
+          aria-controls={open ? panelId : undefined}
           onClick={onToggle}
         >
           <span className={styles.moduleNumber}>{String(module.number).padStart(2, '0')}</span>
@@ -197,7 +199,7 @@ export function DashboardPage() {
       <PageHeader
         eyebrow="Curriculum"
         title="Dashboard"
-        description="Sixteen modules, fifteen of them playable today. Pull a ticket, investigate the simulated machine, document your evidence, and see which parts of the course your work has covered."
+        description="Sixteen modules, all of them playable today. Pull a ticket, investigate the simulated machine, document your evidence, and see which parts of the course your work has covered."
       />
 
       <div className={styles.ctaRow}>

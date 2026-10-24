@@ -9,8 +9,10 @@ import {
   type TargetRecommendation,
   type TicketView,
 } from '../../app/practiceService'
+import { loadHintTargets, type HintTarget } from '../../app/settingsService'
 import { familyLabel } from '../components/familyLabels'
 import { PageHeader } from '../components/PageHeader'
+import { resumeSummary } from '../components/resumePoint'
 import styles from './practice.module.css'
 
 const SEVERITY_LABELS: Record<TicketView['severity'], string> = {
@@ -24,6 +26,20 @@ const STATUS_LABELS: Record<TicketView['status'], string> = {
   available: 'Queued',
   in_progress: 'In progress',
   completed: 'Closed',
+}
+
+/**
+ * What one family's effective price reads as: the cost of a rung, what one
+ * attempt may pay for hints, and what it may take when the budget is rationed.
+ * A family with no budget prints the same as one with an unlimited budget —
+ * there is nothing left to say about a limit that is not there.
+ */
+function hintPriceText(policy: HintTarget['policy']): string {
+  const limit = policy.budget > 0 ? ` · ${policy.budget} a ticket` : ''
+  if (policy.perHint === 0) {
+    return `Free${limit}`
+  }
+  return `${policy.perHint} pts a hint · cap ${policy.cap}${limit}`
 }
 
 function formatWhen(ms: number): string {
@@ -41,6 +57,7 @@ export function PracticePage() {
   const familyFilter = searchParams.get('family')
   const focusTitle = familyFilter ? familyLabel(familyFilter) : null
   const [tickets, setTickets] = useState<TicketView[]>([])
+  const [hintTargets, setHintTargets] = useState<HintTarget[]>([])
   const [recommendations, setRecommendations] = useState<TargetRecommendation[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
@@ -51,12 +68,18 @@ export function PracticePage() {
   useEffect(() => {
     let active = true
 
-    Promise.all([loadQueue(), findActiveSessionId(), loadPracticeRecommendations()]).then(
-      ([queue, activeId, targetRecommendations]) => {
+    Promise.all([
+      loadQueue(),
+      findActiveSessionId(),
+      loadPracticeRecommendations(),
+      loadHintTargets(),
+    ]).then(
+      ([queue, activeId, targetRecommendations, prices]) => {
         if (active) {
           setTickets(queue)
           setActiveSessionId(activeId)
           setRecommendations(targetRecommendations)
+          setHintTargets(prices)
           setState('ready')
         }
       },
@@ -106,6 +129,16 @@ export function PracticePage() {
     : tickets
   const open = visible.filter((ticket) => ticket.status !== 'completed')
   const closed = visible.filter((ticket) => ticket.status === 'completed')
+  // The attempt the app holds open is the one ticket with somewhere to resume,
+  // so the resume bar reads its point rather than merely naming the ticket.
+  const pickedUp = tickets.find((ticket) => ticket.resume !== null) ?? null
+
+  // The default is the price every inheriting family plays at, so it belongs in
+  // the sentence above the list rather than as a row of its own.
+  const defaultPrice = hintTargets.find((target) => target.id === null)?.policy ?? null
+  const familyPrices = hintTargets.filter(
+    (target): target is HintTarget & { id: string } => target.id !== null,
+  )
 
   return (
     <>
@@ -132,7 +165,10 @@ export function PracticePage() {
 
       {activeSessionId ? (
         <div className={styles.resumeBar}>
-          <span>You have a ticket open.</span>
+          <span>
+            You have a ticket open
+            {pickedUp?.resume ? ` — left off in ${resumeSummary(pickedUp.resume)}` : ''}.
+          </span>
           <button
             type="button"
             className={styles.secondaryButton}
@@ -175,6 +211,36 @@ export function PracticePage() {
         </p>
       ) : null}
 
+      {state === 'ready' && familyPrices.length > 0 ? (
+        <section className={styles.hintPrices} aria-labelledby="hint-prices-heading">
+          <div className={styles.hintPricesHead}>
+            <h2 className={styles.hintPricesTitle} id="hint-prices-heading">
+              Hint prices
+            </h2>
+            <p className={styles.hintPricesNote}>
+              {defaultPrice
+                ? `Every family plays at the default unless it has a price of its own — ${hintPriceText(defaultPrice)}. A ticket keeps the price it started at.`
+                : 'A ticket keeps the price it started at.'}
+            </p>
+          </div>
+          <ul className={styles.hintPriceList} aria-label="Effective hint price by family">
+            {familyPrices.map((target) => (
+              <li
+                key={target.id}
+                className={styles.hintPriceChip}
+                data-source={target.own ? 'family' : 'default'}
+              >
+                <span className={styles.hintPriceFamily}>{familyLabel(target.id)}</span>
+                <span className={styles.hintPriceValue}>{hintPriceText(target.policy)}</span>
+                <span className={styles.hintPriceSource}>
+                  {target.own ? 'own price' : 'inherits default'}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       {state === 'loading' ? <p className={styles.muted}>Loading the queue…</p> : null}
 
       {state === 'ready' ? (
@@ -191,6 +257,11 @@ export function PracticePage() {
               <div className={styles.queueMain}>
                 <div className={styles.queueMeta}>
                   <span className={styles.family}>{familyLabel(ticket.scenarioId)}</span>
+                  {ticket.voicemail ? (
+                    <span className={styles.arrival}>
+                      Voicemail · {ticket.voicemail.durationSeconds}s
+                    </span>
+                  ) : null}
                   <span className={styles[`severity_${ticket.severity}`]}>
                     {SEVERITY_LABELS[ticket.severity]}
                   </span>
@@ -199,6 +270,11 @@ export function PracticePage() {
                   </span>
                 </div>
                 <h2 className={styles.subject}>{ticket.subject}</h2>
+                {ticket.resume ? (
+                  <p className={styles.resumeLine}>
+                    Left off in {resumeSummary(ticket.resume)}.
+                  </p>
+                ) : null}
                 <p className={styles.requester}>
                   {ticket.requester.name} · {ticket.requester.department} ·{' '}
                   {ticket.requester.siteName} · {ticket.device.hostname}
@@ -215,7 +291,11 @@ export function PracticePage() {
                     onClick={() => void onStart(ticket)}
                     disabled={busyId !== null}
                   >
-                    {busyId === ticket.id ? 'Opening…' : 'Open ticket'}
+                    {busyId === ticket.id
+                      ? 'Opening…'
+                      : ticket.resume
+                        ? 'Resume'
+                        : 'Open ticket'}
                   </button>
                 )}
               </div>

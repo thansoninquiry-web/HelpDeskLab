@@ -10,6 +10,7 @@ import {
   hintBudgetSpent,
   hintPolicyError,
   hintPolicyFor,
+  hintPricesDiffer,
   hintPricingJson,
   hintsAreFree,
   normalizeHintCatalogue,
@@ -164,6 +165,24 @@ describe('hint catalogue', () => {
     for (const value of [null, undefined, 'five', 5, [], { families: [] }, { families: 3 }]) {
       expect(normalizeHintCatalogue(value)).toEqual({ default: DEFAULT_HINT_POLICY, families: {} })
     }
+  })
+})
+
+describe('hint price drift', () => {
+  it('moves when the per-rung price or the cap moves', () => {
+    const paid = { perHint: 5, cap: 15, budget: 0 }
+
+    expect(hintPricesDiffer(paid, { perHint: 5, cap: 15, budget: 0 })).toBe(false)
+    expect(hintPricesDiffer(paid, { perHint: 9, cap: 15, budget: 0 })).toBe(true)
+    expect(hintPricesDiffer(paid, { perHint: 5, cap: 27, budget: 0 })).toBe(true)
+    // Free is a price too, in both directions.
+    expect(hintPricesDiffer({ perHint: 0, cap: 0, budget: 0 }, paid)).toBe(true)
+  })
+
+  it('leaves the budget out: it rations rungs, it does not price them', () => {
+    expect(hintPricesDiffer({ perHint: 5, cap: 15, budget: 0 }, { perHint: 5, cap: 15, budget: 6 })).toBe(
+      false,
+    )
   })
 })
 

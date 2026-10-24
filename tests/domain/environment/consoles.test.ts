@@ -90,6 +90,73 @@ describe('consoleEntries', () => {
   })
 })
 
+describe('picker consoles', () => {
+  const world = createLarkspurWorld()
+  const pickers = ['directory', 'printers', 'remote-desktop'] as const
+
+  it('gives the directory and the printers the same treatment as the machine list', () => {
+    expect(CONSOLE_DEFINITIONS.directory.picker).toEqual({
+      title: 'Directory',
+      subtitle: 'Select an account to read its record',
+      rowActions: [{ id: 'open-record', label: 'Open record' }],
+      rowIcon: 'account',
+    })
+
+    expect(CONSOLE_DEFINITIONS.printers.picker?.rowActions).toEqual([
+      { id: 'printer-queue', label: 'Inspect queue' },
+      { id: 'spooler-queue', label: 'Inspect local queue' },
+    ])
+    // The printers list mixes a machine with printers, so no single glyph speaks
+    // for every row: each record names its own instead.
+    expect(CONSOLE_DEFINITIONS.printers.picker?.rowIcon).toBeUndefined()
+  })
+
+  it('only promises a row button the console can actually keep', () => {
+    for (const consoleId of pickers) {
+      const picker = CONSOLE_DEFINITIONS[consoleId].picker
+      expect(picker, consoleId).toBeDefined()
+      if (!picker) {
+        continue
+      }
+
+      const entries = consoleEntries(world, consoleId)
+      const reachable = entries.filter((entry) =>
+        picker.rowActions.some((declared) =>
+          entry.actions.some(
+            (action) => action.id === declared.id && (action.args?.length ?? 0) === 0,
+          ),
+        ),
+      )
+      // A picker whose buttons never appear is a list with a promise it cannot
+      // keep, and a button that needed a value could not run from a row.
+      expect(reachable.length, consoleId).toBeGreaterThan(0)
+
+      for (const entry of entries) {
+        for (const declared of picker.rowActions) {
+          const action = entry.actions.find((candidate) => candidate.id === declared.id)
+          if (action) {
+            expect(action.args?.length ?? 0, `${consoleId}/${entry.id}/${declared.id}`).toBe(0)
+          }
+        }
+      }
+    }
+  })
+
+  it('names the glyph for every row of every picker', () => {
+    for (const consoleId of pickers) {
+      const picker = CONSOLE_DEFINITIONS[consoleId].picker
+      for (const entry of consoleEntries(world, consoleId)) {
+        expect(entry.icon ?? picker?.rowIcon, `${consoleId}/${entry.id}`).toBeDefined()
+      }
+    }
+
+    // The machine list names its glyph once; the other two let each record say
+    // what it is, which is what keeps the printers' first row honest.
+    expect(CONSOLE_DEFINITIONS['remote-desktop'].picker?.rowIcon).toBe('machine')
+    expect(consoleEntries(world, 'directory').every((entry) => entry.icon === 'account')).toBe(true)
+  })
+})
+
 describe('findConsoleActionForCommand', () => {
   const world = createLarkspurWorld()
 

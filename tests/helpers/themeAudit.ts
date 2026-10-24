@@ -25,6 +25,13 @@ import { join, relative } from 'node:path'
 
 const UI_ROOT = join(process.cwd(), 'src/ui')
 
+/**
+ * Self-contained modules keep their stylesheet beside their components, outside
+ * `src/ui`. They are read here too, or a console with its own module would be
+ * rendered and then judged only by the shell's rules.
+ */
+const MODULE_ROOT = join(process.cwd(), 'src/modules')
+
 const THEME_MARKER = "[data-theme='light']"
 
 /**
@@ -68,7 +75,7 @@ export interface Colour {
 }
 
 export interface StyleRule {
-  /** Relative to `src/ui`, e.g. `routes/pages.module.css`. */
+  /** Relative to the project root, e.g. `src/ui/routes/pages.module.css`. */
   file: string
   selector: string
   declarations: Array<[string, string]>
@@ -218,10 +225,10 @@ export function loadThemeAudit(): ThemeAuditData {
   const rules: StyleRule[] = []
   const tokenReferences: TokenReference[] = []
 
-  for (const path of cssFiles(UI_ROOT)) {
-    const file = relative(UI_ROOT, path).split('\\').join('/')
+  for (const path of [...cssFiles(UI_ROOT), ...cssFiles(MODULE_ROOT)]) {
+    const file = relative(process.cwd(), path).split('\\').join('/')
     const css = readFileSync(path, 'utf8')
-    if (file !== 'styles/tokens.css') {
+    if (file !== 'src/ui/styles/tokens.css') {
       rules.push(...rulesIn(file, css))
     }
 
@@ -479,6 +486,29 @@ function matches(element: Element, selector: string): boolean {
   }
 }
 
+/**
+ * The candidate rules for the resting pass of one element: those bucketed under
+ * any class in its ancestry, not only its own. A descendant selector like
+ * `.field input` is bucketed under `field`, so an input with no class of its own
+ * would otherwise be judged without its padding. Each candidate is still checked
+ * with `Element.matches`, so a rule that does not really reach the element never
+ * applies — this widens what is looked at, not what is accepted.
+ */
+function candidatesFor<T>(element: Element, buckets: Map<string, T[]>): T[] {
+  const found: T[] = []
+  const seen = new Set<string>()
+  for (let current: Element | null = element; current; current = current.parentElement) {
+    for (const name of classesOf(current)) {
+      if (seen.has(name)) {
+        continue
+      }
+      seen.add(name)
+      found.push(...(buckets.get(name) ?? []))
+    }
+  }
+  return found
+}
+
 /** The declarations a render resolved, kept per element and per render. */
 const resolved = new WeakMap<Element, Map<string, string>>()
 
@@ -511,10 +541,8 @@ export function declarationsFor(
   for (const candidate of index.unscoped) {
     consider(candidate)
   }
-  for (const name of classesOf(element)) {
-    for (const candidate of index.byClass.get(name) ?? []) {
-      consider(candidate)
-    }
+  for (const candidate of candidatesFor(element, index.byClass)) {
+    consider(candidate)
   }
 
   matching.sort((left, right) => {
@@ -654,8 +682,12 @@ const stateResolved = new WeakMap<Element, Map<string, Map<string, string>>>()
  * rule laid over the top in source order, exactly as the browser would apply
  * them when the state is on. Theme-scoped state rules come last, as they do in
  * the resting pass.
+ *
+ * Exported for the accessibility audit, which asks the same question of
+ * `:focus-visible` that this asks of a colour: what does the rule actually say
+ * once the state is on?
  */
-function declarationsInState(
+export function declarationsInState(
   element: Element,
   theme: 'dark' | 'light',
   index: RuleIndex,
@@ -689,6 +721,10 @@ function declarationsInState(
   for (const candidate of stateIndex.unscoped) {
     consider(candidate)
   }
+  // The element's own classes only, unlike the resting pass: a state rule
+  // bucketed under an ancestor's class (`.field select:disabled`) is left to the
+  // resting declarations, so this pass keeps the behaviour the colour audit has
+  // always been judged by.
   for (const name of classesOf(element)) {
     for (const candidate of stateIndex.byClass.get(name) ?? []) {
       consider(candidate)

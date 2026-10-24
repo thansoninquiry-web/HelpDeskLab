@@ -1,4 +1,5 @@
 import { findCommand } from './commands'
+import type { ConsoleId } from './console'
 import { parseCommandLine } from './parser'
 import type { EffectType } from './types'
 
@@ -23,6 +24,11 @@ export type PressureStep =
   | { kind: 'command'; command: string; effects: readonly EffectType[] }
   /** A question the desk put to the caller. */
   | { kind: 'ask' }
+  /**
+   * The desk opened a tool or read a record in it. `entryId` is null when the
+   * console itself was opened, and the record's id once one is read.
+   */
+  | { kind: 'read'; consoleId: ConsoleId; entryId: string | null }
   /** The moment the caller was confirmed to be who the ticket says. */
   | { kind: 'verified' }
   /** Anything else the desk recorded: a note, a refusal, a hint. */
@@ -34,11 +40,20 @@ export type PressureStep =
  */
 export type PressureTrigger =
   /**
-   * Stalling: this much work on the line, or this many minutes of the desk's
-   * time, with nobody on the call identified. Once the caller is verified the
-   * demand has been answered, so the stall lines stand down.
+   * Stalling: this much work on the line, or this many minutes since the desk
+   * last did anything, with nobody on the call identified. The clock restarts
+   * on every step the desk takes, so the ladder follows the silence rather than
+   * the age of the attempt: a learner who pauses after a run of work is nagged
+   * afresh, and one who acts after a long pause is left alone. Once the caller
+   * is verified the demand has been answered, so the stall lines stand down.
    */
   | { kind: 'stalled'; afterSteps: number; afterMinutes: number }
+  /**
+   * The desk looked: a tool console was opened, or a record in one was read.
+   * A trigger names the console, and optionally the record, because that is the
+   * part a caller can hear — being looked up, or the queue being opened.
+   */
+  | { kind: 'read'; consoleId: ConsoleId; entryId?: string }
   /** The desk ran the fix the caller asked for. */
   | { kind: 'obeyed'; command: string }
   /** The desk changed the account before the check that would justify it. */
@@ -67,8 +82,12 @@ export interface PressureLine {
 export interface PressureState {
   /** The call so far, oldest first. */
   steps: readonly PressureStep[]
-  /** Minutes the desk has been sitting on this ticket. */
-  minutesWaiting: number
+  /**
+   * Minutes since the desk last acted on this ticket: the caller's clock, which
+   * the app restarts on every learner step and which keeps running while the
+   * desk sits still.
+   */
+  minutesSinceLastAction: number
   /** Ids of the lines the caller has already said on this attempt. */
   said: readonly string[]
   /**
@@ -97,7 +116,11 @@ function indexOfVerified(steps: readonly PressureStep[]): number {
   return steps.findIndex((step) => step.kind === 'verified')
 }
 
-/** The steps that count as work on the call: what the desk ran or asked. */
+/**
+ * The steps that count as work on the call: what the desk ran or asked. A read
+ * is a look rather than work, so opening tools does not by itself walk the desk
+ * up the ladder — it can still trip a line written about that look.
+ */
 function stepsWorked(steps: readonly PressureStep[]): number {
   return steps.filter((step) => step.kind === 'command' || step.kind === 'ask').length
 }
@@ -110,9 +133,16 @@ function triggerIsDue(trigger: PressureTrigger, state: PressureState): boolean {
       }
       return (
         stepsWorked(state.steps) >= trigger.afterSteps ||
-        state.minutesWaiting >= trigger.afterMinutes
+        state.minutesSinceLastAction >= trigger.afterMinutes
       )
     }
+    case 'read':
+      return state.steps.some(
+        (step) =>
+          step.kind === 'read' &&
+          step.consoleId === trigger.consoleId &&
+          (trigger.entryId === undefined || step.entryId === trigger.entryId),
+      )
     case 'obeyed':
       return indexOfCommand(state.steps, trigger.command) >= 0
     case 'acted-first': {

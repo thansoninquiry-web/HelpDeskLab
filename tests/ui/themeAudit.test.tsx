@@ -31,6 +31,7 @@ import pagesStyles from '../../src/ui/routes/pages.module.css'
 import practiceStyles from '../../src/ui/routes/practice.module.css'
 import targetsStyles from '../../src/ui/routes/targets.module.css'
 import workspaceStyles from '../../src/ui/routes/workspace.module.css'
+import intuneStyles from '../../src/modules/intune/ui/intune.module.css'
 
 /**
  * The theme audit: every route, in both themes, plus the palette itself.
@@ -88,21 +89,24 @@ const THEMES: readonly Theme[] = ['dark', 'light']
 
 /** The module objects the components import, so their class names can be read. */
 const MODULES = {
-  'components/AppShell.module.css': appShellStyles,
-  'components/FakeDesktop.module.css': fakeDesktopStyles,
-  'components/PageHeader.module.css': pageHeaderStyles,
-  'components/ToolConsole.module.css': toolConsoleStyles,
-  'components/ToolPicker.module.css': toolPickerStyles,
-  'components/TopologyMap.module.css': topologyMapStyles,
-  'routes/pages.module.css': pagesStyles,
-  'routes/practice.module.css': practiceStyles,
-  'routes/targets.module.css': targetsStyles,
-  'routes/workspace.module.css': workspaceStyles,
+  'src/ui/components/AppShell.module.css': appShellStyles,
+  'src/ui/components/FakeDesktop.module.css': fakeDesktopStyles,
+  'src/ui/components/PageHeader.module.css': pageHeaderStyles,
+  'src/ui/components/ToolConsole.module.css': toolConsoleStyles,
+  'src/ui/components/ToolPicker.module.css': toolPickerStyles,
+  'src/ui/components/TopologyMap.module.css': topologyMapStyles,
+  'src/ui/routes/pages.module.css': pagesStyles,
+  'src/ui/routes/practice.module.css': practiceStyles,
+  'src/ui/routes/targets.module.css': targetsStyles,
+  'src/ui/routes/workspace.module.css': workspaceStyles,
+  'src/modules/intune/ui/intune.module.css': intuneStyles,
 }
 
 interface RouteCase {
   name: string
   path: string
+  /** Text that only appears once the page's data has loaded. */
+  ready?: string
 }
 
 let routes: RouteCase[] = []
@@ -249,6 +253,14 @@ beforeAll(async () => {
     { name: 'job targets', path: '/targets' },
     { name: 'progress', path: '/progress' },
     { name: 'settings', path: '/settings' },
+    // The Intune console seeds its own tables on first open, so its list pages
+    // show their heading before any row exists: `ready` is a seeded string that
+    // only a loaded estate can render.
+    { name: 'intune devices', path: '/intune', ready: '15 of 15 devices' },
+    { name: 'intune device', path: '/intune/devices/dev-lt-2207', ready: 'Compliance' },
+    { name: 'intune policies', path: '/intune/policies', ready: 'Windows baseline' },
+    { name: 'intune apps', path: '/intune/apps', ready: 'Northgate Portal' },
+    { name: 'intune tickets', path: '/intune/tickets', ready: 'Choose a ticket to open it.' },
     { name: 'not found', path: '/no-such-route' },
   ]
 }, 60_000)
@@ -273,6 +285,9 @@ describe('every route, in both themes', () => {
 
         try {
           await screen.findByRole('heading', { level: 1 }, { timeout: 10_000 })
+          if (route.ready) {
+            await screen.findByText(route.ready, undefined, { timeout: 10_000 })
+          }
           await waitFor(() => {
             expect(document.documentElement.dataset.theme).toBe(theme)
           })

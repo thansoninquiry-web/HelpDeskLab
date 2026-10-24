@@ -19,6 +19,7 @@
 .backLink {
   display: inline-flex;
   align-items: center;
+  min-height: 1.5rem;
   gap: 0.4rem;
   color: var(--text-muted);
   font-family: var(--font-display);
@@ -62,6 +63,60 @@
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
+
+/*
+ * The whole workspace's few shapes, in the bar above both columns: the case
+ * file, the shipped desk, the machine. A strip like the card's stops, because it
+ * is the same kind of control one level out — one of a few named positions
+ * rather than a divider to aim.
+ */
+.layoutPresets {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  padding: 1px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--panel-strong);
+}
+
+.layoutPresetsLabel {
+  padding: 0 0.5rem 0 0.45rem;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.layoutPreset {
+  padding: 0.28rem 0.48rem;
+  cursor: pointer;
+  border: 0;
+  border-radius: calc(var(--radius-sm) - 1px);
+  background: transparent;
+  color: var(--text-faint);
+  font-family: var(--font-display);
+  font-size: var(--type-sm);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  transition:
+    color 120ms ease,
+    background 120ms ease;
+}
+
+.layoutPreset:hover {
+  background: var(--surface-inset);
+  color: var(--text);
+}
+
+/* The preset both dividers are on, and none of them once one has been moved. */
+.layoutPreset[aria-pressed='true'] {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
 
 /* --------------------------------------------------- live procedure cost */
 
@@ -337,12 +392,23 @@
   line-height: 1.45;
 }
 
+/*
+ * The workspace is three tracks: the case file, the divider that trades width
+ * between the columns, and the tool card. The trade is the learner's, kept as a
+ * share of the stage rather than as pixels, so it survives a window resize the way
+ * it was chosen — the same shape the divider inside the card uses. The minimums
+ * each column needs are pixels about content, and the drag enforces them against
+ * the stage's current width; the tracks themselves stay fractions so the divider is
+ * exactly where the ratio says it is.
+ */
 .stage {
   display: grid;
   height: calc(100vh - var(--header-height) - 6.3rem);
   min-height: 34rem;
-  grid-template-columns: minmax(330px, 0.92fr) minmax(0, 1.45fr);
-  gap: 0.85rem;
+  grid-template-columns:
+    minmax(0, calc((100% - 0.6rem) * var(--stage-ratio, 0.388)))
+    0.6rem
+    minmax(0, 1fr);
   align-items: stretch;
 }
 
@@ -460,6 +526,49 @@
   text-shadow: none;
 }
 
+/*
+ * The phone's ticket card: the paperwork folds behind one summary so the first
+ * screen is the subject and the report. The summary stays a block rather than a
+ * flex row so the browser draws its own disclosure marker — a flex box draws
+ * none, and the line would read as a label instead of something to open — and
+ * the label shares the marker's line.
+ */
+.metadataFold {
+  margin: 0.15rem 0 0.9rem;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.metadataSummary {
+  padding: 0.55rem 0;
+  color: var(--text-muted);
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.metadataTitle {
+  margin-right: 0.45rem;
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.metadataNote {
+  color: var(--text-faint);
+  font-size: var(--type-2xs);
+}
+
+.metadataSummary:hover .metadataTitle,
+.metadataSummary:focus-visible .metadataTitle {
+  color: var(--text);
+}
+
+/* The folded facts keep the detail column they have on a desk, inside the fold. */
+.metadataFold > .details {
+  margin-bottom: 0.7rem;
+}
+
 .assigneeRow {
   display: flex;
   align-items: center;
@@ -562,6 +671,63 @@
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
+}
+
+/*
+ * A request that arrived as a recording. It takes the description's place in
+ * the card, because the message is the report — but it is drawn as a message:
+ * its own surface, the time it was left, and the line to ring back on. The
+ * colours are set here rather than inherited so the block reads the same
+ * inside the ticket card in both themes.
+ */
+.voicemail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.7rem 0.75rem;
+  border: 1px solid var(--accent-border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+}
+
+.voicemailHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.voicemailBadge {
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.voicemailWhen {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+}
+
+.voicemailTranscript {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--type-md);
+  line-height: 1.55;
+}
+
+.voicemailNote {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--type-sm);
+  line-height: 1.5;
 }
 
 .impactList {
@@ -757,8 +923,17 @@
 
 /* The action blocks already carry their own chrome in the practice sheet;
  * inside the case file they read as sections of one card instead. */
+/*
+ * One section of the case file, in either of its two shapes: a block on a window
+ * with room, and — on a phone — the same block folded into a disclosure, which is
+ * why `details` is dressed like the `div` and the `form` it replaces. It lays out
+ * as a column either way, so an opened section reads exactly as the block does.
+ */
 .caseCard > div,
-.caseCard > form {
+.caseCard > form,
+.caseCard > details {
+  display: flex;
+  flex-direction: column;
   gap: 0.45rem;
   padding: 0.85rem 0 0.9rem;
   border: 0;
@@ -767,7 +942,8 @@
   background: transparent;
 }
 
-.caseCard > div:last-of-type {
+.caseCard > div:last-of-type,
+.caseCard > details:last-of-type {
   border-bottom: 0;
   padding-bottom: 0.2rem;
 }
@@ -826,6 +1002,9 @@
 
 /* The rest of the reference, folded so the ticket's own tools lead. */
 .cheatSheetToggle {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.5rem;
   margin-top: 0.85rem;
   border: 0;
   padding: 0;
@@ -1024,6 +1203,57 @@
   }
 }
 
+/*
+ * The divider's three resting places, laid out the way the divider travels across
+ * the card: console-heavy, even, log-heavy. A strip rather than three loose
+ * buttons, so it reads as one position control and takes a single line of the
+ * header.
+ */
+.splitStops {
+  display: inline-flex;
+  gap: 1px;
+  padding: 1px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--panel-strong);
+}
+
+.splitStop {
+  padding: 0.28rem 0.48rem;
+  cursor: pointer;
+  border: 0;
+  border-radius: calc(var(--radius-sm) - 1px);
+  background: transparent;
+  color: var(--text-faint);
+  font-family: var(--font-display);
+  font-size: var(--type-sm);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  transition:
+    color 120ms ease,
+    background 120ms ease;
+}
+
+.splitStop:hover {
+  background: var(--surface-inset);
+  color: var(--text);
+}
+
+/* The stop the divider is on, and none of them while it sits between two. */
+.splitStop[aria-pressed='true'] {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+/* The halves stack at this width, so there is no divider position to jump to and
+   nothing for the keys to move: the strip goes with the handle it moves. */
+@media (max-width: 1180px) {
+  .splitStops {
+    display: none;
+  }
+}
+
 .toolsMenuButton {
   display: inline-flex;
   align-items: center;
@@ -1114,6 +1344,134 @@
   max-height: calc(100vh - 16rem);
   overflow-y: auto;
   padding: 0.25rem 0.35rem 0.5rem;
+}
+
+/*
+ * The switcher: what the strip's fade is a signpost for. With more tools open
+ * than fit, the ends fade and the middle is scrolled past, so a name can be on
+ * the card and still be several tabs of the keyboard away — this panel takes a
+ * name instead, over the card rather than inside the strip's column, because the
+ * strip is exactly what is too narrow to hold it.
+ */
+.switcherBackdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 3.4rem 0.7rem 0.7rem;
+  background: rgba(3, 7, 12, 0.62);
+}
+
+.switcher {
+  display: flex;
+  width: min(26rem, 100%);
+  max-height: 100%;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.8rem;
+  overflow: hidden;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-lg);
+  background: #080e17;
+  box-shadow: 0 30px 60px -20px rgba(0, 0, 0, 0.85);
+  animation: menu-in 140ms ease-out;
+}
+
+:global([data-theme='light']) .switcher {
+  background: var(--panel);
+}
+
+.switcherLabel {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.switcherInput {
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--type-lg);
+}
+
+.switcherInput:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.switcherList {
+  display: flex;
+  max-height: 15rem;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.switcherOption {
+  display: flex;
+  cursor: pointer;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--type-md);
+}
+
+.switcherOption:hover {
+  border-color: var(--border-strong);
+}
+
+.switcherOptionActive {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.switcherName {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.switcherBadge {
+  flex: none;
+  padding: 0 0.3rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.switcherEmpty {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: var(--type-sm);
+}
+
+.switcherHint {
+  margin: 0;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
 }
 
 /* ------------------------------------------------------------------ tabs */
@@ -1239,18 +1597,21 @@
 }
 
 /*
- * The divider between the two halves: a wide, invisible grab strip with the
- * card's hairline drawn down its middle, so it can be caught without aiming and
- * the halving still reads as a boundary rather than a gap.
+ * Both dividers in the workspace — the one inside the tool card and the one
+ * between the case file and the card — are the same control: a wide, invisible
+ * grab strip with a hairline drawn down its middle, so either can be caught
+ * without aiming and the boundary still reads as a boundary rather than a gap.
  */
-.splitHandle {
+.splitHandle,
+.stageHandle {
   position: relative;
   cursor: col-resize;
   touch-action: none;
   background: transparent;
 }
 
-.splitHandleGrip {
+.splitHandleGrip,
+.stageHandleGrip {
   position: absolute;
   top: 0;
   bottom: 0;
@@ -1261,17 +1622,44 @@
 }
 
 .splitHandle:hover .splitHandleGrip,
-.splitHandle:focus-visible .splitHandleGrip {
+.splitHandle:focus-visible .splitHandleGrip,
+.stageHandle:hover .stageHandleGrip,
+.stageHandle:focus-visible .stageHandleGrip {
   background: var(--accent);
   box-shadow: 0 0 10px rgba(56, 205, 234, 0.5);
 }
 
-.splitHandle:focus-visible {
+.splitHandle:focus-visible,
+.stageHandle:focus-visible {
   outline: none;
 }
 
+/* The docked card's edge is the one divider that exists only on a phone: it hangs
+   above a card pinned to the screen, and the phone block is what draws it. */
+.dockHandle {
+  display: none;
+}
+
 :global([data-theme='light']) .splitHandle:hover .splitHandleGrip,
-:global([data-theme='light']) .splitHandle:focus-visible .splitHandleGrip {
+:global([data-theme='light']) .splitHandle:focus-visible .splitHandleGrip,
+:global([data-theme='light']) .stageHandle:hover .stageHandleGrip,
+:global([data-theme='light']) .stageHandle:focus-visible .stageHandleGrip {
+  box-shadow: none;
+}
+
+/*
+ * Caught on a width the console's layout turns on. The hairline thickens and takes
+ * the accent, so the catch is something the learner can see happen and not only
+ * feel in the drag.
+ */
+.splitHandle[data-snapped='true'] .splitHandleGrip {
+  width: 3px;
+  transform: translateX(-1px);
+  background: var(--accent);
+  box-shadow: 0 0 14px rgba(56, 205, 234, 0.55);
+}
+
+:global([data-theme='light']) .splitHandle[data-snapped='true'] .splitHandleGrip {
   box-shadow: none;
 }
 
@@ -1349,6 +1737,18 @@
   color: var(--terminal-text);
 }
 
+/*
+ * The terminal measures itself rather than the window, the way a console does: in
+ * split view it is handed part of the card, and its log has to restructure when
+ * that part is narrow rather than squeeze three tiles and a long prompt into
+ * ragged columns. The unit is the pane's own width, so the query below is the
+ * same number the divider snaps to (`TERMINAL_LAYOUT_WIDTHS_REM`), and
+ * `tests/ui/consoleSnapWidths.test.ts` fails the build if they drift apart.
+ */
+.terminalPane {
+  container-type: inline-size;
+}
+
 /* The card behind the pane is paper in the light workspace; the pane is not. */
 :global([data-theme='light'][data-terminal='dark']) .terminalPane {
   background: var(--terminal-bg);
@@ -1387,6 +1787,10 @@
 }
 
 .stepRewind {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.5rem;
+  min-height: 1.5rem;
   border: 0;
   padding: 0 0.2rem;
   background: none;
@@ -1499,6 +1903,70 @@
   line-height: 1.6;
 }
 
+/*
+ * A narrow log is not a small log. Below 22rem the summary's three tiles become
+ * three label/value rows — the width of a tile at that size is a word and an
+ * ellipsis — the step gutter gives back the width it does not need, and the log's
+ * padding tightens, so the entries keep one readable column instead of becoming
+ * several narrow ones. The prompt and the carded entries restructure in
+ * `practice.module.css`, under the same width.
+ */
+@container (max-width: 22rem) {
+  .log {
+    padding: 0.7rem;
+  }
+
+  .consoleSummary {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.3rem;
+    margin-bottom: 0.6rem;
+  }
+
+  .summaryTile {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .summaryTile strong {
+    font-size: var(--type-md);
+    letter-spacing: 0.04em;
+  }
+
+  .step {
+    grid-template-columns: 1.5rem minmax(0, 1fr);
+    gap: 0.35rem;
+  }
+}
+
+/* A refusal is a rule the terminal can state, not a wall to walk into: the
+   commands it stops are named above the prompt they would be typed at. */
+.blockedNotice {
+  display: grid;
+  flex-shrink: 0;
+  gap: 0.35rem;
+  padding: 0.6rem 0.7rem;
+  border-top: 1px solid var(--danger-border);
+  border-left: 3px solid var(--danger);
+  background: var(--danger-soft);
+  color: var(--danger-text);
+}
+
+.blockedHeading {
+  margin: 0;
+  font-size: var(--type-md);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.blockedNote {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--type-sm);
+  line-height: 1.45;
+}
+
 .quickRow {
   display: flex;
   flex-shrink: 0;
@@ -1507,6 +1975,11 @@
   padding: 0.45rem 0.7rem 0;
   border-top: 1px solid var(--border);
   background: #05090f;
+}
+
+/* The notice brings its own top edge, so the row under it does not double it. */
+.blockedNotice + .quickRow {
+  border-top: 0;
 }
 
 :global([data-theme='light']) .quickRow {
@@ -1639,8 +2112,36 @@
   display: none;
 }
 
+/*
+ * With every tool open the strip is wider than the card, and it scrolls rather
+ * than wrap: a second row of tabs would take the height the console needs. A
+ * scrollbar would be the honest way to say there is more, but the pill row is
+ * too short for one, so an end that still has tabs behind it fades out instead —
+ * and the tab in front is scrolled into view whenever it changes.
+ */
+.consoleTabs[data-overflow='end'] {
+  mask-image: linear-gradient(to right, rgb(0 0 0) calc(100% - var(--strip-fade)), transparent);
+}
+
+.consoleTabs[data-overflow='start'] {
+  mask-image: linear-gradient(to left, rgb(0 0 0) calc(100% - var(--strip-fade)), transparent);
+}
+
+.consoleTabs[data-overflow='both'] {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    rgb(0 0 0) var(--strip-fade),
+    rgb(0 0 0) calc(100% - var(--strip-fade)),
+    transparent
+  );
+}
+
 .consoleTab {
+  position: relative;
+  display: inline-flex;
   flex: none;
+  align-items: center;
   padding: 0.26rem 0.6rem;
   cursor: pointer;
   border: 1px solid var(--border);
@@ -1672,6 +2173,94 @@
   color: var(--accent);
 }
 
+/* A tab that can be dragged says so with the hand, not only with the title. */
+.consoleTab[draggable='true'] {
+  cursor: grab;
+}
+
+.consoleTab[draggable='true']:active {
+  cursor: grabbing;
+}
+
+/* The pinned tab holds the front of the strip, so it is marked as held. */
+.consoleTabPinned {
+  border-color: var(--accent-border);
+}
+
+/*
+ * The seam between the held group and the rest of the strip: a hairline in the
+ * gap before the first tab the learner can drag. It is drawn on that tab rather
+ * than as an element of its own so the row's flex sizing is untouched — a
+ * separator that took width would change where the tabs sit when the group
+ * grows, which is the one thing a pin promises it will not.
+ */
+.consoleTabGroupStart::before {
+  content: '';
+  position: absolute;
+  top: 20%;
+  bottom: 20%;
+  left: -0.32rem;
+  width: 1px;
+  border-radius: 1px;
+  background: var(--border-strong);
+}
+
+.consoleTabPin {
+  margin-right: 0.3rem;
+  color: var(--accent);
+}
+
+/*
+ * The mark that says a console has printed something since the learner last had
+ * it in front. It is a dot rather than a count: what matters is that there is
+ * something to read, not how much of it there is.
+ */
+.consoleTabDot {
+  width: 0.4rem;
+  height: 0.4rem;
+  margin-right: 0.35rem;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+
+.consoleTabDragging {
+  opacity: 0.45;
+}
+
+/* Where the dragged tab would land: the place it will take, not the tab it is on. */
+.consoleTabDropTarget {
+  border-color: var(--accent-strong);
+  color: var(--accent-strong);
+  box-shadow: inset 2px 0 0 var(--accent-strong);
+}
+
+/*
+ * A tool carried from the shelf lands between tabs rather than on one, so the
+ * place is drawn as the gap it would open up: a bar in the strip's own colour,
+ * at the edge of the tab it would go ahead of. The last tab carries the bar on
+ * its right when the place is past the end of the row.
+ */
+.consoleTabs[data-drop-active='true'] {
+  border-bottom-color: var(--accent-border);
+}
+
+.consoleTabsCaret {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -0.22rem;
+  width: 2px;
+  border-radius: 999px;
+  background: var(--accent-strong);
+  pointer-events: none;
+}
+
+.consoleTabsCaretEnd {
+  right: -0.22rem;
+  left: auto;
+}
+
 .consoleWrap {
   display: flex;
   min-height: 0;
@@ -1690,7 +2279,14 @@
   border-bottom: 1px solid var(--border);
 }
 
+/*
+ * The bar is one line at any width. The way out and the two controls cannot
+ * wrap without reading as broken, so the console's name is what gives: it ends
+ * in an ellipsis rather than pushing Pin and Close off the row, and carries the
+ * whole name in its title for the widths where it cannot be read.
+ */
 .consoleBack {
+  flex: none;
   cursor: pointer;
   border: 0;
   background: transparent;
@@ -1699,6 +2295,7 @@
   font-size: var(--type-2xs);
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .consoleBack:hover {
@@ -1707,12 +2304,17 @@
 
 .consoleBarActions {
   display: inline-flex;
+  min-width: 0;
   align-items: center;
   gap: 0.6rem;
 }
 
 .consoleName {
+  min-width: 0;
+  overflow: hidden;
   color: var(--text-faint);
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: var(--font-mono);
   font-size: var(--type-2xs);
   letter-spacing: 0.1em;
@@ -1720,6 +2322,7 @@
 }
 
 .consoleClose {
+  flex: none;
   cursor: pointer;
   border: 0;
   background: transparent;
@@ -1735,6 +2338,34 @@
   color: var(--danger-text);
 }
 
+.consolePin {
+  flex: none;
+  cursor: pointer;
+  padding: 0.1rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease;
+}
+
+.consolePin:hover {
+  border-color: var(--accent-border);
+  color: var(--text-muted);
+}
+
+/* Held: the console is at the left of the strip, and the control says so. */
+.consolePin[aria-pressed='true'] {
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
 .toolError {
   flex-shrink: 0;
   padding: 0.5rem 0.9rem;
@@ -1747,10 +2378,11 @@
 /* --------------------------------------------------------------- narrow */
 
 @media (max-width: 1180px) {
+  /* The columns still stand side by side here, so the trade stands: only the
+     heights change, because the stage stops owning a fixed one. */
   .stage {
     height: auto;
     min-height: 0;
-    grid-template-columns: minmax(300px, 0.9fr) minmax(0, 1.3fr);
   }
 
   .ticketColumn {
@@ -1763,8 +2395,20 @@
 }
 
 @media (max-width: 980px) {
+  /* One column: there is no width left to trade, so the divider goes and the
+     stage is a single track again. */
   .stage {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .stageHandle {
+    display: none;
+  }
+
+  /* The preset strip moves the divider this window does not draw, so it goes
+     with it; the keys read the same handle's display. */
+  .layoutPresets {
+    display: none;
   }
 
   .ticketColumn {
@@ -1792,24 +2436,187 @@
  * At phone width there is no room for two columns, and stacking them the way a
  * narrow desktop window does puts the console at the bottom of a very long page:
  * the case file alone is several screens, so every command would mean scrolling
- * back down to the tool and up again to read it. The card therefore becomes one
- * screen tall and the split becomes a docked console — the tool scrolls in the
- * space above it while the log and the command line stay put under the tool,
- * next to the thumb and the keyboard. Nothing is dragged here (there is one
- * column, so the divider has nothing to do), and the ratio is ignored.
+ * back down to the tool and up again to read it. So the card is pinned to the
+ * bottom of the viewport and the split becomes a docked console — the tool scrolls
+ * in the space above the log, and the log, the chips and the command line stay put
+ * under it, next to the thumb and the keyboard.
+ *
+ * Pinned means exactly that: the card leaves the page's flow and sits on the bottom
+ * edge of the screen, so the case file and whatever the tool is showing move behind
+ * it rather than pushing it away. The column keeps room for it at its foot, because
+ * a fixed card covers the end of the page and the last of the case file has to be
+ * able to scroll clear of it. Nothing is dragged here (there is one column, so the
+ * divider has nothing to do), and the ratio is ignored.
+ *
+ * The bottom edge of a *portrait* phone is what this is: a phone on its side is
+ * wide and short, and a sheet hanging off its bottom would leave half a screen of
+ * empty width and less height than the console needs. Height, not width, is what
+ * that window is short of, so it takes the short-window sheet below instead.
  */
-@media (max-width: 600px) {
+@media (max-width: 600px) and (min-height: 481px) {
   .toolCard {
-    height: calc(100vh - var(--header-height) - 2rem);
-    height: calc(100dvh - var(--header-height) - 2rem);
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    /* Above the page it covers, below the sticky header (z-index 20 in
+       AppShell.module.css) and the skip link. */
+    z-index: 10;
+    /* A little over half the screen: a console's worth of log under a tool pane,
+       and the paragraph being worked from still in view above it. The share is the
+       palette's `--dock-share`, which the workspace writes when the learner drags
+       the card's top edge and leaves alone otherwise. `.ticketColumn` keeps room
+       with the same token, and `tests/ui/workspaceNarrow.test.ts` fails the build
+       if the card and the room kept for it stop agreeing. */
+    height: var(--dock-share);
+    /* The keyboard floats over the layout viewport rather than shrinking it, so
+       a card pinned to the bottom edge ends up underneath the keys — the command
+       line is the one thing that must not be. The page measures the visual
+       viewport (`useKeyboardInset`) and hands the covered strip over as
+       `--keyboard-inset`, which lifts the card to sit on top of the keyboard.
+       The plain `bottom` above stays for a browser with no visual viewport. */
+    bottom: var(--keyboard-inset, 0px);
+    /* Lifted by the keyboard's height, a 55dvh card would climb behind the
+       header; capped at the room left between header and keyboard instead, so
+       the console shrinks rather than hiding its own chrome. */
+    max-height: calc(100dvh - var(--header-height) - var(--keyboard-inset, 0px));
     min-height: 0;
+    /* The card's top edge is the seam the content disappears under, so it is a
+       panel rather than a box: rounded where it meets the page, square off-screen. */
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    box-shadow: 0 -22px 46px -24px rgba(0, 0, 0, 0.9);
+  }
+
+  /* Room at the foot of the column for the card that is sitting on it: the card
+     covers the end of the page, so without this the last section would never
+     scroll clear of it. */
+  .ticketColumn {
+    padding-bottom: calc(var(--dock-share) + 1.2rem + var(--keyboard-inset, 0px));
+  }
+
+  /* A control that takes focus further down the page — by Tab, or by a script —
+     comes to rest above the card instead of behind it. Written on the controls
+     rather than `:focus`, because `:focus` stops matching when the window loses
+     focus, which is exactly when a script can still be moving focus. */
+  .ticketColumn :is(summary, button, input, textarea, select, a[href]) {
+    scroll-margin-bottom: calc(var(--dock-share) + 1rem + var(--keyboard-inset, 0px));
+  }
+
+  /* A remote desktop is the one console that is read as a screen rather than as
+     a log. At the usual 55% it was a strip of wallpaper: the desktop's icons are
+     gone at this width, so the taskbar is the only way into an app, and it sat
+     below the fold along with whichever window was open. While a machine's
+     desktop is on screen the card takes most of the phone instead, and the
+     column keeps the room for it so the case file still scrolls clear of it.
+     Both are written in vh and dvh, as the card's own height is, and the two
+     shares are held to each other by `tests/ui/desktopFit.test.ts`. */
+  .toolCard:has([data-desktop]) {
+    height: var(--dock-share-desktop);
+  }
+
+  .stage:has([data-desktop]) .ticketColumn {
+    padding-bottom: calc(var(--dock-share-desktop) + 1.2rem + var(--keyboard-inset, 0px));
+  }
+
+  .stage:has([data-desktop]) .ticketColumn :is(summary, button, input, textarea, select, a[href]) {
+    scroll-margin-bottom: calc(var(--dock-share-desktop) + 1rem + var(--keyboard-inset, 0px));
+  }
+
+  /*
+   * The card's top edge, as a control. It hangs above the card rather than inside
+   * it, so the seam can be dragged without any line of the header moving under
+   * the finger, and it is the only horizontal divider in the workspace. The
+   * default share is the stylesheet's business; this only says where the edge is.
+   */
+  .dockHandle {
+    display: flex;
+    position: relative;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    /* A bar, not a hairline. This edge is the only way to trade the page for the
+       console on a phone, and at 1.1rem it read as the card's border rather than
+       as something to catch — the seam was there to hunt for. It is tall enough
+       to hold a grip and a finger, and the share it is dragging is written at
+       its right end while the drag is in flight. */
+    height: 1.5rem;
+    /* The extra sixth of a rem the taller bar adds comes out of the head's top
+       padding rather than out of the console: the card is the same height it
+       was, and the log keeps the lines `tests/ui/phoneLog.test.ts` holds it to.
+       Nothing is drawn under the overlap — the bar covers padding, never a line
+       of the head. */
+    margin-bottom: -0.4rem;
+    padding: 0 0.65rem;
+    /* The card clips what leaves it, so the edge it moves is drawn as its own top
+       strip: the grip, a hairline under it, and no line of the head moving as the
+       seam does. */
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, var(--panel-strong), var(--surface-sunken));
+    cursor: ns-resize;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: background 120ms ease;
+  }
+
+  .dockHandleGrip {
+    width: 3.25rem;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--border-strong);
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
+    transition: background 120ms ease, width 120ms ease, box-shadow 120ms ease;
+  }
+
+  .dockHandle:hover .dockHandleGrip,
+  .dockHandle:focus-visible .dockHandleGrip,
+  .dockHandle[data-dragging='true'] .dockHandleGrip {
+    width: 4.25rem;
+    background: var(--accent);
+    box-shadow: 0 0 12px rgba(56, 205, 234, 0.55);
+  }
+
+  /* Held, the whole bar takes the accent's wash, so the thing being moved says
+     so across its width rather than only at the grip. */
+  .dockHandle[data-dragging='true'] {
+    background: var(--accent-soft);
+  }
+
+  .dockHandle:focus-visible {
+    outline: none;
+  }
+
+  /* What the drag has come to, as the share of the screen the card takes. It is
+     silent at rest: the bar is a control, not a readout, and a number sitting on
+     the seam all the time would be one more thing to read above the console. */
+  .dockHandleShare {
+    position: absolute;
+    right: 0.65rem;
+    color: var(--accent);
+    font-family: var(--font-mono);
+    font-size: var(--type-2xs);
+    letter-spacing: 0.06em;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 120ms ease;
+  }
+
+  .dockHandle[data-dragging='true'] .dockHandleShare {
+    opacity: 1;
   }
 
   .toolSplitOn {
     grid-template-columns: minmax(0, 1fr);
-    /* Both rows are proportional, so a short window shrinks the console rather
-       than clipping it, and a tall one gives it more than a fixed share. */
-    grid-template-rows: minmax(0, 1.1fr) minmax(0, 1fr);
+    /* Both rows are proportional, so a tall window gives the tool more than a
+       fixed share — but the console keeps a floor. The floor is in rem, so it
+       grows with the text size the learner chose, and it is *ten* of them
+       because that is what the console costs at every size Settings offers:
+       the chips row, the command line and the hairline above them (~5.9rem),
+       the log's own inset (0.9rem), and the two lines of log that make the
+       terminal readable at all (2.7rem). Written as one number rather than a
+       sum because CSS cannot ask how tall a sibling turned out; if the chrome
+       grows, `tests/ui/phoneLog.test.ts` fails and this goes up with it. */
+    grid-template-rows: minmax(0, 1.1fr) minmax(10rem, 1fr);
   }
 
   /* The console is the second row, so the tool gets the room that is left. */
@@ -1842,5 +2649,92 @@
 
   .quickCommand {
     flex: none;
+  }
+}
+
+/*
+ * ------------------------------------------------------------ short window
+ *
+ * A landscape phone is the phone problem rotated: the window is wide but only a
+ * few hundred pixels tall. Stacking it like a narrow desktop window puts a
+ * 34rem card under the case file, off the screen entirely, and the bottom pin
+ * does not fit either — with a floor under the console, a bottom-docked card
+ * needs about 70% of a 390px screen before the log is readable, and leaves 61px
+ * of case file to read through. The width has room for both columns, so the
+ * console is docked to the right edge instead: full height under the header, the
+ * case file keeping the column beside it, and the tool above the terminal inside
+ * the card exactly as it sits in the phone dock. Driven by height, because
+ * height is what this window is short of — a landscape phone included, which is
+ * why the width gate only keeps out a window too narrow to hold the dock beside
+ * anything at all.
+ */
+@media (max-height: 480px) and (min-width: 481px) {
+  /* The card's width (`--dock-width`, tokens.css) is shared by the stage's empty
+     track and the bar above, so neither the case file nor the ticket's own line
+     runs under the sheet. */
+  .stageBar {
+    max-width: calc(100% - var(--dock-width) - 0.6rem);
+  }
+
+  .stage {
+    grid-template-columns: minmax(0, 1fr) var(--dock-width);
+    column-gap: 0.6rem;
+  }
+
+  .stageHandle {
+    display: none;
+  }
+
+  .toolCard {
+    position: fixed;
+    top: var(--header-height);
+    right: 0;
+    bottom: 0;
+    /* Also a phone on its side: the keyboard covers the bottom of this sheet
+       too, so it ends above the keys rather than under them. */
+    bottom: var(--keyboard-inset, 0px);
+    left: auto;
+    /* Above the page it covers, below the sticky header and the skip link. */
+    z-index: 10;
+    width: var(--dock-width);
+    min-height: 0;
+    /* A sheet hanging under the header: rounded where it meets the page, square
+       against the screen edge. */
+    border-radius: var(--radius-lg) 0 0 var(--radius-lg);
+    box-shadow: -24px 0 46px -26px rgba(0, 0, 0, 0.9);
+  }
+
+  .toolSplitOn {
+    grid-template-columns: minmax(0, 1fr);
+    /* A floor under the console: the command line and the hairline above it
+       (~3.6rem), the log's inset (0.7-0.9rem) and two lines of log (2.7rem) —
+       8rem at every text size, because the chips row is dropped here (below).
+       The tool pane takes what is left, so a 320px-tall viewport still types
+       and reads instead of showing a sliver of each. */
+    grid-template-rows: minmax(0, 1fr) minmax(8rem, 1fr);
+  }
+
+  /* The console is the second row, so the tool gets the room that is left. */
+  .toolSplitOn > .toolBody:first-child {
+    order: 2;
+    border-top: 1px solid var(--border);
+  }
+
+  .toolSplitOn > .toolBody:last-child {
+    order: 1;
+    border-top: 0;
+  }
+
+  .splitHandle {
+    display: none;
+  }
+
+  /* No chips row at all: on a window this short the row costs the log a line of
+     its own, and the row is the one piece of the console a keyboard replaces —
+     which on a landscape phone is a wider keyboard than the portrait one. The
+     floor above is written without it, so the trade buys the tool pane room
+     rather than disappearing into the log. */
+  .quickRow {
+    display: none;
   }
 }

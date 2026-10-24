@@ -74,7 +74,11 @@
 
 .field {
   display: flex;
+  flex: 0 1 11rem;
   flex-direction: column;
+  /* The field may shrink below its preferred width; a phone is narrower than
+     three fields and must not be widened by them. */
+  min-width: 0;
   gap: 0.3rem;
   font-size: var(--type-2xs);
   letter-spacing: 0.06em;
@@ -84,7 +88,8 @@
 
 .field input,
 .field select {
-  min-width: 11rem;
+  width: 100%;
+  min-width: 0;
   padding: 0.4rem 0.55rem;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
@@ -103,6 +108,7 @@
 }
 
 .tableWrap {
+  max-width: 100%;
   overflow-x: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -184,6 +190,9 @@
 }
 
 .link {
+  /* Padded so the link's own box, not just its text, is a 24px target. */
+  display: inline-block;
+  padding: 0.25rem 0;
   color: var(--accent);
   text-decoration: none;
 }
@@ -194,6 +203,7 @@
 
 .button,
 .buttonQuiet {
+  max-width: 100%;
   padding: 0.4rem 0.8rem;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
@@ -266,6 +276,7 @@
 
 .dialogButtons {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   margin-top: 0.9rem;
 }
@@ -280,7 +291,9 @@
 .cards {
   display: grid;
   gap: 1rem;
-  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  /* `min()` keeps the floor off the viewport: three cards cannot fit a phone,
+     and a 16rem minimum would widen the page instead of stacking. */
+  grid-template-columns: repeat(auto-fit, minmax(min(16rem, 100%), 1fr));
   margin-top: 1.25rem;
 }
 
@@ -313,6 +326,11 @@
 
 .meta dd {
   color: var(--text);
+}
+
+/* The score's rubric split, kept off the heading by the same gap as the items. */
+.categories {
+  margin-top: 0.4rem;
 }
 
 .reasons {
@@ -439,6 +457,7 @@
 
 .backLink {
   display: inline-block;
+  padding: 0.25rem 0;
   margin-bottom: 0.6rem;
   color: var(--text-muted);
   font-size: var(--type-xs);
@@ -447,4 +466,21 @@
 
 .backLink:hover {
   color: var(--accent);
+}
+
+/*
+ * A phone: one filter per row rather than a field squeezed to its label, and
+ * tighter cells so the device table's five columns spend their width on values
+ * instead of padding. The table still scrolls inside its own wrap when the five
+ * columns cannot fit, which is why the page itself never moves sideways.
+ */
+@media (max-width: 480px) {
+  .field {
+    flex: 1 1 100%;
+  }
+
+  .table th,
+  .table td {
+    padding: 0.5rem 0.55rem;
+  }
 }

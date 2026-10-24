@@ -195,6 +195,11 @@ export interface ConsoleEntry {
    * supply this, and it is read from the closed sessions rather than the world.
    */
   history?: readonly ConsoleHistoryItem[]
+  /**
+   * What this record is, drawn by a picker row. Absent on a runbook or a site,
+   * and on any console whose list is not a picker at all.
+   */
+  icon?: ConsoleIcon
 }
 
 /** One past step in a record's desk history. */
@@ -215,6 +220,14 @@ export interface ConsoleFilter {
   label: string
 }
 
+/**
+ * What a record is, for the glyph a picker row leads with. The vocabulary is
+ * deliberately small: a console whose rows are all one kind names it once, and a
+ * console that mixes them — the Printers list starts with the machine the
+ * session is at — lets each record name its own.
+ */
+export type ConsoleIcon = 'machine' | 'account' | 'printer'
+
 /** How a console that is a picker names its list and the button on each row. */
 export interface ConsolePicker {
   /** The heading the list sits under. */
@@ -227,10 +240,10 @@ export interface ConsolePicker {
    */
   rowActions: readonly { id: string; label: string }[]
   /**
-   * The glyph a row leads with. Only the machine glyph exists, because only the
-   * machine console is a picker; a second picker would add its own here.
+   * The glyph every row leads with, when the whole list is one kind of thing. A
+   * record that names its own icon wins, so a mixed list still draws the truth.
    */
-  rowIcon?: 'machine'
+  rowIcon?: ConsoleIcon
 }
 
 export interface ConsoleDefinition {
@@ -303,6 +316,14 @@ export const CONSOLE_DEFINITIONS: Record<ConsoleId, ConsoleDefinition> = {
       { id: 'disabled', label: 'Disabled' },
     ],
     filterLabel: 'Filter by account state',
+    // Reading an account is the job here, so a row carries the read: the same
+    // `get-account` the record's own button runs, logged against the attempt.
+    picker: {
+      title: 'Directory',
+      subtitle: 'Select an account to read its record',
+      rowActions: [{ id: 'open-record', label: 'Open record' }],
+      rowIcon: 'account',
+    },
   },
   'remote-desktop': {
     id: 'remote-desktop',
@@ -360,6 +381,18 @@ export const CONSOLE_DEFINITIONS: Record<ConsoleId, ConsoleDefinition> = {
       'No printer is inventoried. This should not happen in a generated world — report it rather than working around it.',
     selectHint:
       'Choose a printer, or this machine, to see the queues it holds and what you can do about them. Nothing is changed until you run an action.',
+    // Two kinds of row in one list, so each record names its own glyph and the
+    // row button is the queue read for that kind: a printer's held jobs, or the
+    // local spooler's. Clearing a queue stays in the record, where a learner has
+    // read it first.
+    picker: {
+      title: 'Printers',
+      subtitle: 'Select a printer to read its queue',
+      rowActions: [
+        { id: 'printer-queue', label: 'Inspect queue' },
+        { id: 'spooler-queue', label: 'Inspect local queue' },
+      ],
+    },
   },
   shares: {
     id: 'shares',

@@ -83,7 +83,7 @@ describe('Dashboard modules', () => {
   it('lists the sixteen course modules in order', async () => {
     renderPage()
 
-    expect(await screen.findByText('15 playable · 16 total')).toBeInTheDocument()
+    expect(await screen.findByText('16 playable · 16 total')).toBeInTheDocument()
 
     const items = await screen.findAllByRole('listitem')
     const moduleItems = items.filter((item) => item.querySelector('h3'))
@@ -149,16 +149,21 @@ describe('Dashboard modules', () => {
     expect(screen.getByText('Close one ticket with a passing score')).toBeInTheDocument()
   })
 
-  it('marks planned modules and explains why they are missing', async () => {
+  it('lists Voicemails among the modules that can be worked', async () => {
     renderPage()
 
-    expect(await screen.findAllByText('Planned')).toHaveLength(1)
+    expect(await screen.queryAllByText('Planned')).toHaveLength(0)
 
     fireEvent.click(await screen.findByRole('button', { name: /Voicemails/ }))
 
-    const note = await screen.findByText(/Not in this build/i)
-    expect(note).toHaveTextContent(/callback/i)
-    expect(screen.queryByRole('link', { name: /Voicemails/ })).not.toBeInTheDocument()
+    expect(screen.getByText('Close a ticket that arrived as a voicemail')).toBeInTheDocument()
+    expect(screen.getByText('Ring the caller back from the message')).toBeInTheDocument()
+    expect(screen.queryByText(/Not in this build/i)).not.toBeInTheDocument()
+    // A playable module carries a way in: the lesson, and the Practise button.
+    const lessonLinks = screen
+      .getAllByRole('link', { name: 'Lesson' })
+      .map((link) => link.getAttribute('href'))
+    expect(lessonLinks).toContain('/modules/voicemails')
   })
 
   it('marks completed modules and opens the next one instead', async () => {

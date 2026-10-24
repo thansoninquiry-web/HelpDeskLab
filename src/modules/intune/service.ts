@@ -3,7 +3,7 @@ import type { IntuneStore } from './persistence/store'
 import { findIntuneTemplate } from './tickets/registry'
 import { scoreIntuneAttempt, type IntuneScore } from './tickets/scoring'
 import { isIntuneTicketComplete } from './tickets/registry'
-import type { DeviceAction, IntuneState } from './types'
+import type { DeviceAction, IntuneEvent, IntuneState } from './types'
 
 export interface ActResult {
   state: IntuneState
@@ -48,16 +48,58 @@ export class IntuneService {
     return { state: outcome.state, outcome }
   }
 
-  /** The actions taken on a device since an attempt started, oldest first. */
-  private actionsSince(state: IntuneState, deviceId: string, startedAt: number): DeviceAction[] {
-    return state.events
-      .filter(
-        (event) =>
-          event.deviceId === deviceId &&
-          event.at >= startedAt &&
-          event.outcome !== 'refused',
-      )
-      .map((event) => event.action)
+  /** Everything done to a device since an attempt started, oldest first. */
+  private eventsSince(
+    state: IntuneState,
+    deviceId: string,
+    startedAt: number,
+  ): IntuneEvent[] {
+    return state.events.filter(
+      (event) =>
+        event.deviceId === deviceId &&
+        event.at >= startedAt &&
+        event.outcome !== 'refused',
+    )
+  }
+
+  /**
+   * Whether the record was read before the first fix. A read after the change is
+   * still a read, but it is not diagnostic work: the decision had been made.
+   */
+  private readBeforeFix(events: readonly IntuneEvent[]): boolean {
+    const firstFix = events.findIndex((event) => event.action !== 'review')
+    const before = firstFix < 0 ? events : events.slice(0, firstFix)
+    return before.some((event) => event.action === 'review')
+  }
+
+  /**
+   * Reads the record without changing anything. The console has no read action
+   * to run, so this is the step that records having looked: it writes an event
+   * and hands back the state the learner would have seen, which is what the
+   * diagnosis category is scored from.
+   */
+  async review(deviceId: string): Promise<{ state: IntuneState; summary: string }> {
+    const state = await this.load()
+    const device = state.devices.find((entry) => entry.id === deviceId)
+    if (!device) {
+      throw new Error(`Unknown device: ${deviceId}`)
+    }
+
+    const summary =
+      device.complianceReasons.length > 0
+        ? `${device.name}: ${device.compliance} — ${device.complianceReasons.join('; ')}.`
+        : `${device.name}: ${device.compliance} — every applicable rule passes.`
+    const event: IntuneEvent = {
+      id: Math.max(0, ...state.events.map((entry) => entry.id)) + 1,
+      deviceId: device.id,
+      action: 'review',
+      at: this.clock(),
+      outcome: 'applied',
+      summary,
+      notes: [],
+    }
+    await this.store.appendEvent(event)
+    return { state: await this.load(), summary }
   }
 
   /**
@@ -76,10 +118,14 @@ export class IntuneService {
       throw new Error(`The ticket's device is not in the estate: ${template.deviceId}`)
     }
 
+    const events = this.eventsSince(state, device.id, startedAt)
     const score = scoreIntuneAttempt(template, {
       device,
       state,
-      actions: this.actionsSince(state, device.id, startedAt),
+      actions: events
+        .filter((event) => event.action !== 'review')
+        .map((event) => event.action as DeviceAction),
+      reviewedBeforeFix: this.readBeforeFix(events),
     })
     const finishedAt = this.clock()
     await this.store.saveAttempt({

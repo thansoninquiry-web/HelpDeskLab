@@ -119,6 +119,7 @@ export function directoryConsoleEntries(
   const users = new Map(world.users.map((user) => [user.samAccountName, user]))
   return listDirectoryRecords(world).map((record) => ({
     id: record.samAccountName,
+    icon: 'account' as const,
     title: record.displayName,
     subtitle: `${record.samAccountName} · ${record.department}`,
     facts: [

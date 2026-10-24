@@ -6,7 +6,9 @@ import {
   type ConsoleAction,
   type ConsoleActionArgument,
   type ConsoleEntry,
+  type ConsoleIcon,
   type ConsoleLine,
+  type ConsoleFocus,
   type ConsoleView,
   type WorkspaceView,
 } from '../../app/practiceService'
@@ -29,6 +31,23 @@ interface ToolConsoleProps {
    * side terminal; the console only knows that this surface has one.
    */
   onSubmitCommand?: (input: string) => Promise<WorkspaceView | null>
+  /**
+   * A record was opened. Reading is the learner acting on the call, so the
+   * attempt records it — the console's own selection state would otherwise be
+   * the only sign, and the caller could not hear it.
+   */
+  onRead?: (entryId: string) => void
+  /**
+   * What this console was showing when it was last left — the search in its box
+   * and the record in front — so a reopened ticket lands back on the machine.
+   * Absent, or null, is a console that has not been worked in yet.
+   */
+  focus?: ConsoleFocus | null
+  /**
+   * The search or the open record changed. Reading a record is reported too, so
+   * what the learner was looking at is what a reopen puts back.
+   */
+  onFocusChange?: (focus: ConsoleFocus) => void
 }
 
 interface ConsoleOutput {
@@ -37,21 +56,47 @@ interface ConsoleOutput {
   lines: ConsoleLine[]
 }
 
-/** The monitor a picker row leads with, drawn on the shell's icon grid. */
-function MachineGlyph() {
+/**
+ * What a picker row leads with, drawn on the shell's icon grid: a monitor for a
+ * machine, a person for an account, and a printer for a printer. The record says
+ * which one it is; the row only draws it, so a mixed list cannot lie about what
+ * a learner is about to open.
+ */
+function EntryGlyph({ icon }: { icon: ConsoleIcon }) {
+  const common = {
+    className: styles.pickerGlyph,
+    width: 20,
+    height: 20,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1.5,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    'aria-hidden': true,
+  }
+
+  if (icon === 'account') {
+    return (
+      <svg {...common}>
+        <circle cx="12" cy="8.5" r="3.5" />
+        <path d="M4.5 20a7.5 7.5 0 0 1 15 0" />
+      </svg>
+    )
+  }
+
+  if (icon === 'printer') {
+    return (
+      <svg {...common}>
+        <path d="M7 9V4h10v5" />
+        <rect x="4" y="9" width="16" height="7" rx="1.5" />
+        <path d="M7 16h10v5H7z" />
+      </svg>
+    )
+  }
+
   return (
-    <svg
-      className={styles.pickerGlyph}
-      width={20}
-      height={20}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.5}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
+    <svg {...common}>
       <rect x="3" y="4" width="18" height="12" rx="1.5" />
       <path d="M9 20h6M12 16v4" />
     </svg>
@@ -60,8 +105,8 @@ function MachineGlyph() {
 
 interface PickerRowProps {
   entry: ConsoleEntry
-  /** True for a console whose rows are machines. */
-  machine: boolean
+  /** What the record is, or undefined for a list of one kind the console names. */
+  icon: ConsoleIcon | undefined
   active: boolean
   /** The button that opens the record, if this record offers one. */
   rowAction: { action: ConsoleAction; label: string } | null
@@ -80,7 +125,7 @@ interface PickerRowProps {
  */
 function PickerRow({
   entry,
-  machine,
+  icon,
   active,
   rowAction,
   disabled,
@@ -96,7 +141,7 @@ function PickerRow({
         aria-pressed={active}
         onClick={onSelect}
       >
-        {machine ? <MachineGlyph /> : null}
+        {icon ? <EntryGlyph icon={icon} /> : null}
         <span className={styles.pickerNames}>
           <span className={styles.pickerName}>{entry.title}</span>
           <span className={styles.pickerMeta}>{entry.subtitle}</span>
@@ -187,10 +232,13 @@ export function ToolConsole({
   busy,
   onRun,
   onSubmitCommand,
+  onRead,
+  focus = null,
+  onFocusChange,
 }: ToolConsoleProps) {
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useState(() => focus?.query ?? '')
   const [filterId, setFilterId] = useState('')
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(() => focus?.selectedId ?? null)
   const [runningId, setRunningId] = useState<string | null>(null)
   const [output, setOutput] = useState<ConsoleOutput | null>(null)
   // Values typed into an action that needs one, keyed by entry and action.
@@ -206,6 +254,39 @@ export function ToolConsole({
   const [hiddenSession, setHiddenSession] = useState<number | null>(null)
   const sessionStartedAt = view?.desktop?.sessionStartedAt ?? null
   const desktopVisible = sessionStartedAt !== null && hiddenSession !== sessionStartedAt
+
+  /**
+   * Which console this pane is currently showing. One pane serves every console,
+   * so switching tabs keeps the component mounted: the search and the open record
+   * have to be put back from that console's own focus rather than carried over
+   * from the tab before it.
+   */
+  const [shownConsole, setShownConsole] = useState<string | null>(view?.consoleId ?? null)
+  if (view !== null && view.consoleId !== shownConsole) {
+    setShownConsole(view.consoleId)
+    setQuery(focus?.query ?? '')
+    // A record this attempt no longer has — un-run, or closed by a command — is
+    // not reopened: the console opens on its list rather than on nothing.
+    setSelectedId(
+      focus?.selectedId != null && view.entries.some((entry) => entry.id === focus.selectedId)
+        ? focus.selectedId
+        : null,
+    )
+    setOutput(null)
+  }
+
+  /** What this console is showing, as the attempt stores it. */
+  const reportFocus = (next: ConsoleFocus) => {
+    onFocusChange?.(next)
+  }
+
+  /** Opens a record, and says so: the read is a step the attempt keeps. */
+  const openRecord = (entryId: string) => {
+    setSelectedId(entryId)
+    setOutput(null)
+    reportFocus({ query, selectedId: entryId })
+    onRead?.(entryId)
+  }
 
   const entries = view?.entries ?? null
   // A filter belongs to the console that declares it: switching to a console
@@ -223,7 +304,7 @@ export function ToolConsole({
 
   if (loadError) {
     return (
-      <div className={styles.console}>
+      <div className={styles.console} data-console-frame>
         <p className={styles.hint} role="alert">
           {loadError}
         </p>
@@ -233,7 +314,7 @@ export function ToolConsole({
 
   if (!view) {
     return (
-      <div className={styles.console}>
+      <div className={styles.console} data-console-frame>
         <p className={styles.hint}>Opening the console…</p>
       </div>
     )
@@ -244,6 +325,11 @@ export function ToolConsole({
   // grid was chosen somewhere else: the choice is the pane's, the view is the
   // console's.
   const inGrid = layout === 'grid' && definition.showsGrid === true
+  // The picker is how a console's rows read, not a different console: a console
+  // that also declares tiles keeps them, and switching to the grid reads the same
+  // records as squares. A console with no tiles is a picker whichever reading was
+  // left set elsewhere.
+  const pickingRows = definition.picker !== undefined && !inGrid
   const plural = (count: number) => `${count} ${definition.entryNoun}${count === 1 ? '' : 's'}`
 
   const inputKey = (entryId: string, actionId: string) => `${entryId}:${actionId}`
@@ -334,6 +420,7 @@ export function ToolConsole({
   const runRowAction = (entry: ConsoleEntry, action: ConsoleAction) => {
     setSelectedId(entry.id)
     setOutput(null)
+    reportFocus({ query, selectedId: entry.id })
     void runAction(entry, action)
   }
 
@@ -389,7 +476,9 @@ export function ToolConsole({
   }
 
   return (
-    <div className={styles.console}>
+    // The box the console's own container query measures, marked so the divider
+    // can ask how wide it is and snap to the widths its layout turns on.
+    <div className={styles.console} data-console-frame>
       {view.desktop && desktopVisible ? (
         <FakeDesktop
           // Keyed by machine: switching desktops must not carry the last one's
@@ -488,7 +577,10 @@ export function ToolConsole({
           className={styles.search}
           type="search"
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => {
+            setQuery(event.target.value)
+            reportFocus({ query: event.target.value, selectedId })
+          }}
           placeholder={definition.searchPlaceholder}
           aria-label={definition.searchLabel}
         />
@@ -530,7 +622,7 @@ export function ToolConsole({
             inGrid && !selected ? styles.lowerGridOnly : null,
             // A picker reads as one list: its rows carry the way in, so the
             // record opens underneath instead of beside it.
-            definition.picker ? styles.lowerPicker : null,
+            pickingRows ? styles.lowerPicker : null,
           ]
             .filter(Boolean)
             .join(' ')}
@@ -539,29 +631,26 @@ export function ToolConsole({
               the grid changes how a record reads, not what pressing one does. */}
           <ul
             className={
-              definition.picker ? styles.pickerList : inGrid ? styles.tileGrid : styles.list
+              pickingRows ? styles.pickerList : inGrid ? styles.tileGrid : styles.list
             }
             aria-label={definition.listLabel}
-            data-view={definition.picker ? 'picker' : inGrid ? 'grid' : 'list'}
+            data-view={pickingRows ? 'picker' : inGrid ? 'grid' : 'list'}
           >
             {visible.length === 0 ? (
               <li className={styles.hint}>Nothing matches “{query}”.</li>
             ) : (
               visible.map((entry) => {
                 const rowAction = rowActionFor(entry)
-                return definition.picker ? (
+                return pickingRows ? (
                   <li key={entry.id} className={styles.pickerRowItem}>
                     <PickerRow
                       entry={entry}
-                      machine={definition.picker.rowIcon === 'machine'}
+                      icon={entry.icon ?? definition.picker?.rowIcon}
                       active={entry.id === selectedId}
                       rowAction={rowAction}
                       disabled={busy || runningId !== null}
                       running={runningId === runningKey(entry.id, rowAction?.action.id ?? '')}
-                      onSelect={() => {
-                        setSelectedId(entry.id)
-                        setOutput(null)
-                      }}
+                      onSelect={() => openRecord(entry.id)}
                       onRun={() => {
                         if (rowAction) {
                           runRowAction(entry, rowAction.action)
@@ -575,10 +664,7 @@ export function ToolConsole({
                     type="button"
                     className={recordClass(entry.id === selectedId)}
                     aria-pressed={entry.id === selectedId}
-                    onClick={() => {
-                      setSelectedId(entry.id)
-                      setOutput(null)
-                    }}
+                    onClick={() => openRecord(entry.id)}
                   >
                     <span className={styles.entryTitle}>{entry.title}</span>
                     <span className={styles.entryMeta}>{entry.subtitle}</span>

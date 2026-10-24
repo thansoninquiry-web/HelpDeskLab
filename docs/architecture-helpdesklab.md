@@ -161,7 +161,8 @@ CREATE TABLE actions (
   session_id    TEXT NOT NULL REFERENCES sessions(id),
   seq           INTEGER NOT NULL,       -- 1-based, contiguous per session
   at_ms         INTEGER NOT NULL,       -- simulated clock
-  kind          TEXT NOT NULL,          -- 'command' | 'ask-user' | 'verify-caller' | 'note'
+  wall_ms       INTEGER,                -- when the step was appended (wall clock)
+  kind          TEXT NOT NULL,          -- command, ask/verify/deny, note, hint, code-sent, rewind, console-read
   input_json    TEXT NOT NULL,
   output_json   TEXT NOT NULL,
   UNIQUE(session_id, seq)
@@ -276,6 +277,25 @@ chosen context (site, user, device, printer/tenant). A template never calls
    tickets contain it, re-roll context/variant (bounded retries).
 7. **Persist a queued ticket** with its seed so it can be replayed.
 
+### How the request arrived
+
+A ticket can arrive as a conversation or as a message. The arrival is drawn after
+the fault is built, from the ticket's own seed and from whether the variant took
+the employee's handset out of action: `domain/tickets/voicemail.ts` puts one
+ticket in three on the desk's voicemail, gives it a recorded length, and names
+the line it asks to be rung back on — the mobile on file, or the desk line the
+generator already gives a callback method when the handset is dead. The arrival is
+written to the attempt's world and to the public ticket, so the queue can mark the
+ticket, the workspace can play the message in place of the issue description, and
+the curriculum can tell the attempt apart from one that came in live.
+
+It is deliberately a property of the seed rather than of a second random stream.
+A draw from the world's stream would change what every seed generates, and every
+ticket already in someone's queue would become a different ticket; drawing from
+the seed means a reload, a retry and a replay all read the same message. It also
+means a caller that needs a voicemail ticket — module 5's Practise button — can
+step the seed until the draw is one, instead of fighting the draw afterwards.
+
 ### Fairness lint (`scripts/lint-content.ts`)
 
 Run in CI over a sampled seed set (e.g. 500 seeds per variant):
@@ -377,7 +397,70 @@ Design rules:
   terminal, and the side terminal are all bound by it; it is written by the
   deny action, persisted with the world, and reproduced by the replay fold, which
   is what lets a learner un-run a refusal made by mistake and get the account
-  work back.
+  work back. The same flag is what the workspace *names*: `accountChangingCommands()`
+  reads the set back off the registry, and the terminal prints it above the prompt
+  and the case file beside the recorded reason, so which commands are off the table
+  is a rule the desk can read rather than a wall it walks into. One list, two
+  places: a command added with `changesAccount` is refused and named together, with
+  nothing to keep in step, and reads are never on it, because a refused ticket
+  still has a log to fill and a report to write. That same flag is what the
+  debrief invents a finding from: an account-changing command sitting *after* the
+  denial in the log was tried against a refusal the fold already holds — the only
+  thing that can lift the refusal is un-running the denial, which takes those
+  steps out of the log with it — so the debrief sets the refusal beside what was
+  tried after it (`refusalFindings`, id `change-after-refusal`, naming the verbs
+  and the accounts). It is a finding and not a penalty: the command never ran and
+  changed nothing, so the only thing wrong with it is that the attempt contradicted
+  its own close. A refusal that was honoured produces no finding at all. The same
+  selection is read while the ticket is open: the case file's refusal panel names
+  each account change tried after it (`DenialView.retried`, from
+  `accountChangesAfterRefusal`), because a learner who tries the change anyway
+  should meet the decision there and then, not first in the debrief. One function
+  answers "what came after the refusal", so the live callout and the debrief
+  cannot hold different lists, and un-running the denial takes both away.
+- **A decision is enforced in one place, and every command is asked about it.**
+  The refusal above is the loudest example of a shape the simulator keeps
+  producing: something the desk or the world has settled — a refused request, a
+  stopped Print Spooler, a machine held on the shelf — is written down, and a
+  later command would quietly walk over it. Those rules now live together in
+  `src/domain/environment/policy.ts` and are asked in one pass by the reducer, so
+  the answer is the same whether the command came from the terminal, a console
+  button, or the Remote Desktop, and "what does this decision stop?" has one file
+  to read. A rule names the commands it stops through a flag on the registry —
+  `changesAccount`, `needsSpooler`, `needsRemoteSession` — rather than by listing
+  names, so adding a command to the rule is adding the flag. A rule whose only
+  input is the world and the command is asked by the reducer for every command
+  (`request-refused`, `no-live-session`, `spooler-stopped`); a rule that needs the
+  command's own
+  arguments, or has to answer in the command's own order, is an exported helper
+  the command calls at a documented point instead (`stockPolicy`, which both the
+  shelf handover and the imaging run consult, so "held" means one thing in both).
+  A command that acts on a machine it names, rather than on the one it was typed
+  at, declares that machine once as `targetDevice`; the reducer resolves it a
+  single time and passes the device both to the rules and to the command, so a
+  rule about the target's state and the change it guards cannot end up looking at
+  two different machines.
+  Both kinds return the same refusal shape and are tested together, by rule id
+  rather than by wording. Which decisions bind, which deliberately do not, and the
+  order a new rule is added in are kept in
+  [research/decision-binding-audit.md](research/decision-binding-audit.md).
+- **Every command is either behind a console button or named terminal-only.** The
+  reference replay proves the *scored* commands can be reached without typing;
+  a command no scenario uses could still be added with no button at all. So the
+  guard follows the whole registry: `tests/app/consoleParity.test.ts` walks every
+  console's actions over the fixture world, each variant's own world, and each
+  step along its reference path — a console grows actions as the work goes on, so
+  a button that only appears mid-ticket still counts — and asks of every
+  registered name whether some action would run it. A command that is not
+  reachable has to be in that file's `TERMINAL_ONLY` map with the reason it never
+  will be, so being terminal-only is a decision on the record rather than an
+  omission: a command added tomorrow without a button fails the suite until
+  somebody writes one or writes the reason. The list is checked the other way
+  too, so a command that gains a button has to come off it — it may shrink, not
+  grow quietly. Today it holds the session and diagnostic verbs (`whoami`, `dir`,
+  `netstat`), the list commands a console already shows as its records
+  (`get-sessions`, `get-messages`), and two changes no console offers yet
+  (`remove-share-deny`, `set-default-printer`).
 - **Reads and changes are declared, not inferred.** Every entry in the registry
   carries `access: 'read' | 'change'`, and an argument that changes what a read
   does is named in `changingArgs` — `ipconfig /all` looks, while `ipconfig /renew`
@@ -409,6 +492,49 @@ honest "I'm not sure, it just doesn't work" rather than invented facts.
 `verify-caller` is a first-class action: the learner confirms employee ID and a
 callback number against the directory, and the action is logged for the rubric.
 This is the key safety habit in PWD-01 and a reusable mechanic.
+
+A callback proves only what the line proves. The caller's own mobile reaches the
+caller; a shared team line on their record reaches whoever is at that desk, and
+the check says so by naming the colleague who answered rather than passing as the
+caller. The gate stays shut on that answer — the person on the ticket is still
+unproven — and the attempt keeps the fact: the debrief quotes the colleague
+beside the caller's own claim that a team-mate would vouch for them, and the
+process cost records taking the word. The one variant that puts such a line on
+the record (`PWD-01/shared-line-callback`) draws the answering colleague from the
+caller's own department, and never the manager already listed as a contact.
+
+The live code has a deadline the learner can see: the panel prints how many
+simulated minutes are left and the clock time it ends at, and says plainly when
+it has run out. The number comes from the attempt's own clock — the same one the
+read-back check compares against, and the one each command advances by a minute —
+so the countdown moves with the work done rather than with the wall. It is a
+reading of the view, not a ticking timer: a real-time countdown would announce a
+deadline that has not actually arrived, because sitting still in this simulation
+spends no time at all.
+
+The caller's clock is the exception, and deliberately so. A pressured ticket's
+stall ladder is timed in wall minutes since the desk last acted, not in minutes
+since the attempt began, because someone on a phone experiences the silence and
+not the simulated minute. Every step the learner takes restarts it — a command, a
+question, a note, a check, a hint, an un-run — while the caller's own
+interruptions do not, since being spoken to is exactly what the ladder is waiting
+out. An attempt that pauses after a run of work is therefore nagged afresh, and
+one that starts slowly and then gets going is not charged for the quiet start.
+Each action row keeps both clocks for this: `at_ms` is where the step sits on the
+call, and `wall_ms` (stamped by the repository when the row is written) is when
+it happened. Rows written before `wall_ms` existed read as the attempt's start,
+so an old log's ladder still begins somewhere honest.
+
+The script also hears the tools. Opening a console, or reading a record in one,
+is recorded as a `console-read` action — the console's id, and the record's when
+one is opened — because that look is the learner acting on the call even though
+it runs no command and changes no machine. A line can then be written against
+it: the pressed account caller reacts to the directory being opened, the angry
+printer caller to their queue being read. A read is not work on the line, so it
+does not by itself walk the stall ladder up by a step; it does restart the stall
+clock, since a desk reading a record is plainly still there. And because the row
+changes nothing in the world, it is not a step of the rubric, it keeps out of
+the conversation, and a cut made before one can still be put back.
 
 ### Network teaching example (NET-01, bad DNS)
 
@@ -478,6 +604,21 @@ reset); `absent` encodes "did not do the dangerous thing".
   while a rung is unplaced, and falls back to the rungs on the steps for a score
   that never recorded a count at all.
 
+  Stating the gap is not the end of it. From that notice the learner can
+  **reconstruct** the lost rungs: each one is priced again from the attempt's
+  own policy, at the position it can only have held — after every rung the log
+  still places — and the result is kept in `scores.hint_repair_json`, beside the
+  evaluation rather than inside it, with `source: 'policy'` and the moment it
+  was made. Under a flat rate capped per attempt those prices add up to exactly
+  the part of the charge no step can show, so the repair reconciles the two
+  numbers instead of inventing a third; when the policy read back is not the one
+  the attempt was scored under, both numbers are kept and the debrief says the
+  charge is what stands. What the repair never does is give a lost rung a step:
+  the log cannot say which one it unstuck, and a guessed step would be a worse
+  record than a gap. Every reading of it is labelled **Reconstructed**, and the
+  action is idempotent, so a second press returns the record it already has
+  rather than pricing the same rungs twice.
+
 ### Feedback
 
 The debrief renders, per rubric item: pass/fail, what happened in the learner's
@@ -518,6 +659,20 @@ earn credits nothing, and a note or a closure code credits no command at all, so
 the list does not flatter: a command that proved nothing is shown as the dead end
 it was, and one the simulator refused says so.
 
+Between the two sits **How you used the tools**: the consoles the attempt opened,
+in the order the log put them in front, with what each one saw — how many times it
+came up, how many records were read in it, and how many commands it ran. It is
+read by `toolUseReport` from the same rows: a `console-read` naming no record is a
+console coming to the front, one naming a record is a read, and a `command` whose
+`source` is a console id is work that console did. The two shells are counted
+apart, because no console owns them. The reading says three things the trail
+cannot: which console carried the work, which consoles were opened and never run,
+and how much the attempt moved about — including how often it went back to a
+console it had already opened. A console whose open row was never written still
+appears from the command that ran in it, an attempt that never touched a console
+has no section at all, and nothing here is stored: the section is rebuilt from the
+log on every open, so a rewind or an older attempt reads the same way.
+
 On a network ticket, the debrief also draws the map itself. `buildTopology` reads
 reachability from the action log alone — a link lights up only where a recorded
 check proved it — and the view it returns is stored with the score as
@@ -539,9 +694,60 @@ Practice → generate/select ticket → session active
    ├── submitCommand → parse → reduce → persist action → render output
    ├── ask caller    → intent → answer → persist action
    ├── verify caller → log action
-   └── Resolve ticket → choose closure code + note → score → debrief
-                                              └→ update stats + Leitner
+   ├── Resolve ticket → choose closure code + note → score → debrief
+   │                                          └→ update stats + Leitner
+   └── Refuse request → report to Security → score → debrief
+                         └→ the same close, with the refusal's own code
 ```
+
+- A refused ticket gets its own closing path rather than the ordinary resolve
+  form. The catalogue marks the code a refusal takes (`refusal: true` on
+  `denied-social-engineering`, read back by `refusalClosureCodes()`), and the
+  denial view carries it as `closingCode`, so the heading, the note label, the
+  prompt and the button all become the report — what was asked, what was checked
+  before deciding, what Security should do next — with the disposition already
+  chosen. Refusing also writes that code to the close draft when the learner has
+  not chosen one, so a reload reopens the report instead of the default resolve.
+  The report is the close's contract rather than a target to aim at: a refusal
+  cannot be recorded until the note says what was asked, what was checked before
+  refusing, and what Security should do next, and the close names the part that
+  is missing — in the review the form reads (so it is said before the button is
+  pressed) and in the service that refuses the close, which is what keeps a
+  second surface from recording a refusal without one. Both ask one rule,
+  `securityReportGaps` in `scoring/noteCoverage.ts`, which reads the note with
+  the same matcher the scorer uses for the ordinary hand-off, so a note that
+  covers a part is covered by both accounts of it; the refusal's report adds
+  the identity evidence a refusal is decided on as the middle part, and leaves
+  “verified” out of it because “unverified” contains the word and is the thing
+  being refused. A close that is refused writes nothing at all — no note, no
+  closed session — so the attempt stays open on the report it was writing.
+  Nothing is locked: a learner can still pick another disposition, and a refused
+  ticket whose right answer was a fix is told so by the scorer, which is the same
+  feedback any wrong close gets. The code's outcome stays `escalated`, because a
+  refusal is handed to Security rather than resolved at the desk, and that is the
+  disposition the refusal variants' own rubric accepts.
+- The refusal has a reason, and the reason can be the thing that was wrong. The
+  deny control offers four — someone else's account, an unproven caller, a
+  password or code asked for out loud, and urgency used to skip the checks — and
+  every refusal variant names the one it needed (`denyCaller('third-party-request')`),
+  in its rubric and on its reference path. The words for those reasons live in
+  the domain (`scoring/refusal.ts`), so the control that offers a reason and the
+  rubric that requests it cannot drift, and the debrief can quote both.
+- The reason is scored as a share of the step, not as a gate. The reason the
+  ticket needed earns the step; a recorded refusal under another reason earns
+  half of it (`MISMATCHED_REFUSAL_CREDIT`); no refusal earns nothing. A refusal
+  does two things — it stops the request and it records which rule the request
+  broke — and a mismatched reason does the first and not the second. A partly
+  earned step is therefore not a critical failure: the account was protected, so
+  the attempt can still pass, but the half it did not earn keeps it short of the
+  strong band. Steps carry that share as `credit`, and both the debrief (◐ partly
+  met, with the points earned and a finding quoting both reasons and the rule
+  behind the needed one) and the close preview, which opens before committing,
+  say what is still owed.
+- `PWD-01/credential-readout` is the ticket that needs the ask itself refused:
+  the account is active and unexpired, nothing needs fixing, and the caller asks
+  the desk to read out a password and then a code — the refusal is the whole
+  answer, and the verification would not have changed it.
 
 - Sessions auto-save after every action (SQLite snapshot write, debounced 250 ms,
   flushed on resolve and on `visibilitychange`).
@@ -567,7 +773,45 @@ Practice → generate/select ticket → session active
   keeps the same record, so a debrief can say "priced for Accounts, not at the
   default" months later even after the family or the default has been re-priced.
   A row written before this was recorded reads as the default price, which is
-  what it paid.
+  what it paid. A debrief opened months later also says when the setting has
+  moved underneath it: `hintPriceNow` carries the price the same ticket would be
+  charged today, present only when that differs from the one the attempt paid, and
+  the line reads *Settings have moved since* beside the steps. The score is not
+  re-priced — the line exists so the number beside the steps is not read as the
+  app's current price — and an exam never carries it, because its rate came from
+  the exam and not from the catalogue. A budget change is not a price change: it
+  rations rungs without moving what they cost, so it leaves the line off.
+- What a hint will cost is answered before a ticket is opened: the practice queue
+  lists every family's **effective** price — the default, or the family's own —
+  and marks the rows that are only inheriting it, so the unpriced families (the
+  interesting half of such a table) can be seen at a glance. The default is
+  stated once above the list rather than repeated as a row, and that sentence also
+  says a ticket keeps the price it started at. The panel reads the same
+  `loadHintTargets` the Settings table edits, so the two cannot disagree about
+  which families exist or what they charge, and it draws its price text with the
+  same shape the debrief prints (`ui/routes/PracticePage.tsx`).
+- What resuming an open ticket lands in is on its card: the console that was in
+  front and how far in the work had got — *Left off in the Server room console, 9
+  steps in* — with the same phrase in the resume bar above the queue and a
+  **Resume** button on that row instead of **Open ticket**. Both halves are  the attempt's own record: the stored workspace layout, read through
+  `normalizeWorkspaceLayout` exactly as a reopen reads it, and `countBySession`
+  for the steps, so the card cannot promise a place the workspace would not reopen
+  in. Only the attempt the app holds open has a point — `loadQueue` reads
+  `sessions.findActive` once and marks that ticket alone — and a log with no steps
+  yet reads as *the terminal, before the first step* (`ui/components/resumePoint.ts`).
+- Where the learner was reading is remembered on the two long pages, in the same
+  settings table as the dividers: a taste in viewing rather than attempt data.
+  Progress stores **which section** was being read (`progressSection`) as an id
+  like `progress-hints` rather than as a scroll offset, because the page is rebuilt
+  from live history and a row added above would move an offset onto a different
+  block; the page scrolled to it once the history is on screen, and writes the
+  section only where the reading comes to rest, never while the page is still at
+  the top of a restore. Job targets stores its **status filter**
+  (`targetsFilter`), read beside the listings so the list first paints the way it
+  was left rather than everything and then a jump. Both read back defensively: a
+  filter this build does not offer is *All*, and an id that is not an id is no
+  reading, so neither can hide a page behind a value nobody set
+  (`app/settingsService.ts`, `ui/routes/sectionSpy.ts`).
 - The close being written — the chosen code and the handoff note — is not an
   action, because nothing has happened yet. It is saved on the session
   (`closure_draft_json`) as the learner edits it, debounced and flushed when a
@@ -575,6 +819,72 @@ Practice → generate/select ticket → session active
   Closing the ticket clears it: the committed code is `sessions.resolution` and
   the note is appended as a `resolution` note action, which is what the debrief
   scores.
+- Where the learner was *inside* a console is part of the attempt too, and
+  stored beside the workspace rather than in it: `console_focus_json` on the
+  session holds, per console id, the search typed in its box and the record left
+  open in front, so a reopened ticket lands on the machine rather than on a bare
+  list. The tab says which console; this says what it was showing, and it is a
+  per-attempt record for the same reason the tab is: the next ticket's machines
+  are different machines. It is written when the typing pauses (500ms) and again
+  when the page is hidden, unloaded or left, one console at a time — only the
+  consoles whose focus moved since the last write are sent — and a console left
+  with an empty box and no record leaves no entry behind, so an emptied search
+  is not restored as an empty one. A record that the attempt no longer has, after
+  a rewind or a command that removed it, is not reopened: the console opens on
+  its list. A console a later build no longer offers loses its entry, and a row
+  written before this existed reads as no focus at all, which
+  `normalizeConsoleFocus` guarantees whatever is in the column. Reading it back is
+  not a change: arriving on a ticket writes nothing, and the pane only reports
+  when the learner searches or opens a record.
+- Where the learner was working is part of the attempt, like the close they were
+  writing: which pane was in front, which tool console was showing, and which
+  tabs were left open beside it. It is saved on the session
+  (`workspace_layout_json`) as it changes — switching a pane or opening a console
+  is a decision that has already happened, so it is written on the click rather
+  than on the way out — and a reopened ticket lands back in that tool, with every
+  restored tab read again from the world rather than put back as it was, because
+  a console projects machines that may have moved on. A workspace the learner
+  never left stores nothing and has the column cleared instead, and a console a
+  later build no longer offers loses its tab and the front with it, which
+  `normalizeWorkspaceLayout` guarantees however old or corrupt the row is. It is
+  a per-attempt record rather than a setting, unlike the split beside it: the
+  consoles in front project *this* ticket's machines and this attempt's evidence,
+  and the next ticket opens on a clean terminal. The tab strip is the learner's
+  own order — a tab can be dragged to a new place, or moved with Ctrl and an
+  arrow key, because a drag is not available to everyone — and **tabs can be
+  pinned as a group at the left of it**: the pinned ones are always first, in the
+  order they were pinned, nothing can be dragged ahead of the group and no pinned
+  tab can be dragged at all, so a working set stays where the hand expects it
+  while other tabs come and go. The free tabs after the group keep the learner's
+  order and are the only ones a drag can move. Pinning joins the end of the group
+  rather than the front, so a group built one click at a time keeps the shape it
+  was built in; unpinning puts the tab at the edge the group leaves — the front
+  of what is free — rather than wherever it happened to be inside the group,
+  because the group has to stay the front of the row and a released tab left in
+  the middle of it would leave a pinned tab behind an unpinned one. A hairline in
+  the gap before the first free tab says where the hold ends, and it is drawn on
+  that tab rather than as an element of its own so the row's flex sizing does not
+  move when the group grows. The rules are pure functions in the same domain
+  module (`pinWorkspaceTool`, `reorderWorkspaceTools`), so the order on screen and
+  the order in the row cannot drift apart, and they travel as part of the same
+  JSON: `pinned` became a list of ids in place, and an attempt written when it
+  was one id reads back as a group of one, which `normalizeWorkspaceLayout`
+  handles because the column is JSON — no migration. **A tool can also be
+  dragged out of the shelf and into the strip**, which opens it at the place it
+  was dropped rather than at the end: the shelf is the one view that holds the
+  picker and the strip at once, so it is the picker a drag starts from, and the
+  dropdown in the card header does not offer the gesture because it covers the
+  strip it would have to be dragged to. The place is read off the tabs' own
+  boxes — each tab answers for its own middle, so a pointer in a tab's left half
+  lands ahead of it — and the pin outranks the pointer exactly as it outranks a
+  drag, so the place is `workspaceInsertIndex`'s answer rather than the raw sum:
+  the caret between two tabs shows the place the tool will really take, never
+  one it would be refused. A tool that is already open is moved by its own drop
+  instead of being opened twice, a pinned tab cannot be moved at all, and the
+  drop opens the console the way a click does — read and recorded — so a drop is
+  a way to reach a tool, not a second kind of opening. The caret is drawn in the
+  strip's own colour, in the gap it would open up, because a tab cannot be
+  highlighted for a place it does not occupy yet.
 - Un-running a step is a cut in the action log, not an undo stack in the UI. The
   log is the only source of truth for the world *and* the score, so a rewind
   deletes the named step and everything after it and replays what is left from
@@ -591,6 +901,30 @@ Practice → generate/select ticket → session active
   are folded from the restored log. Caller lines after the cut do not block
   that; a command, note, hint or identity step does, because moving it would
   mean renumbering the log under work the learner has since done.
+- The Progress page reads three habits off the same logs rather than off stored
+  counters: which rubric steps are bought as hints, where attempts are un-run,
+  and which proof the desk reaches for when a caller has to be identified. All
+  three are rebuilt by `loadProgress` from the action rows, so they follow an
+  older attempt, a retry, or a later rewind with no migration and no column to
+  keep in step. A rewind row names the family and the step, never the account:
+  the cut's `boundary` is described by the same rule the timeline uses — a
+  command by its verb (`unlock-account`, `.exe` dropped), anything else by what
+  the learner was doing (`a troubleshooting note`, `a question to the caller`).
+  A family's share is cuts per attempt, capped at 100% because an attempt cut
+  and then abandoned never reaches the family's statistics; rows sort by that
+  share before the raw count, so one cut in one attempt outranks four in forty —
+  which is what "heavy rewinding on a family" means.
+- The verification rows are read from every `verify-caller` action the logs hold:
+  the method it used (`verification-code`, `callback`, `badge-scan`,
+  `letter-pin`, `in-person`) and whether it proved the person on the ticket, by
+  the same rule the scorer uses (`verified !== false && provesCaller !== false`).
+  A callback a colleague answers is therefore a check that happened and proved
+  somebody else: the row counts it as used, not proved, which is exactly what the
+  shared-line variant teaches. Rows are per method, most used first with the
+  desk's own order breaking ties, and each names its checks, the attempts they
+  came from, and the share that proved the caller. The totals span every attempt
+  in the logs, abandoned ones included: a proof the learner attempted is still a
+  choice they made, and hiding it would make the habit look tidier than it is.
 
 ### Routes
 
@@ -601,14 +935,27 @@ Practice → generate/select ticket → session active
 | `/practice` | Scenario family picker + difficulty; "surprise me" |
 | `/ticket/:sessionId` | Workspace: ticket + caller chat, terminal, quick actions, resolve flow |
 | `/debrief/:sessionId` | Score breakdown, timeline, expert path, retry actions |
-| `/progress` | Mastery per family, attempt history, Leitner due list |
+| `/progress` | Mastery per family, attempt history, Leitner due list, hint habits, how you verify callers, and where you un-run |
 | `/settings` | Workspace theme and terminal surface, hint price (default and per scenario family), exam mode, backup/export/import, reset data |
 
 ### Workspace layout
 
 Three regions on desktop: ticket and caller chat (left), the tool card with the
 terminal and the tool consoles (right), and the quick actions and command
-reference under the case file. The tool card normally shows one pane at a time
+reference under the case file. **The two columns themselves are draggable**: a
+second divider stands between the case file and the card, so a learner can trade
+width between the columns the way they trade it inside the card, and it holds the
+same contract — a focusable `separator`, arrows, Shift, Home/End, Enter and a
+double click restoring the `0.92 : 1.45` the grid shipped with. The trade is a
+share of the stage rather than a pixel width, so it survives a window resize as it
+was chosen, and it is stored with the split's preference: read with the session, so
+the first paint is the shape it was left in, and written once it comes to rest.
+What keeps a column readable is a pair of pixel minimums — 300px of case file and
+420px of card — applied by the drag against the width the stage has *now*, because
+the same share is a different pair of widths on a different screen; the tracks stay
+fractions so the divider is exactly where the ratio says it is. Below 980px the
+stage is one column and the divider goes with the second column, exactly as the one
+inside the card goes when the halves stack. The tool card normally shows one pane at a time
 behind a Terminal/Tools tab pair; **Split screen view** shows both at once as two
 labelled regions, so a learner can read a console while the command log stays on
 screen. In split mode the tabs are hidden, because there is nothing left for them to
@@ -625,13 +972,99 @@ the pane beside it cannot disagree. Capture is taken after the ratio is applied
 and may fail without ending the drag, because it is an optimisation, not the
 drag. Below the stacking breakpoint the handle is hidden and the halves take the
 full width, with the hairline drawn on the second pane (`:not(:first-child)`,
-since a `display: none` handle still sits between them). The ratio is per visit
-and is not persisted. Whether the split is
-on is the learner's own setting rather than attempt data: the workspace reads it
+since a `display: none` handle still sits between them). Whether the split is on
+is the learner's own setting rather than attempt data: the workspace reads it
 together with the session, so the first paint is the layout they left, and moves
-it when the switch does. A preference that will not read falls back to the tab
-layout and never keeps a ticket from opening. The pane keeps several tools open
-at once: the consoles a learner has opened are a tab strip above the console,
+it when the switch does. **Where the divider sits is stored with each ticket**:
+the width is part of the attempt's workspace row beside the pane and the tabs, so
+a ticket reopens with the two halves the size *that* ticket was worked at rather
+than at whatever another ticket was last sized to. It is written once the divider
+comes to rest — not on every pointer move, and not while it is under the pointer —
+through the same clamp the pointer and the keyboard respect, to a thousandth of
+the card, and it rides along with every other write of that row so a tab click
+cannot wipe it. The move also writes the device's own width, which is what a
+ticket with no width of its own opens at; an unwritten device width is the default
+half. Nothing stored is not the same as a stored half: a learner who has never
+moved the divider here has no width in this ticket's row, and the layout it
+writes back is untouched, so opening a ticket never writes one. A row written
+before widths were stored, or a width that will not read, is the device's own
+preference rather than a stored half, and a preference that will not read falls
+back to the tab layout and never keeps a ticket from opening.
+**The divider also has stops**: a console-heavy quarter, the even half, and a
+log-heavy three quarters, read by name from the card header while the split is on
+and reachable from anywhere with `[` and `]`, which step to the next stop that way
+and stay on the last one rather than leaving the card. **A drag is magnetised to
+them too**: within half a rem — eight pixels at the shipped text size — the
+divider lands exactly on the stop under the pointer, and the header lights it,
+which is how a pointer user reaches the same three places the keys name. The
+magnet is half the catch on a pane width (0.75rem) because a stop is a round
+number the handle already states rather than a layout the content is asking for,
+and all three kinds are candidates on one move: the nearest wins, and a tie keeps
+the pane width. Past the magnet the divider follows the pointer again, which is
+what keeps a stop from becoming a region the card cannot be put inside. A stop
+is a ratio like any other, so a jump is written by the same settling timer as a drag: landing on a
+stop and leaving never writes two rows for one decision. The keys stand aside for
+any field that has the keyboard — a bracket is a character before it is a
+shortcut — and for a divider that is not on screen, which is how they behave below
+the stacking breakpoint without a second copy of the breakpoint to keep in step.
+**And the drag catches on the console's own widths.** A console measures itself
+rather than the window (`container-type: inline-size` in `ToolConsole.module.css`),
+because in split view it is handed half a card: below 32rem a list no longer fits
+beside its detail, and the detail is the part worth reading, so the list goes above
+it. That width is a size the content wants, so a dragged divider that comes within
+0.75rem of it settles a couple of pixels inside the wide layout — where the console
+is at its tightest two-column size, rather than on the line where it has already
+stacked — and the handle thickens to say it caught. The pane-to-console gutter is
+measured from the console's own box once a drag starts rather than copied out of
+the stylesheet, and the width list is one constant in the domain that
+`tests/ui/consoleSnapWidths.test.ts` holds against the container queries in that
+stylesheet, so a query added there without a snap here fails the build. The keys and
+the header stops are left alone: a catch under the learner's finger is a convenience
+for the pointer, and a key that would not go where it was pressed would be a bug in
+the key.
+**And the log measures itself, the way a console does.** `container-type:
+inline-size` sits on the terminal's pane rather than on the card, because in split
+view the pane is handed part of the card and the log's layout has to follow that
+rather than the window. Below 22rem the pieces stop being a row and become a
+column: the summary's three tiles turn into three label/value rows (the width of a
+tile at that size is a word and an ellipsis), the step gutter narrows from 2.1rem
+to 1.5rem, the log's padding tightens, and the prompt moves above its command
+instead of sharing a line with a path and a long command. Those last two rules
+live in `practice.module.css` — the entries are styled there — under the same
+query, and `tests/ui/consoleSnapWidths.test.ts` holds both stylesheets' number to
+the domain's list. 22rem is deliberately below the half-split a 1440px window
+opens with (about 25rem of log), so the shipped desk is left in its wide shape.
+**The divider catches on the log's width too**, not only the console's. The
+terminal's container is the pane itself, so its width is simply the ratio's share
+of the card with no gutter; the snap compares both panes and takes the nearer
+width in reach, resting just inside the log's wide layout the same way it rests
+just inside the console's. An empty tool half measures no console — the geometry
+comes back with a `NaN` gutter — and the log's widths still apply, because the log
+is always there to restructure.
+**And the two trades can be asked for together.** Three presets — *Paperwork*,
+*Balanced* and *Machine* — set the case-file/card share and the terminal/tools
+split in one move: the number keys `1`, `2` and `3`, or a strip in the bar above
+the columns that names each one and carries its key in the title. The ratios are
+the domain's (`layoutPresets.ts`), paired by hand because they belong together: a
+wide case file leaves the card narrow, so its log takes the larger half; a wide
+card leaves room for a console, so the tools take the larger half. *Balanced* is
+exactly the fractions the grid shipped with, so a preset is undone by pressing 2
+— and a set of presets with no way back would be three one-way moves. Each
+position is applied through the same clamp the divider it moves respects: the
+stage against the room its two columns need at this width, the card against its
+quarter bounds, so a preset can never leave either divider somewhere a drag would
+refuse to put it. A preset's key stands aside for a field that has the keyboard
+and for a window where the stage has stacked, read from the handle's own computed
+display as the brackets are, so the shortcut and the control it drives cannot
+disagree about which of them exists. The strip lights a preset only when *both*
+dividers are on it: nudging one leaves the pair, and the strip says so rather
+than claiming the nearest shape. The split is set even while the split switch is
+off — the switch is the learner's, and a layout preset does not flick it — so the
+position is where it will be when the split is turned on. Nothing new is stored:
+a preset is a move like any other, and the dividers' settling timers write both
+positions. On a stacked window the strip is hidden with the divider it moves.
+The pane keeps several tools open at once: the consoles a learner has opened are
+a tab strip above the console,
 the tab acts as the switch, and only the console on screen is rendered, so the
 work of one tool is never hidden behind another's. Opening a tool that is
 already open brings it forward rather than adding a second copy. **← All tools**
@@ -639,14 +1072,111 @@ returns to the shelf without closing anything, and **Close** drops the tool on
 screen, choosing the neighbour the tab had or the shelf when it had none. Each
 close forgets that tool's view, so reopening reads the machine again instead of
 restoring a stale one, and every open tool — not only the visible one — is
-reread after a command or a rewind, because the consoles project machine state
-read at load time. The strip is per visit and is not persisted; the split
-setting is, and the two are kept apart on purpose. Below the widest
+reread after a command, a console action or a rewind, because the consoles
+project machine state read at load time. Where that strip is kept is the per-attempt record described
+above, unlike the split beside it, which is a setting; the two are kept apart on
+purpose. With more tools open than fit, the strip scrolls sideways rather than
+wrapping onto a second row, because a second row of tabs would take the height
+the console needs: a scrollbar would be the honest way to say there is more, but
+the row is too short for one, so each end with tabs still behind it fades out,
+and the tab in front is scrolled into view whenever it changes — stopping clear
+of that fade, because the start of its name is the part a tab in front has to
+say for itself. The width of the fade is declared once, with the other
+measurements in the token set (`--strip-fade`), and both the mask that draws it
+and the script that follows the tabs read that one value, so the two cannot drift
+apart. Those two promises are held as properties in
+`tests/ui/toolStrip.property.test.ts` rather than as examples: over seeded strips
+of every width the tests ask whether the tab in front can ever come to rest
+inside a band the mask is drawing (it cannot — and a tab too wide for the clear
+window keeps its own start on screen), and whether following the same tab twice
+can move the strip (it cannot, because the follow reads the tab back in the
+strip's own coordinates and the second sum lands on the same scroll). The corpus
+asserts its own coverage — both ends faded, both kinds of tab, follows that move
+and follows that do not — so a pass cannot come from testing nothing, and the
+model clamps the scroll the way the browser does, since the page assigns a number
+and the element quietly shortens it. The bar over the console keeps to one line at every width as well: the way
+back and the two controls may not wrap without reading as broken, so the
+console's name gives first, ending in an ellipsis with the whole name in its
+title.
+
+The strip also says which of its tabs has something the learner has not read: a
+tab whose console would now print a different page than the one it last had in
+front carries a dot, and its accessible name ends in ", new" so the mark is not
+colour alone. A console projects machine state when it is read, so a command
+typed anywhere — the terminal, another console, a desktop shell — can change a
+tab that is not on screen. The workspace keeps one digest per console (the
+`consoleNews` rule), taken from the fields a console actually prints, and
+compares it with the digest that console had when it was last in front. The tab
+in front is never marked, because it is the page being looked at, and neither is
+anything behind the shelf, where nothing is being read. That is decided by the
+render rather than only by the effect that files a read: a console is reread one
+at a time, so the tab in front can have its new page for a frame before that read
+is written down, and a dot on the tab being looked at — even for one frame — says
+the opposite of what is true. The digest leaves out
+what a console never prints — a record's filter ids, the map check's `atMs`, and
+the fake desktop's clock, which follows every command — so a clock tick cannot
+mark twelve tabs as news. It is per visit rather than per attempt, since the tabs
+are the attempt's but "have I read this" is not, so a reopened ticket starts
+quiet. **And the dot can be stepped to from the keyboard.** `N` opens the next
+tab along the strip that carries news, starting after the tab in front and
+wrapping once, so a second press carries on instead of landing on the tab already
+showing. The tab it opens becomes the tab in front, which is what marks it read,
+and the tools pane comes forward when the terminal was the pane in front: a dot
+says that something is there, but a strip wider than the card and a pane behind
+another one do not say where. It is a bare letter because nothing else in the
+workspace claims one, it stands aside for a field being typed into as the
+brackets do, and with every tab read it does nothing at all rather than cycling
+the strip. The strip advertises it (`aria-keyshortcuts="N T"`, the second key
+being the switcher below), a tab carrying news names it in its title, and the step
+itself is the domain's `nextConsoleWithNews`, so which tab comes next is testable
+without a browser.
+
+**The strip is a signpost, though, not an index.** With more tools open than fit,
+the ends fade and the middle is scrolled past, so a name can be on the card and
+still be several presses of the keyboard away. `T` opens a switcher over the card:
+a search field and the open tools in the strip's own order, each named as its tab
+is and saying so when it has news or is the one on screen. It is the strip's
+second bare letter, so it stands aside for a field being typed into and for a
+workspace with nothing open, where a list of tools to switch to would be empty.
+Typing narrows by any word of the name or of the console's id with its hyphens
+read as spaces, so `admin mail` finds Mail Admin as `mail-admin` does, and words
+count in any order because the learner should not have to remember how the card
+labels things. The arrows walk the list as a ring, Home and End take its ends,
+Enter switches and Escape gives the keyboard back to whatever had it — the button
+or the tab the panel was opened from, unless that has left the document. The panel
+declares itself modal, so it holds the keyboard while it is up: Tab is cancelled
+rather than allowed to walk out into the page behind, and the arrows are what
+move. A pick lands focus on the tab it opened, which is the anchor the learner
+would have clicked, so the next key press belongs to the strip. Because the
+shortcut must not be a secret, the Tools button names `T` in its title and the
+strip names both keys. Which names a query keeps and where the arrows put the
+highlight are `switcherMatches` and `stepSwitcherIndex` in
+`src/ui/routes/toolSwitcher.ts`, kept out of the component and tested without
+rendering anything.
+
+Below the widest
 layout the two halves stack in one column at the full card width — two 400px
 columns would leave the log wrapping every few words and a console's detail pane
 clipped — and each half scrolls inside about 42vh. The consoles measure
 themselves rather than the window (`container-type: inline-size`), so a console
-handed half the card puts its list above its detail instead of squeezing both. A
+handed half the card puts its list above its detail instead of squeezing both.
+**At the narrowest the divider allows, nothing sits beside anything.** A quarter
+of a small card is about 12rem, so below 20rem the console's second turn stacks
+what a row was holding: the search takes the line and the filter drops under it,
+a record reads its label above its value instead of a value in the leftover
+column, the detail's 8rem label stops being a floor, an action or an input takes
+the pane's width, a picker's action falls under its row and its name and holder
+wrap rather than ending in an ellipsis, and a tile's fact becomes two lines. The
+automatic grid floors are `min(…, 100%)` too, so an 11rem tile or a 13rem action
+column can never be wider than a 12rem pane and start a horizontal scrollbar the
+learner cannot widen away from. That tier is written **after** the rules it takes
+decisions back from, which is not cosmetic: a container query has no more
+specificity than the base rule it competes with, so a tier placed above `nowrap`
+or a fixed column is dead CSS that still reads correctly in review — which is how
+the pane kept cutting picker names to three letters at its narrowest while every
+line of the tier looked right. `tests/ui/consoleNarrow.test.ts` walks the
+stylesheet and fails if a base rule after a tier reclaims a declaration the tier
+makes, so the order cannot rot back. A
 console can also be read a second way: the Directory declares a grid, and a
 List/Grid switch above its records turns the same rows into tiles carrying the
 account's name, its account and department, and the facts its definition names
@@ -655,46 +1185,244 @@ the same either way, so a tile is pressed exactly where a row is; only the read
 changes, and the tile grid uses the pane's width until a record is opened. A
 console that declares no tiles keeps its rows even when the pane was last left
 in grid, so the switch can never dress a runbook as a square. A console can
-also declare itself a picker: Remote Desktop names its list in a centred heading
-over one search, and every machine row carries the button that opens or ends the
-session, so reaching a machine does not need its record opened first. The row
-button runs the same audited command as the record's own button, and the record
-still opens underneath the list when a row is read. No hidden-state
+also declare itself a picker: the list sits under a centred heading and one
+search, each row carries the button that does its next step, and the record opens
+underneath the list when a row is read. Three consoles are pickers and each keeps
+its own records and its own buttons — Remote Desktop offers connect or
+end-session on a machine, the Directory offers the record read on an account, and
+the Printers list offers the queue read on whichever kind of row it is, a
+printer's held jobs or the local spooler's. A row button may only be an action
+that needs no value typed into it: a button that could not run from a row stays
+in the record, where its box is, which is why clearing a queue is not a row
+button. The row button runs the same audited command as the record's own button,
+so reaching the record this way is still a step in the log. Rows name what they
+are — a machine, an account, a printer — through the record's `icon`, with the
+console's `rowIcon` as the fallback for a list of one kind; the printers list
+holds two kinds, so each row names its own. Picker rows are a *reading*: the
+Directory keeps its tile grid, the switch reads the same records the other way,
+and the rows' shortcut buttons belong to the rows. No hidden-state
 inspector — the learner only learns what the tools show them. Keyboard-first:
 focus lands in the terminal, `Tab` cycles regions, quick actions are reachable
 without a mouse. A narrow-window layout stacks the regions, and phone width gets
 the docked-console layout described below; a mobile app is still out of scope.
 
-At phone width (`max-width: 600px`) the two-column split is the wrong shape
-rather than a smaller one: the case file alone runs to several screens, so a
+At phone width in portrait (`max-width: 600px` and `min-height: 481px` — a phone
+on its side is the landscape paragraph's problem below) the two-column split is
+the wrong shape rather than a smaller one: the case file alone runs to several
+screens, so a
 console stacked under it is a scroll away from every command and a second scroll
-away from its output. The card therefore becomes exactly one screen tall
-(`100dvh` minus the sticky header, with a `100vh` fallback) and the split turns
-into a docked console: the tool pane takes the top row and scrolls inside it,
-and the terminal takes the bottom row, where its log scrolls but the chip row
-and the command line stay put. Both rows are proportional (`1.1fr` / `1fr`) so a
-short window shrinks the console instead of clipping it, and the DOM is
-terminal-first, so the two panes are swapped with `order`. The divider is hidden
+away from its output. The card therefore leaves the page's flow — `position:
+fixed` against the bottom edge, a little over half the screen tall (`55dvh`, with
+a `55vh` fallback for browsers without dynamic viewport units) — and the split
+turns into a docked console: the tool pane takes the top row and scrolls inside
+it, and the terminal takes the bottom row, where its log scrolls but the chip row
+and the command line stay put. Pinned rather than merely tall is the point: the
+case file and the open tools scroll behind the card instead of carrying it out of
+sight, so the console is under the thumb on every screen of the paperwork rather
+than at the end of it. The column keeps the card's own height clear at its foot,
+from the same two numbers, so the last section can still scroll out from under
+the card. Both rows scale with the window (`1.1fr` / `1fr`), but the console's
+carries a floor of `10rem` — the chip row, the command line, the log's own inset
+and two lines of log, at every text size Settings offers. Proportional alone was
+not enough: on a 320×568 phone the pair left the log 27px, a line and a quarter,
+so the terminal was on screen and unreadable. The floor is in rem rather than px
+because everything it covers is, so raising the text size raises the floor with
+it. `tests/ui/phoneLog.test.ts` measures the floor against two lines at every real
+phone, in both pane states and at every text size. The DOM is terminal-first, so
+the two panes are swapped with `order`. The controls in the
+column carry `scroll-margin-bottom` equal to the card's height, so a control that
+takes focus — by Tab, or because a script moved it — comes to rest above the card
+rather than behind it; it is written on the controls and not on `:focus`, because
+`:focus` stops matching when the window loses focus while a script can still
+move it. The divider is hidden
 and the ratio ignored, because a single column has nothing to drag, and the
 quick-command row stops wrapping and scrolls sideways — three wrapped rows cost
 the log more lines than a phone can spare. With the split off the same screen is
 the ordinary tabbed pane. `tests/ui/workspaceNarrow.test.ts` holds this shape,
-since jsdom applies no media queries and nothing else can see it.
+since jsdom applies no media queries and nothing else can see it, including that
+the card sits under the sticky header in the stack and that the room reserved at
+the page's foot still matches the card's height.
+
+**The card's own height is the third divider**, and the workspace's only
+horizontal one: on a phone the card's top edge is a bar 1.5rem tall with a grip
+at its centre that thickens and takes the accent while it is held, and with the
+share of the screen the card has come to at its right end for as long as the drag
+lasts — and nothing written on it at rest, because a bar is a control rather than
+a readout. It is a focusable `separator` with the other two's contract (arrows,
+Shift, Home/End, Enter, and a double click putting back the share an untouched
+card would have here: a log's 55%, or a desktop's 82% while a machine is on the
+card), the same 0.3–0.92 clamp, and the same settling timer, so a drag writes one
+row when it comes to rest rather than one per pointer move. The pointer maps to
+the screen rather than to a container, because the card is fixed to the window:
+the share is simply the part of the viewport below the edge. The bar is drawn
+over the head's top padding by 0.4rem — the room it grew by comes out of padding
+and not out of the log, so the console keeps the two lines
+`tests/ui/phoneLog.test.ts` holds it to — and it exists only where the dock does:
+a window without a pin has no edge to move, and the landscape sheet is docked by
+width instead. The share is a plain number rather than a length, so it means the
+same thing on the next phone and the clamp needs no window to measure.
+
+A phone's keyboard is the one thing that pin does not survive. The on-screen
+keyboard does not shrink the layout viewport — it floats over it — so `bottom: 0`
+sits the command line under the keys exactly when the learner is typing in it.
+The visual viewport is the only thing that knows: its height plus its scroll
+offset is where the visible area ends, and whatever lies below that is keyboard.
+`useKeyboardInsetRef` measures that strip (`innerHeight - (visualViewport.height +
+visualViewport.offsetTop)`, floored at zero), follows it on both `resize` and
+`scroll` — a keyboard opening is a resize, a page scrolling under one is a scroll
+— and writes it onto the workspace as the `--keyboard-inset` custom property. It
+returns a callback ref and writes to the element directly: the workspace root
+only mounts once the ticket has loaded, and the viewport moves with every pixel
+of the keyboard's animation, so neither a one-shot effect nor a state update
+would do. The
+phone dock adds it to its `bottom`, so the card climbs onto the keyboard, and
+adds it to the room kept at the foot of the column and to the controls'
+`scroll-margin-bottom`, so the case file still scrolls clear of a card that is no
+longer against the floor. Lifted by the keyboard's height, a `55dvh` card would
+climb behind the two-row header, so the card is capped at
+`100dvh - var(--header-height) - var(--keyboard-inset)` and the console shrinks
+rather than hiding its own chrome. The plain `bottom: 0` stays written first as
+the fallback: a browser with no visual viewport, or one that resizes the layout
+viewport for the keyboard instead of overlaying it, measures zero and is left
+with the old bottom edge. The landscape sheet gets the same measured bottom,
+because a phone on its side types into it too.
+
+A landscape phone is the same problem turned on its side: 844×390, wide but
+short. Stacking it the way a narrow desktop window does leaves a 544px card
+under the case file, entirely off the screen. The phone's bottom pin does not
+fit either: a bottom-docked card needs about 70% of a 390px screen, which leaves
+61px of case file to read through. The width has room for both. So a short
+window docks the card to the right edge instead: full height under the header,
+the stage reserving its width so the case file keeps the column beside it, and
+the stage bar confined to that column so the ticket's clock, cost and projection
+do not end up under the sheet. The bar pays for it by wrapping to three or four
+rows in the narrower column, and it scrolls away with the case file while the
+card stays. The gate is height (`max-height: 480px`) with `min-width: 481px`
+only to keep out a window too narrow to hold the dock beside anything at all —
+width is what this window has. A 568×320 phone used to fall between the two
+sheets, being both too short for the bottom pin and too narrow for this one; it
+takes the side dock now, with a 20rem sheet and a 195px case-file column.
+
+The console itself gets exactly the phone treatment inside the card — tool above
+terminal, no divider — but with two differences. The chip row is dropped: on a
+320px-tall card the row costs the log a line of its own, and it is the one piece
+of the console a keyboard replaces, which on its side is a wider keyboard than
+the portrait one. And the floor under the console row is `8rem` rather than
+`10rem`, because without the chips that is what the command line, the log's inset
+and two lines of log come to. Everything the chip row would have cost goes to
+the pane that needs it: at 568×320 the split leaves 54px of log and 76px of tool,
+where keeping the row would have left the tool 24px. The case file folds here
+too, for a different reason than on a phone: the column beside the dock is 361px
+wide, and unfolded the sections run to 3,309px — one ticket that is 3,603px of
+page and a column you scroll rather than read. Folded, the column is 1,191px of
+headings and the page 1,486px, so the section being worked on is the one that is
+open and the dock has something to sit beside.
+
+A remote desktop is the one console that is not a log, and it needed different
+room. The fake screen asked for a fixed 520px, which on a bottom-docked card left
+the pane about 230px at 390×844: the top of the wallpaper, the desktop's icons,
+and the taskbar — the only way into an app there — below the fold along with
+whichever window was open. The tiles themselves are drawn icons rather than typed
+characters: ▤, ⚙ and 🖨 are only as present as the browser's font fallback, and on
+a phone whose chain missed one the desktop was a blue rectangle with no way into
+an app at all. Drawn strokes render wherever the rest of the shell's icons do,
+and the tile is a box around the drawing rather than a font size for it. While a machine's desktop is on
+screen the card takes 82% of the phone instead of 55%, and the desktop fills the
+height it is given rather than asking for its own; the column's foot and every
+control's scroll margin follow the taller card, so the case file still scrolls
+clear of it. The Start menu gets a ceiling and scrolls, because a menu that opens
+upward off a few hundred pixels of desktop loses its first actions. A landscape
+phone keeps the side dock's shape unchanged: its console pane is 143px tall, which
+no desktop fits, and shrinking the screen there would show less than the scroll it
+has now. `tests/ui/desktopFit.test.ts` holds the two card shares together and
+refuses a pixel height in the dock.
+
+The case file folds on the way past that card. The pinned console gives the
+paperwork a strip of the screen above it — about 280px under the two-row header
+on a 390×844 window — so the six sections are read through a letterbox, and
+unfolded they run to 2190px. So at the same phone width each section of the case
+file — the verification gate, the requester prompts, the two note books, the
+close, and the abandon — becomes a `<details>` closed until the learner opens
+it, its heading the whole control and a thumb's worth of height. The ticket's own
+card above them keeps the subject and the report open — folding the description
+would leave a learner working blind — and folds the rest of its paperwork behind
+one **Ticket details** summary: the reference, severity, assignee, requester,
+impact and device are one disclosure, because they are reference rather than the
+call. The stage bar still names the ticket reference, so nothing leaves the
+screen entirely, and the summary is a fold of the card rather than a seventh
+case-file section. These are the only breakpoints the page reads in JavaScript
+(`useFoldedCaseFile`, over `PHONE_LAYOUT_QUERY` and `SHORT_LAYOUT_QUERY`),
+because a folded section is a different document tree rather than a different
+style, and `tests/ui/workspaceNarrow.test.ts` reads both queries back out of the
+stylesheet — the phone dock's and the side dock's — so the folds and the docks
+cannot drift apart. The
+heading text is the same in both shapes, including the two that are renamed by a
+refusal, so the folded case file and the unfolded one name the same things. A
+window with room never renders a fold at all: no disclosure, nothing to explain,
+and no open/closed state to fall out of step with the layout.
 
 The header gets the same treatment, because a single phone line cannot hold the
 brand, five sections, and the score: before the rewrite the brand was cut
 mid-word and four of the five sections sat off-screen with nothing saying so.
 Below the same breakpoint the header becomes two rows — identity and score
 above, the sections on a row of their own below — and the phone block redefines
-`--header-height` so the sticky offset, the rail, and the docked card all keep
-measuring the header that is actually on screen rather than the desktop one. The
-section row tightens its type until all five labels fit inside 360px, keeps each
-label at its own width (`flex: none`, `nowrap`) instead of squeezing it, and
-scrolls with snap points for anything narrower or for a larger browser text
-size. When it does scroll, the shell centres the current section in the strip — the router's `aria-current`, or the practice tab on a ticket page, since
-practice marks itself active there — so the strip never rests with a label
-sliced by the edge. `tests/ui/appShellNarrow.test.ts` holds the shape, including
-that the two rows still add up to the header height token.
+`--header-height` to the floors those rows add up to, so the sticky offset, the
+rail, and the docked card measure the header there rather than the desktop one.
+The section row tightens its type until all five labels fit inside 360px and
+keeps each label at its own width (`flex: none`, `nowrap`) instead of squeezing
+it. A label that still cannot fit wraps onto a second line, so the row is never
+cut at the edge and never hides a section behind a sideways scroll with no bar
+to say there is one. The phone grid's second row is `minmax(3.2rem, auto)` and
+the header itself is sized by `min-height`, so a wrapped line — a narrower
+window, a larger browser text size — grows the header instead of painting over
+the page below. `tests/ui/appShellNarrow.test.ts` holds the shape: the floors
+add up to the token, the token is a minimum rather than a fixed height, and the
+nav wraps instead of scrolling.
+
+The score takes the same route. Written out, it is a chip — lifetime XP, rank,
+and streak side by side — which at phone width is either a second thing fighting
+the brand for the line or a number with its rank and streak dropped. Below the
+same breakpoint the chip is hidden and a compact button takes its place: the
+button's own label carries the XP and the rank (so a screen reader reads the
+score without opening anything), and one press opens a popover with the XP, the
+rank, the gap to the next tier, the streak, and the way to the Progress page. A
+popover rather than a third header row, because it is a fact you check, not a
+place you live in. It closes on a second press, on Escape (returning the focus
+to the button), on a press outside it, on a scroll — which folds the header
+under it — on a resize, and on a change of section, which is held by remembering
+the route the panel was opened on rather than by an effect resetting a boolean.
+The panel is anchored to the button, right-aligned and capped at
+`100vw - 1.2rem`, so it never reaches past the edge; while it is open it covers
+the section row, which is the one thing it costs. `tests/ui/progressPopover.test.tsx`
+holds each of those closes, and `tests/ui/appShellNarrow.test.ts` holds the swap
+(chip hidden, button present) and the button's hit-target floor.
+
+Once a phone page is scrolled, the header gives that second row back: it folds
+to the single compact row of identity and score, and the sections return when
+the learner is back near the top. The fold is a scroll state, not a width state —
+`useScrolledPast` sets `data-scrolled` on the shell and only the phone block
+reads it — so the tablet header keeps its sections and the desktop header is
+untouched. Two thresholds (160px in, 40px out) rather than one are what make it
+stable: folding shortens the page above the content by exactly the section row,
+and the browser compensates by pulling the scroll position up by the same
+amount, which a single threshold would read as "back at the top" and answer by
+expanding again — a fold/unfold loop on one scroll event. The compact row is the
+identity row's own floor, so folding never moves the brand or the score. The
+cost is named rather than hidden: while folded, the five sections are not on
+screen and not in the tab order either, and they are one short scroll back. The
+row is hidden by the stylesheet and never removed from the page, so the DOMthe screen reader and the tests see is the same in both states; the phone-portrait
+geometry (99px expanded, 48px folded) was measured in the browser.
+
+A phone on its side starts in the folded state. The landscape dock hangs under
+the header, so at 320px tall the expanded header's second row is 51px of a screen
+the console has to fit in — and the console's own floor is measured against that
+window in `tests/ui/phoneLog.test.ts`. Rather than invent a third header shape,
+the side-on phone gets the row the scrolled phone already folds to: identity and
+score in the compact row, the sections hidden until the window is tall enough to
+hold them again. The cost is the same one the scrolled fold names, paid for the
+same reason: 51px of a 320px screen. `tests/ui/appShellNarrow.test.ts` holds the
+rest of that shape; the dock's own geometry is measured from the token by the
+phone audit.
 
 ### State management
 
@@ -731,7 +1459,11 @@ agree on where a module begins. A lesson can pin `variantId` where a random draw
 could miss the requirement (Asset Management's held shelf, Computer Deployment's
 failed run); the entry point then reuses an available ticket of that exact
 variant or generates one, instead of opening a ticket that cannot exercise the
-module. The other families stay available as `/practice?family=…` links — the
+module. It can also ask for `arrival: 'voicemail'`: how a ticket arrived is drawn
+from its seed, so the entry point steps the seed until the draw is a message,
+and the stored seed still rebuilds the same recording. A queued ticket is reused
+only when it matches everything the lesson asked for — a live ticket is never
+opened for the one module about messages. The other families stay available as `/practice?family=…` links — the
 same filter the queue already offers. A lesson may also carry a **flow**: a connect-to-close checklist for a
 family whose order does the work, where every step names the evidence it should
 leave in the log. The flow is guidance, not progress: checking a box writes
@@ -754,6 +1486,10 @@ and folds them into the counters in `domain/curriculum/evidence.ts`:
   registry's `access` label — not whether the run happened to report an effect —
   orders the read against the change), and whether that change was written up in
   a troubleshooting or resolution note
+- sessions and their worlds → the attempts that arrived as a message on the
+  desk's voicemail, joined to their scores by session id, so a pass, a callback
+  placed on the attempt, and a note written on it are the evidence module 5 is
+  built on — a pass on a live ticket counts for the course, not for Voicemails
 - mail commands and their effects → mailbox reads, message traces, quarantine
   releases, and sender blocks, which are the evidence modules 10 and 11 are built on
 - deployment commands and their effects → shelf queue reads, machine record reads,
@@ -767,11 +1503,12 @@ re-scores every past attempt the next time the dashboard loads. Requirements are
 counters rather than booleans, so a row can show `1 / 3` and the next unmet
 requirement instead of only "not done".
 
-Modules that are not built carry `status: 'planned'`, no scope and no
-requirements, plus a note explaining what is missing. They stay in the list so
-the course reads in order and the gap is visible rather than implied. Only a
-built module can be "complete"; `nextModule` skips planned rows when it picks
-the next step, so a planned module never blocks progression.
+Every module in the course is built, so the catalog has no `planned` row today.
+The status stays in the model: a module that is listed before it can be worked
+carries `status: 'planned'`, no scope and no requirements, plus a note explaining
+what is missing, so the course reads in order and the gap is visible rather than
+implied. Only a built module can be "complete"; `nextModule` skips planned rows
+when it picks the next step, so a planned module never blocks progression.
 
 The dashboard renders the list as a single ordered list of rows. Each row's
 heading is a disclosure button (`aria-expanded` / `aria-controls`) over a panel
@@ -947,7 +1684,13 @@ interface SnapshotStore {
   tests run in Node against the same SQLite engine as the app.
 - Backup/export writes a standard `.sqlite` file via download; import validates
   `user_version`, table shape, and a magic `app_id` before swapping in, keeping
-  the previous DB as the backup slot.
+  the previous DB as the backup slot. Every setting travels in that file, because
+  a setting is a row rather than a second store: the per-family hint prices are
+  one JSON value keyed by family id, so a price set on a family this build knows
+  and a price left behind by a build that knew more both arrive intact. The
+  reader keeps an id it does not recognise instead of dropping it — the Settings
+  list only shows the families this build has, and the row is written back out
+  whole when another price changes.
 - `navigator.storage.persist()` is requested on first run; the settings screen
   shows storage status and a one-click export reminder after 25 sessions.
 - If the database fails to load, the app enters read-only recovery: it offers the
@@ -968,7 +1711,7 @@ statements and transactions — no string interpolation of values.
 | Domain units | Vitest | reducer outputs, command parsing, rubric evaluator, dialogue intents |
 | Generator | Vitest + seeded fixtures | reproducibility, uniqueness, schema, 500-seed fairness lint |
 | Scoring | Vitest fixtures | reference / unsafe / lucky scripts per variant |
-| Persistence | Vitest (Node + sql.js) | migrations, round-trips, resume, export/import, corruption fallback |
+| Persistence | Vitest (Node + sql.js) | migrations, round-trips, resume, export/import, corruption fallback, and a per-family price list exported to a real `.sqlite` file and imported into a fresh database, including a family id the build does not know |
 | Curriculum | Vitest | catalog invariants, lesson existence and scope, lesson length limits, requirement evaluation, evidence folding, seeded service view |
 | Theme | Vitest | preference and schedule parsing, system and dawn-to-dusk resolution, boundary timing, cache-then-database reconciliation, first-paint parity with the domain rule, token parity between the two palettes, and the route audit: every page in both palettes, AA on the surfaces it actually renders on, geometry identical across themes |
 | UI | Testing Library | ticket workspace flow, debrief and dashboard rendering, keyboard path |
@@ -978,6 +1721,25 @@ statements and transactions — no string interpolation of values.
 Performance targets: generate a ticket in < 20 ms, apply a command in < 5 ms,
 boot with 1,000 stored actions in < 1 s on a modest laptop. The DB export per
 action stays under ~2 MB for Release 1 content.
+
+**What the page is allowed to load.** `scripts/securityHeaders.ts` is the one
+place the Content-Security-Policy is written, and three things read it: the dev
+server, the preview server, and the build, which writes it into `dist/_headers`
+so a static host applies the same policy without the config knowing which host it
+is. The app calls no server of its own, so `connect-src 'self'` is the whole of
+its network reach, and `object-src`, `base-uri`, `form-action` and
+`frame-ancestors` are all `'none'`. Two allowances are load-bearing rather than
+convenient: `'wasm-unsafe-eval'` is what lets sql.js instantiate without
+`'unsafe-eval'`, and `style-src 'unsafe-inline'` is React's `style` prop, which
+the dividers and progress bars use.
+
+The inline theme script is the part that breaks quietly — a hash that stops
+matching it takes the first frame's colours and nothing else — so the hash is
+read out of the HTML the browser is actually given, which is why it is computed
+from the build's `index.html` rather than the source file. `tests/security/`
+holds three promises: a build never allows inline or evaluated script, the hash
+matches the script that is actually served, and the dev server's looser policy
+(React Refresh's inline preamble and its websocket) stays in the dev server.
 
 ## 11. Forward design (not Release 1)
 

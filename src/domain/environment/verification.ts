@@ -1,5 +1,6 @@
 import { createRng, hashSeed } from '../shared/rng'
 import type {
+  ActiveVerificationCode,
   CallerClaim,
   LetterPinState,
   UserStatus,
@@ -15,6 +16,8 @@ export const VERIFICATION_CODE_LENGTH = 6
 export const CALLER_RECIPIENT_ID = 'requester'
 /** The caller's desk line. Only offered when their mobile cannot reach them. */
 export const CALLER_DESK_RECIPIENT_ID = 'requester-desk'
+/** The line a team shares, which a colleague rather than the employee answers. */
+export const SHARED_LINE_RECIPIENT_ID = 'team-line'
 export const RETAINED_RETIRED_CODES = 5
 /** Wrong entries allowed against the printed letter PIN before it locks. */
 export const LETTER_PIN_ATTEMPTS = 3
@@ -72,6 +75,10 @@ function maskedNumber(seed: string): string {
  * line: the mobile is still listed, because the desk would try it, but nothing
  * comes back from it. The desk line is only offered when the mobile cannot
  * reach them, so the usual ticket stays a one-contact decision.
+ *
+ * A shared team line on the caller's record is listed as itself rather than as
+ * the caller: the whole team picks it up, so the record says whose line it is
+ * and a callback to it proves whoever answered, not the person on the ticket.
  */
 export function verificationRecipients(input: {
   name: string
@@ -83,6 +90,8 @@ export function verificationRecipients(input: {
   onSite?: boolean
   /** True when the printed PIN letter was issued to the employee. */
   letterPinOnFile?: boolean
+  /** The shared line on the caller's record, when a variant puts one there. */
+  sharedLine?: { label: string; answeredBy: string }
 }): VerificationRecipient[] {
   const name = input.name.trim()
   const mobileInService = input.mobileInService ?? true
@@ -125,6 +134,20 @@ export function verificationRecipients(input: {
     })
   }
 
+  const sharedLine = input.sharedLine
+  if (sharedLine) {
+    recipients.push({
+      id: SHARED_LINE_RECIPIENT_ID,
+      name: sharedLine.label.trim(),
+      role: 'team',
+      // A hunt group takes a call and cannot take a code meant for one person.
+      destination: `team line ${maskedNumber(`${input.employeeId}:team`)}`,
+      methods: ['callback'],
+      reachable: true,
+      answeredBy: sharedLine.answeredBy.trim(),
+    })
+  }
+
   return recipients
 }
 
@@ -164,6 +187,19 @@ export function letterPinFor(seed: string | number): string {
 /** The wrong entries so far, treating a world written before the field as clean. */
 export function letterPinState(state: VerificationState): LetterPinState {
   return state.letterPin ?? { attempts: 0, locked: false }
+}
+
+/**
+ * How long the live code has left, on the attempt's own clock. The panel and the
+ * read-back check read the same number, so a countdown can never say a code is
+ * good when the gate would reject it: a code lives for ten simulated minutes,
+ * and the clock moves with the work the learner does, not with the wall.
+ */
+export function verificationCodeRemainingMs(
+  active: ActiveVerificationCode,
+  now: number,
+): number {
+  return Math.max(0, active.expiresAt - now)
 }
 
 /**
@@ -239,7 +275,7 @@ export function checkVerificationCode(
   if (options.recipientReachable === false) {
     return { result: 'unreachable', recipientName: active.recipientName }
   }
-  if (options.now >= active.expiresAt) {
+  if (verificationCodeRemainingMs(active, options.now) === 0) {
     return { result: 'expired', recipientName: active.recipientName }
   }
 
@@ -257,6 +293,7 @@ export type CallbackCheck =
   | { result: 'verified'; contactName: string }
   | { result: 'no-answer'; contactName: string }
   | { result: 'wrong-contact'; contactName: string }
+  | { result: 'colleague-answered'; contactName: string; answeredBy: string }
   | { result: 'not-the-caller'; contactName: string }
   | { result: 'not-callable'; contactName: string }
 
@@ -266,6 +303,11 @@ export type CallbackCheck =
  * and only when the call can reach the person the ticket is about: a manager can
  * vouch for the account but not for who is on the line, and a line nobody
  * answers verifies nobody.
+ *
+ * A shared team line is the same failure with a friendlier voice: somebody does
+ * answer, and they may even confirm the request, but it is a colleague who
+ * answered. Ringing a shared line proves the team, never the person, so the
+ * check names the colleague rather than passing as the caller.
  */
 export function checkCallback(
   recipient: VerificationRecipient,
@@ -276,6 +318,13 @@ export function checkCallback(
   }
   if (!recipient.reachable) {
     return { result: 'no-answer', contactName: recipient.name }
+  }
+  if (recipient.role === 'team') {
+    return {
+      result: 'colleague-answered',
+      contactName: recipient.name,
+      answeredBy: recipient.answeredBy ?? 'a colleague',
+    }
   }
   if (recipient.role !== 'caller') {
     return { result: 'wrong-contact', contactName: recipient.name }
@@ -433,6 +482,11 @@ export interface ClaimEvidence {
   codeUnreadable?: boolean
   /** A callback reached the claimed contact, who denied making the request. */
   callbackDenied?: boolean
+  /**
+   * A callback was placed to a shared line and a colleague answered it, so the
+   * only person who confirmed the request was not the employee on the ticket.
+   */
+  callbackWrongPerson?: { answeredBy: string; line: string }
 }
 
 /**
@@ -459,6 +513,11 @@ export function contradictedClaims(
       if (evidence.callbackDenied === true) {
         reasons.push(
           `${evidence.employeeName} answered a callback and said the request was not theirs.`,
+        )
+      }
+      if (evidence.callbackWrongPerson) {
+        reasons.push(
+          `${evidence.callbackWrongPerson.answeredBy} answered the ${evidence.callbackWrongPerson.line} and confirmed the request, but that colleague is not ${evidence.employeeName} — a shared line proves the team answered, not who is on the call.`,
         )
       }
       if (reasons.length > 0) {
@@ -576,6 +635,8 @@ export function callbackMessage(check: CallbackCheck, destination: string): stri
       return `Nobody answered ${destination}, so the caller is still unverified. Ring a line the person is actually on.`
     case 'wrong-contact':
       return `${check.contactName} is not the person on this ticket, so they cannot vouch for who is calling.`
+    case 'colleague-answered':
+      return `${check.answeredBy} answered the ${check.contactName} and confirmed the request. That line is shared, so the call proves a colleague took it — not that whoever is on this call is the person on the ticket.`
     case 'not-the-caller':
       return `${check.contactName} answered ${destination} and said the request is not theirs — the person on this call is not them.`
     case 'not-callable':

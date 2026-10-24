@@ -1,0 +1,222 @@
+{
+  "spec": {
+    "title": "Reference platform spec — platform architecture summary",
+    "source": "rea analyze-javascript-application (ev_1674adc8af2854535eaaee4b0768d05fbb8ad7321c24f592670792e3cdc2c161)",
+    "checked": "2026-10-18",
+    "baseUrl": "https://servicedesk-simulator.com"
+  },
+  "howToRead": [
+    "Every entry keeps the sentence the spec made, so a claim that fails can be quoted back to the document it came from. The prose that is not a claim lives in this file's notes, not in a check.",
+    "files: the spec's own file registry, exact content hashes and byte counts. A content hash describes one deployment; when the reference redeploys these rows go missing, and that is the correct answer rather than a failure of the check.",
+    "claims: each names a pattern (assets/Name-*.js) rather than the hash of the day, because these are the durable half of the spec — a panel's literals survive a rebuild. A present claim holds only if every string is in one of the named files; an absent claim holds only if none of them is.",
+    "Anything with an '*' in files is resolved against what the entry page and its bundles currently name, so a renamed chunk is found instead of silently skipped."
+  ],
+  "files": [
+    { "path": "assets/ServerRoomPanel-BnsE39qI.js", "bytes": 32787, "claim": "32.7 KB" },
+    { "path": "assets/DeploymentModule-Bq3M-9Lf.js", "bytes": 170779, "claim": "170.7 KB" },
+    { "path": "assets/MailAdminPanel-2Xlwm7BA.js", "bytes": 25735, "claim": "25.7 KB" },
+    { "path": "assets/MailSecurityPanel-CHq8I0Ez.js", "bytes": 6133, "claim": "6.1 KB" },
+    { "path": "assets/ShipManagerPanel-Nf-rjEZQ.js", "bytes": 20742, "claim": "20.7 KB" },
+    { "path": "assets/MockInterviewPanel-D50THp5B.js", "bytes": 86414, "claim": "86.4 KB" },
+    { "path": "assets/VoicemailModal-D7aPL8cE.js", "bytes": 11975, "claim": "11.9 KB" },
+    { "path": "assets/TeacherDashboardModal-CnDZTRy8.js", "bytes": 17436, "claim": "17.4 KB" },
+    { "path": "assets/LiveMode-BsyAIAbY.js", "bytes": 16014, "claim": "16.0 KB" },
+    { "path": "assets/PhoneCallSimulation-DXZmpZtL.js", "bytes": 53309, "claim": "53.3 KB" },
+    { "path": "assets/it-support-simulator-BNK14u_Q.js", "bytes": 616166, "claim": "616.1 KB" },
+    { "path": "assets/workflow-suite-BK3ih94Q.js", "bytes": 366146, "claim": "366.1 KB" }
+  ],
+  "claims": [
+    {
+      "id": "rogue-ap",
+      "claim": "Rogue AP in the server room",
+      "verdict": "present",
+      "files": ["assets/ServerRoomPanel-*.js"],
+      "match": ["Gridpoint", "GP-R4"]
+    },
+    {
+      "id": "named-devices",
+      "claim": "Named switch, router, DC, and access points",
+      "verdict": "present",
+      "files": ["assets/ServerRoomPanel-*.js"],
+      "match": [
+        "switch-floor1",
+        "switch-floor2",
+        "switch-floor3",
+        "router-main",
+        "dc01",
+        "ap-cafe",
+        "ap-0",
+        "ap-1",
+        "ap-2",
+        "ap-3"
+      ]
+    },
+    {
+      "id": "reboot-action",
+      "claim": "Equipment reboot action and its timers",
+      "verdict": "present",
+      "files": ["assets/ServerRoomPanel-*.js", "assets/it-support-simulator-*.js"],
+      "match": ["rebootEquipment"]
+    },
+    {
+      "id": "pxe-wifi",
+      "claim": "PXE refuses to run over wireless",
+      "verdict": "present",
+      "files": ["assets/DeploymentModule-*.js"],
+      "match": ["PXE does not run over WiFi"]
+    },
+    {
+      "id": "asset-tag-name",
+      "claim": "The asset tag doubles as the machine name",
+      "verdict": "present",
+      "files": ["assets/DeploymentModule-*.js"],
+      "match": ["The asset tag"]
+    },
+    {
+      "id": "trace-states",
+      "claim": "Message trace shows delivery states",
+      "verdict": "present",
+      "files": ["assets/MailAdminPanel-*.js"],
+      "match": ["DELIVERED", "FAILED", "QUARANTINED"]
+    },
+    {
+      "id": "quarantine-ui",
+      "claim": "Quarantine list and sender blocklist",
+      "verdict": "present",
+      "files": ["assets/MailSecurityPanel-*.js"],
+      "match": ["mailSecurity.quarantineTitle", "remove_blocklist"]
+    },
+    {
+      "id": "return-logistics",
+      "claim": "Prepaid return logistics",
+      "verdict": "present",
+      "files": ["assets/ShipManagerPanel-*.js"],
+      "match": ["4400 Logistics"]
+    },
+    {
+      "id": "interview-persona",
+      "claim": "The interview runs against a named persona",
+      "verdict": "present",
+      "files": ["assets/MockInterviewPanel-*.js"],
+      "match": ["Morgan"]
+    },
+    {
+      "id": "one-question-per-turn",
+      "claim": "One question per interviewer turn",
+      "verdict": "present",
+      "files": ["assets/MockInterviewPanel-*.js"],
+      "match": ["Never stack questions."]
+    },
+    {
+      "id": "fish-audio",
+      "claim": "Fish Audio TTS with a browser fallback",
+      "verdict": "present",
+      "files": ["assets/workflow-suite-*.js", "assets/MockInterviewPanel-*.js"],
+      "match": ["speakWithFishAudio", "isFishAudioEnabled", "VITE_FISH_AUDIO_API_KEY", "ttsProxy"]
+    },
+    {
+      "id": "fish-fallback-copy",
+      "claim": "The TTS fallback names itself in the console",
+      "verdict": "present",
+      "files": ["assets/workflow-suite-*.js", "assets/MockInterviewPanel-*.js"],
+      "match": ["[TTS] Fish Audio module failed to load, falling back to browser TTS"]
+    },
+    {
+      "id": "cloud-dialogue",
+      "claim": "Calls run on cloud dialogue and transcription",
+      "verdict": "present",
+      "files": ["assets/PhoneCallSimulation-*.js", "assets/workflow-suite-*.js"],
+      "match": ["callDialogue", "transcribeAudio"]
+    },
+    {
+      "id": "speech-capture",
+      "claim": "Browser speech capture",
+      "verdict": "present",
+      "files": ["assets/PhoneCallSimulation-*.js", "assets/workflow-suite-*.js"],
+      "match": ["SpeechRecognition", "MediaRecorder"]
+    },
+    {
+      "id": "voicemail-ticket",
+      "claim": "A voicemail becomes a ticket",
+      "verdict": "present",
+      "files": ["assets/VoicemailModal-*.js"],
+      "match": ["createTicket", "translateVoicemailTranscript"]
+    },
+    {
+      "id": "live-ordering",
+      "claim": "Live competition orders answers by arrival",
+      "verdict": "present",
+      "files": ["assets/LiveMode-*.js"],
+      "match": ["lastAnsweredAt"]
+    },
+    {
+      "id": "gradebook-csv",
+      "claim": "Gradebook exports as CSV",
+      "verdict": "present",
+      "files": ["assets/TeacherDashboardModal-*.js"],
+      "match": ["classroomCsv", "modals.teacher.exportCsv"]
+    },
+    {
+      "id": "no-spf-dkim-dmarc",
+      "claim": "Quarantine inspects SPF / DKIM / DMARC headers",
+      "verdict": "absent",
+      "files": ["assets/MailSecurityPanel-*.js"],
+      "match": ["spf", "dkim", "dmarc"],
+      "caseSensitive": false
+    },
+    {
+      "id": "no-ndr-codes",
+      "claim": "Message trace shows 550 5.1.1 user-unknown NDR codes",
+      "verdict": "absent",
+      "files": ["assets/MailAdminPanel-*.js"],
+      "match": ["5.1.1", "smtp", "bounce", "unknown user"],
+      "caseSensitive": false
+    },
+    {
+      "id": "no-sd-corp-naming",
+      "claim": "Machine names follow SD-CORP-XXXX",
+      "verdict": "absent",
+      "files": ["assets/DeploymentModule-*.js"],
+      "match": ["SD-CORP"]
+    },
+    {
+      "id": "no-star-framework",
+      "claim": "Interview scoring uses the STAR framework",
+      "verdict": "absent",
+      "files": ["assets/MockInterviewPanel-*.js"],
+      "match": ["STAR method", "Situation, Task, Action, Result"]
+    },
+    {
+      "id": "no-ap-lobby",
+      "claim": "Access points include ap-lobby",
+      "verdict": "absent",
+      "files": ["assets/ServerRoomPanel-*.js"],
+      "match": ["ap-lobby"]
+    }
+  ],
+  "entryScripts": {
+    "claim": "The 15 script tags in the entry page are the 15 core bundles the spec covered",
+    "expect": [
+      "animation-vendor",
+      "app-services",
+      "app-shell",
+      "auth-shell",
+      "firebase-app",
+      "firebase-auth",
+      "firebase-core",
+      "firebase-rest",
+      "icon-vendor",
+      "index",
+      "react-vendor",
+      "sentry-vendor",
+      "sim-data",
+      "vendor",
+      "workflow-suite"
+    ]
+  },
+  "notes": [
+    "88 users in sim-data: a count, not a literal. The file was 302,007 B with 156 `username` keys on 2026-10-18; counting users needs the app's own data shape, so no string check can settle it.",
+    "\"100% of application runtime\" is a claim about what the analysis covered, not about the bundles: a lazy chunk behind a route never appears in the entry manifest.",
+    "Whether a screen renders these strings, in what order, and under what gating needs a rendered observation. Strings are code, not behaviour — a missing string is \"not supported by the bundle\", not proof the feature is absent."
+  ]
+}

@@ -247,6 +247,19 @@ function traceRoute(context: CommandContext): CommandOutcome {
       : mutedLine('Trace incomplete: the destination did not answer.'),
   ])
 }
+/**
+ * Creating and deleting accounts is not work the desk is trusted with, and the
+ * refusal says the same thing however it is asked for — a `/add` switch or a
+ * `/delete` one. It is a mandate rather than a world rule: it reads no record, so
+ * it is not in `policy.ts`, but it is written once for the same reason the rules
+ * there are.
+ */
+function directoryMandateDenial(): CommandOutcome {
+  return failed([
+    errorLine('Access denied. Account creation and deletion require a directory administrator.'),
+    mutedLine('This simulation models the service desk, not the identity administration team.'),
+  ])
+}
 
 function netUser(context: CommandContext): CommandOutcome {
   const subcommand = (context.args[0] ?? '').toLowerCase()
@@ -257,10 +270,7 @@ function netUser(context: CommandContext): CommandOutcome {
   const requested = context.args[1]
   const switches = context.args.slice(2)
   if (requested?.startsWith('/') || switches.some((value) => value.startsWith('/'))) {
-    return failed([
-      errorLine('Access denied. Account creation and deletion require a directory administrator.'),
-      mutedLine('This simulation models the service desk, not the identity administration team.'),
-    ])
+    return directoryMandateDenial()
   }
   if (context.args.length > 2) {
     return usageFailure('net user [samAccountName]')
@@ -282,10 +292,7 @@ function netUser(context: CommandContext): CommandOutcome {
   }
 
   if (requested.startsWith('/')) {
-    return failed([
-      errorLine('Access denied. Account creation and deletion require a directory administrator.'),
-      mutedLine('This simulation models the service desk, not the identity administration team.'),
-    ])
+    return directoryMandateDenial()
   }
 
   const needle = requested.toLowerCase()

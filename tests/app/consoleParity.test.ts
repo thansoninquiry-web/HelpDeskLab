@@ -1,9 +1,15 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { COMMANDS } from '../../src/domain/environment/commands'
 import {
+  CONSOLE_IDS,
+  consoleEntries,
   findConsoleActionForCommand,
   type ConsoleActionMatch,
 } from '../../src/domain/environment/consoles'
+import type { ConsoleAction } from '../../src/domain/environment/console'
+import { createLarkspurWorld } from '../../src/domain/environment/fixtures'
+import { parseCommandLine } from '../../src/domain/environment/parser'
 import { applyCommand } from '../../src/domain/environment/reducer'
 import type { World } from '../../src/domain/environment/types'
 import { SCENARIO_FAMILIES, generateTicket, type GeneratedTicket } from '../../src/domain/generator'
@@ -45,7 +51,10 @@ import {
  * reach. This suite replays each one using nothing but console actions, so a
  * family that can only be answered by typing into the terminal fails here. It is
  * the guard on the console work: adding a command that is scored but has no
- * button is what breaks it.
+ * button is what breaks it. The same guard follows the rest of the registry too:
+ * every command either has a console button, or is named in `TERMINAL_ONLY` with
+ * the reason it never will, so being terminal-only is a decision rather than an
+ * omission.
  */
 
 const CASES = referenceCases()
@@ -185,7 +194,9 @@ async function replayReference(key: string): Promise<DebriefView> {
     }
 
     if (step.type === 'deny-caller') {
-      await denyCaller(denialReasonFor(generated))
+      // The reference names the reason the ticket needs; only a path written
+      // before reasons existed falls back to the close code's own default.
+      await denyCaller(step.reason ?? denialReasonFor(generated))
       continue
     }
 
@@ -299,4 +310,121 @@ describe('console parity', () => {
       expect(debrief.passed).toBe(true)
     })
   }
+})
+
+/**
+ * The commands no console button runs, and why that is right for each one.
+ *
+ * The parity replay only covers the commands a reference path uses. This list
+ * closes the rest of the registry: a command is reachable from a console
+ * somewhere, or it is written here with the reason it never will be. Being
+ * terminal-only is then a decision on the record instead of an omission, and a
+ * command added tomorrow without a button fails the suite until somebody either
+ * writes the button or writes the reason. This list may shrink; it must not grow
+ * quietly.
+ */
+const TERMINAL_ONLY: Readonly<Record<string, string>> = {
+  // About the session or the machine itself, not a record a console lists.
+  help: 'how the reference is asked for, not work on a machine',
+  hostname: 'names the machine the desk is sitting at',
+  whoami: 'names the signed-in account, not a directory record',
+  ver: 'the Windows build string, for when a learner is checking the shell',
+  echo: 'prints what it is given; it exists to test the parser',
+  dir: 'browses the local filesystem, which no console projects',
+  type: 'reads a file the learner already found',
+  tree: 'draws a directory tree; a console lists records, not folders',
+  // Diagnostics whose answer is printed rather than acted on.
+  systeminfo: 'summarises the machine consoles already read field by field',
+  tasklist: 'lists processes; no console row acts on one',
+  netstat: 'lists connections; a console has nothing to run against it',
+  tracert: 'traces a route; ping and nslookup are the reachability buttons',
+  net: 'one verb for accounts, time and sessions, so no single record action fits',
+  // The console already lists what the command would print.
+  'get-quarantine': 'Mail Security lists the held mail as its records',
+  'get-messages': 'Mail Admin lists a mailbox’s mail as the record’s group',
+  'get-sessions': 'Remote Desktop lists the sessions on the machines it shows',
+  'get-deployment-queue': 'Computer Deployment lists the queue as its records',
+  'get-shipments': 'Ship Manager lists the shipments as its records',
+  // Changes no console offers a button for.
+  'remove-share-deny': 'the shares console has no deny editor yet',
+  'set-default-printer': 'only the remote desktop can change a machine’s default printer',
+}
+
+/** The command name behind an action, whatever value its inputs would carry. */
+function actionCommandName(action: ConsoleAction, entryId: string): string | null {
+  const args = action.args?.map((argument) => argument.choices?.[0] ?? 'x') ?? []
+  const parsed = parseCommandLine(action.command(entryId, args))
+  return parsed.ok ? parsed.command.name : null
+}
+
+/**
+ * Every command a console button would run, over every world this suite builds:
+ * the fixture, each variant's own world, and each step along its reference path —
+ * a console grows actions as the work goes on, so the later worlds matter.
+ */
+function commandsBehindButtons(): Set<string> {
+  const found = new Set<string>()
+  const scan = (world: World) => {
+    for (const consoleId of CONSOLE_IDS) {
+      for (const entry of consoleEntries(world, consoleId)) {
+        for (const action of entry.actions) {
+          const name = actionCommandName(action, entry.id)
+          if (name) {
+            found.add(name)
+          }
+        }
+      }
+    }
+  }
+
+  scan(createLarkspurWorld())
+  for (const { generated } of CASES) {
+    let liveWorld = structuredClone(generated.world)
+    scan(liveWorld)
+    for (const step of generated.reference) {
+      if (step.type !== 'command') {
+        continue
+      }
+      liveWorld = applyCommand(liveWorld, step.input).world
+      scan(liveWorld)
+    }
+  }
+  return found
+}
+
+describe('terminal-only commands', () => {
+  const reachable = commandsBehindButtons()
+  const registry = new Set(COMMANDS.map((command) => command.name))
+
+  it('gives every registry command a console button or a stated reason', () => {
+    const uncovered = [...registry].filter(
+      (name) => !reachable.has(name) && !(name in TERMINAL_ONLY),
+    )
+
+    expect(
+      uncovered,
+      'A command with no console button. Give it an action, or add it to TERMINAL_ONLY with the reason it cannot have one.',
+    ).toEqual([])
+  })
+
+  it('takes a command off the terminal-only list once a button runs it', () => {
+    const stale = Object.keys(TERMINAL_ONLY).filter((name) => reachable.has(name))
+
+    expect(
+      stale,
+      'These commands now have a console button, so they are no longer terminal-only: remove them from TERMINAL_ONLY.',
+    ).toEqual([])
+  })
+
+  it('keeps the terminal-only list to real commands, each with a reason', () => {
+    const unknown = Object.keys(TERMINAL_ONLY).filter((name) => !registry.has(name))
+    const unexplained = Object.entries(TERMINAL_ONLY)
+      .filter(([, reason]) => reason.trim().length < 12)
+      .map(([name]) => name)
+
+    // A renamed or retired command leaves an entry behind; a terse one tells
+    // whoever finds it nothing.
+    expect(unknown).toEqual([])
+    expect(unexplained).toEqual([])
+  })
 })

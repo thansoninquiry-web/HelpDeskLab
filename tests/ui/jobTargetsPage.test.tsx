@@ -1,8 +1,13 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TargetsOverview } from '../../src/app/targetsService'
 import { JobTargetsPage } from '../../src/ui/routes/JobTargetsPage'
+
+vi.mock('../../src/app/settingsService', () => ({
+  loadTargetsFilter: vi.fn(),
+  saveTargetsFilter: vi.fn(),
+}))
 
 vi.mock('../../src/app/targetsService', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/app/targetsService')>()),
@@ -94,7 +99,10 @@ function renderPage() {
 
 beforeEach(async () => {
   const service = await import('../../src/app/targetsService')
+  const settings = await import('../../src/app/settingsService')
   vi.clearAllMocks()
+  vi.mocked(settings.loadTargetsFilter).mockResolvedValue('all')
+  vi.mocked(settings.saveTargetsFilter).mockImplementation(async (filter) => filter)
   vi.mocked(service.loadTargetsOverview).mockResolvedValue(overview)
   vi.mocked(service.createJobTarget).mockResolvedValue(overview.targets[0]!)
   vi.mocked(service.createShareSafeExport).mockResolvedValue({
@@ -105,6 +113,47 @@ beforeEach(async () => {
 })
 
 describe('JobTargetsPage', () => {
+  it('reopens on the filter it was left on, and remembers a new one', async () => {
+    const settings = await import('../../src/app/settingsService')
+    vi.mocked(settings.loadTargetsFilter).mockResolvedValue('applied')
+
+    renderPage()
+
+    const listings = await screen.findByRole('region', { name: 'Saved listings' })
+    // Restored before the list settles, so the filter is the one that was set
+    // rather than 'all' and then a jump.
+    expect(within(listings).getByLabelText('Status')).toHaveValue('applied')
+    expect(
+      await within(listings).findByRole('heading', {
+        level: 3,
+        name: 'Tier 1 Service Desk Analyst',
+      }),
+    ).toBeInTheDocument()
+
+    fireEvent.change(within(listings).getByLabelText('Status'), {
+      target: { value: 'closed' },
+    })
+
+    await waitFor(() => expect(settings.saveTargetsFilter).toHaveBeenCalledWith('closed'))
+    expect(within(listings).getByText('No listings with that status.')).toBeInTheDocument()
+  })
+
+  it('shows every listing when the stored filter will not read', async () => {
+    const settings = await import('../../src/app/settingsService')
+    vi.mocked(settings.loadTargetsFilter).mockRejectedValue(new Error('settings are gone'))
+
+    renderPage()
+
+    const listings = await screen.findByRole('region', { name: 'Saved listings' })
+    expect(within(listings).getByLabelText('Status')).toHaveValue('all')
+    expect(
+      await within(listings).findByRole('heading', {
+        level: 3,
+        name: 'Tier 1 Service Desk Analyst',
+      }),
+    ).toBeInTheDocument()
+  })
+
   it('shows saved listings with extracted skills, practice links, and interview prep', async () => {
     renderPage()
 

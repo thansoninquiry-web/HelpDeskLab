@@ -3,6 +3,11 @@ import type { EffectType, VerificationMethod } from '../environment/types'
 import type { TopologyView } from '../environment/topology'
 import type { HintPolicy } from './policy'
 import type { SessionId } from '../tickets/types'
+import type { NoteCoveragePart } from './noteCoverage'
+
+// A note's coverage contract belongs beside the matcher that reads it; the check
+// spec below only needs the shape, and every existing reader keeps its import.
+export type { NoteCoveragePart } from './noteCoverage'
 
 export type ScoreBand = 'fail' | 'pass' | 'strong'
 
@@ -25,19 +30,23 @@ export interface SessionDecision {
   note: string
 }
 
-export interface NoteCoveragePart {
-  id: string
-  /** Shown in the debrief, for example "what the next team should do". */
-  label: string
-  /** Any one of these case-insensitive fragments satisfies the part. */
-  any: readonly string[]
-}
+/**
+ * Why a request was refused, in the same words the deny control offers. Held in
+ * the domain so a rubric can ask for a specific reason without the generator
+ * reaching into the app: refusing a request for the right reason is part of the
+ * decision, not paperwork after it.
+ */
+export type RefusalReason =
+  | 'third-party-request'
+  | 'unverified-identity'
+  | 'credential-request'
+  | 'pressure'
 
 export type CheckSpec =
   | { kind: 'ran'; command: string; argsInclude?: string }
   | { kind: 'effect'; effect: EffectType; target?: string }
   | { kind: 'verify-caller'; method?: VerificationMethod }
-  | { kind: 'deny-caller' }
+  | { kind: 'deny-caller'; reason?: RefusalReason }
   | { kind: 'ask'; intent?: string }
   | { kind: 'note'; noteKind: 'troubleshooting' | 'customer' | 'resolution'; minLength?: number }
   | {
@@ -78,6 +87,13 @@ export interface RubricItemResult {
   weight: number
   critical: boolean
   passed: boolean
+  /**
+   * The share of the step's weight this attempt earned, from 0 to 1. Most steps
+   * are all or nothing; a refusal that names the wrong reason still stopped the
+   * work, so it earns part of the step. Absent on scores written before partial
+   * credit existed, which read as all or nothing.
+   */
+  credit?: number
   why: string
   hints: readonly string[]
   /** Learner-facing findings: what the attempt did, in plain sentences. */
@@ -118,6 +134,7 @@ export interface ProcedureViolation {
     | 'unverified-change'
     | 'fix-before-evidence'
     | 'callback-instead-of-code'
+    | 'callback-to-shared-line'
     | 'weaker-verification'
   label: string
   detail: string

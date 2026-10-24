@@ -21,6 +21,18 @@
   font-size: var(--type-xl);
 }
 
+/*
+ * Where a tool can be carried to the strip, the shelf says so before the pointer
+ * finds out: a drag is not something a list of buttons looks like it does.
+ */
+.dragHint {
+  margin: 0;
+  padding: 0.55rem 0.35rem 0.2rem;
+  color: var(--text-faint);
+  font-size: var(--type-xs);
+  line-height: 1.4;
+}
+
 .group {
   display: flex;
   flex-direction: column;
@@ -64,6 +76,15 @@
   transition:
     background 110ms ease,
     border-color 110ms ease;
+}
+
+/* A tool that can be picked up says so with the hand, not only on hover. */
+.toolDraggable {
+  cursor: grab;
+}
+
+.toolDraggable:active {
+  cursor: grabbing;
 }
 
 .tool:hover,

@@ -131,8 +131,8 @@ export function ModuleLessonPage() {
           description="This module has no lesson in this build."
         />
         <p className={styles.sectionText}>
-          Lessons exist for the fifteen modules the app can practise today. A module that is still
-          planned has no exits yet, so there is nothing to teach toward.
+          Every module in the course has a lesson. This address names one the app does not have,
+          so there is nothing to teach toward.
         </p>
         <p>
           <Link className={styles.moduleAction} to="/">

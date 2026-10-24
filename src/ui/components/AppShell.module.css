@@ -33,7 +33,12 @@
   display: flex;
   align-items: stretch;
   gap: 1rem;
-  height: var(--header-height);
+  /*
+   * A floor, not a fixed height: when the sections wrap onto another line the
+   * header has to grow with them rather than cut the extra line off. Every
+   * width where nothing wraps is still exactly this tall.
+   */
+  min-height: var(--header-height);
   padding: 0 1rem 0 0.85rem;
   border-bottom: 1px solid var(--rail-border);
   background: rgba(5, 8, 13, 0.94);
@@ -95,19 +100,18 @@
 
 .nav {
   display: flex;
+  flex-wrap: wrap;
+  align-content: center;
   gap: 0.1rem;
   min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.nav::-webkit-scrollbar {
-  display: none;
 }
 
 .navLink {
   display: inline-flex;
+  flex: none;
   align-items: center;
+  /* 24px, the smallest target a thumb may have to hit; scales with the text. */
+  min-height: 1.5rem;
   gap: 0.4rem;
   padding: 0 0.8rem;
   border-bottom: 2px solid transparent;
@@ -201,6 +205,113 @@
   font-size: var(--type-2xs);
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+/*
+ * The compact way into the score, and the panel behind it.
+ *
+ * The chip above writes XP, rank, and streak out in a line, which a phone line
+ * cannot hold beside the brand. The wrapper is hidden everywhere else, so the
+ * wider header keeps the chip and never renders this; the phone block below
+ * flips it on and hides the chip in the same breath. The trigger's floor is a
+ * hit target rather than decoration: on a phone it is the only way into the
+ * score, so it is drawn at the 24px minimum with room to spare.
+ */
+.scorePopover {
+  display: none;
+}
+
+.scoreTrigger {
+  display: inline-flex;
+  min-width: 2.2rem;
+  min-height: 2.2rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--rail-border);
+  border-radius: var(--radius-sm);
+  background: var(--rail-hover);
+  color: var(--rail-text);
+  cursor: pointer;
+}
+
+.scoreTrigger:hover {
+  border-color: var(--rail-accent);
+  color: var(--rail-accent);
+}
+
+.scoreTrigger[aria-expanded='true'] {
+  border-color: var(--rail-accent);
+  background: rgba(34, 211, 238, 0.14);
+  color: var(--rail-accent);
+}
+
+.scorePanel {
+  position: absolute;
+  top: calc(100% + 0.45rem);
+  right: 0;
+  z-index: 30;
+  display: flex;
+  width: min(15rem, calc(100vw - 1.2rem));
+  flex-direction: column;
+  gap: 0.18rem;
+  padding: 0.7rem 0.8rem 0.75rem;
+  border: 1px solid var(--rail-border);
+  border-radius: var(--radius-md);
+  /* Solid, not translucent: the section row passes behind the bottom edge. */
+  background: var(--rail);
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.5);
+  color: var(--rail-text);
+  font-family: var(--font-mono);
+}
+
+.scoreLabel {
+  color: var(--rail-muted);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.scoreXp {
+  color: #ffffff;
+  font-family: var(--font-display);
+  font-size: var(--type-3xl);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 1.1;
+}
+
+.scoreRank {
+  color: var(--rail-accent);
+  font-size: var(--type-2xs);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.scoreNext,
+.scoreStreak {
+  margin-top: 0.35rem;
+  color: var(--rail-muted);
+  font-size: var(--type-xs);
+  line-height: 1.4;
+}
+
+.scoreNext {
+  color: var(--rail-text);
+}
+
+.scoreLink {
+  margin-top: 0.55rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--rail-border);
+  color: var(--rail-accent);
+  font-size: var(--type-xs);
+  text-decoration: none;
+}
+
+.scoreLink:hover {
+  text-decoration: underline;
 }
 
 .body {
@@ -335,22 +446,26 @@
  * header becomes two rows instead — identity and score above, the sections on a
  * row of their own below — and the type is tightened just enough that all five
  * labels fit at 360px and up with nothing clipped. Narrower than that, or at a
- * larger text size, the row scrolls and the next label peeks instead of the
- * strip resting on a sliced one.
+ * larger text size, the sections wrap onto a second line of their own row; the
+ * header grows by that line rather than hiding a label behind a sideways scroll
+ * with no bar to say there is one.
  */
 @media (max-width: 600px) {
   .shell {
-    /* The rows below add up to this, so the sticky header, the rail offset, and
-       the workspace card all keep measuring the header that is on screen. */
+    /* The floors of the rows below add up to this, so at every width where
+       nothing wraps the sticky header, the rail offset, and the workspace card
+       measure the header that is on screen. A wrapped line may grow it; nothing
+       drawn beside that line reads the token (the rail is gone at this width,
+       and the landscape dock only handles a window at least 601px wide). */
     --header-height: 6.15rem;
   }
 
   .header {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-rows: 2.95rem 3.2rem;
+    grid-template-rows: 2.95rem minmax(3.2rem, auto);
     gap: 0 0.6rem;
-    height: var(--header-height);
+    min-height: var(--header-height);
     padding: 0 0.6rem;
   }
 
@@ -371,27 +486,80 @@
     grid-area: 1 / 2;
   }
 
+  /* The score leaves the header face: what is left is the button, and the chip
+     with its written-out XP, rank, and streak lives in the popover instead. */
+  .progressChip {
+    display: none;
+  }
+
+  .scorePopover {
+    position: relative;
+    display: block;
+  }
+
   .nav {
     width: auto;
     margin: 0 -0.6rem;
     padding: 0 0.6rem;
     gap: 0;
+    row-gap: 0.1rem;
     grid-area: 2 / 1 / 3 / 3;
-    scroll-padding: 0.6rem;
-    scroll-snap-type: x proximity;
-    overscroll-behavior-x: contain;
   }
 
   .navLink {
-    flex: none;
     padding: 0 0.45rem;
     font-size: var(--type-sm);
     letter-spacing: 0.06em;
-    scroll-snap-align: start;
   }
 
-  .navLinkActive {
-    /* The underline sits on the header's edge, under the whole strip. */
-    border-bottom-width: 2px;
+  /*
+   * Once the page is scrolled, the header gives the section row back to the
+   * page: one compact row holding the identity and the score, and the sections
+   * return the moment the top is back in reach. The compact row is exactly the
+   * first row's floor (2.95rem), so folding the sections away does not move the
+   * brand or the score — they were already sitting there.
+   *
+   * `data-scrolled` is set on the shell by `useScrolledPast`. It is read only
+   * here, inside the phone block, so the wider header keeps its one row and the
+   * tablet header keeps its sections.
+   *
+   * The cost is deliberate and worth naming: while scrolled, the five sections
+   * are not on screen and not in the tab order either. They are one short
+   * scroll back, which is what the restore threshold below the top buys.
+   */
+  .shell[data-scrolled='true'] {
+    --header-height: 2.95rem;
+  }
+
+  .shell[data-scrolled='true'] .header {
+    grid-template-rows: 2.95rem;
+  }
+
+  .shell[data-scrolled='true'] .nav {
+    display: none;
+  }
+}
+
+/*
+ * A phone on its side starts where a scrolled phone ends up: one compact row.
+ *
+ * The docked console hangs under the header, so at 320px tall the section row is
+ * 51px of a screen the console has to fit in — two lines of log, measured
+ * against every real phone in tests/ui/phoneLog.test.ts. The margin the header
+ * needs is the one it already has: the same single row the sections fold to as
+ * soon as the page is scrolled, so the brand and the score do not move, and the
+ * sections come back the moment the window is tall enough for them again.
+ */
+@media (max-width: 600px) and (max-height: 480px) {
+  .shell {
+    --header-height: 2.95rem;
+  }
+
+  .header {
+    grid-template-rows: 2.95rem;
+  }
+
+  .nav {
+    display: none;
   }
 }

@@ -76,10 +76,15 @@
  * (`--type-2xs`) is used for text, and body copy is 1rem (`--type-2xl`), with no
  * size in between for long-form text to shrink into. No stylesheet writes its own
  * size: tests/ui/typeScale.test.ts fails the build if one tries.
+ *
+ * The root is the one place a size may be computed rather than named, because it
+ * is where the scale is measured: `--ui-scale` is the text size Settings offers,
+ * and multiplying here is what moves the whole workspace — type and spacing — at
+ * once. It is 1 until a learner chooses otherwise.
  */
 html {
   min-width: 320px;
-  font-size: 16px;
+  font-size: calc(16px * var(--ui-scale));
   background: var(--bg);
 }
 

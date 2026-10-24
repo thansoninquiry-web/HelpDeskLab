@@ -331,11 +331,19 @@
   opacity: 0.5;
 }
 
+/*
+ * The record's own width decides its rows, not its longest line: with the
+ * button's children hugging their content the identifier line stretches the row
+ * past the console and out of the list, which is how a card narrow enough and an
+ * address long enough ends up cut off at the edge.
+ */
 .entryButton {
   display: flex;
   width: 100%;
+  min-width: 0;
   cursor: pointer;
   flex-direction: column;
+  align-items: stretch;
   gap: 0.1rem;
   padding: 0.45rem 0.55rem;
   border: 1px solid transparent;
@@ -359,7 +367,9 @@
    title, its identifier line, and the facts its console declared for it. */
 .tileGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  /* `min()` so the tile's floor is never wider than the pane: a fixed 11rem
+     would overflow a console the divider is allowed to leave at 12rem. */
+  grid-template-columns: repeat(auto-fill, minmax(min(11rem, 100%), 1fr));
   gap: 0.4rem;
   max-height: 22rem;
   margin: 0;
@@ -377,6 +387,7 @@
   min-height: 4.75rem;
   cursor: pointer;
   flex-direction: column;
+  align-items: stretch;
   gap: 0.15rem;
   padding: 0.5rem 0.55rem;
   border: 1px solid var(--border);
@@ -411,21 +422,35 @@
 }
 
 .tileFactValue {
+  min-width: 0;
   overflow: hidden;
   color: var(--text-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/*
+ * A record is a line in a list, so nothing in it may spill out of the row: a
+ * record title wraps if it needs to (it is the name of the thing being picked),
+ * and the identifier line under it — an address, a path, a share — is one line
+ * ended with an ellipsis, because a narrow card and a long domain would
+ * otherwise push the text past the edge of the row and out of the list.
+ */
 .entryTitle {
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-size: var(--type-lg);
   font-weight: 600;
 }
 
 .entryMeta {
+  min-width: 0;
+  overflow: hidden;
   color: var(--text-faint);
   font-family: var(--font-mono);
   font-size: var(--type-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .detail {
@@ -506,7 +531,7 @@
 
 .actionGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr));
   gap: 0.5rem;
 }
 
@@ -671,4 +696,132 @@
   margin: 0;
   color: var(--text-faint);
   font-size: var(--type-sm);
+}
+
+/*
+ * The narrowest the divider allows: a quarter of a small card is around 12rem,
+ * and at that width any fixed floor is wider than the console itself — a 13rem
+ * action column or an 8rem field label pushes the record past the pane and into
+ * a horizontal scrollbar the learner cannot widen away from. Below 20rem the
+ * pane stops putting anything beside anything: the search stacks above its
+ * filter, a record reads label above value, actions go full width, a picker's
+ * action drops below its row, and a tile's fact wraps instead of ending in an
+ * ellipsis. The grids below use `min(…, 100%)` as well, so the floor can never
+ * be wider than the pane at any width.
+ *
+ * This tier sits at the end of the file because it takes declarations back:
+ * a picker name is `nowrap` and a record row is a row in the base rules, and a
+ * container query has no more specificity than the rule it competes with — a
+ * tier above its base rules is silently dead, which is how a console could still
+ * be squeezing names to three letters at 12rem. `tests/ui/consoleNarrow.test.ts`
+ * fails if a later base rule reclaims one of these declarations.
+ */
+@container (max-width: 20rem) {
+  /*
+   * The console is the container, so no rule in here can reach the console
+   * itself — a query styles the container's descendants, not the box being
+   * measured. The pane's padding therefore stays the console's own; everything
+   * inside it has to fit in what that leaves.
+   */
+  .searchRow {
+    gap: 0.4rem;
+  }
+
+  /* An input's intrinsic width is a minimum a flex item will not go under, so a
+     12rem search box overflows a 10rem pane unless it may shrink and is told to
+     fill the row it is on. */
+  .search {
+    width: 100%;
+    min-width: 0;
+    flex-basis: 100%;
+    font-size: var(--type-md);
+  }
+
+  .filterSelect {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .actionInput input {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .filter {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  /* The date used to take a column of its own and squeeze the command into a
+     sliver beside it; stacked, both read at the pane's full width. */
+  .historyItem {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .historyMeta {
+    grid-column: 1;
+  }
+
+  .pickerRow {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.15rem;
+    padding-right: 0;
+  }
+
+  .pickerEntry {
+    padding: 0.5rem 0.45rem;
+  }
+
+  /* A name that cannot fit is better wrapped than cut to three letters. */
+  .pickerName,
+  .pickerMeta {
+    overflow: visible;
+    white-space: normal;
+  }
+
+  .pickerAction {
+    align-self: flex-end;
+  }
+
+  .tileFact {
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .tileFactValue {
+    overflow: visible;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .detail {
+    padding: 0.6rem 0.55rem;
+  }
+
+  .fieldRow {
+    flex-direction: column;
+    gap: 0.1rem;
+  }
+
+  .fieldRow dt {
+    min-width: 0;
+  }
+
+  .fieldRow dd {
+    overflow-wrap: anywhere;
+  }
+
+  .actionGrid {
+    gap: 0.35rem;
+  }
+
+  .actionButton {
+    padding: 0.45rem 0.5rem;
+  }
+
+  .output {
+    padding: 0.45rem 0.5rem;
+  }
 }

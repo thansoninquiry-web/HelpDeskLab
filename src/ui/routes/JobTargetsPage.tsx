@@ -13,6 +13,7 @@ import {
   type JobTargetView,
   type TargetsOverview,
 } from '../../app/targetsService'
+import { loadTargetsFilter, saveTargetsFilter, type TargetsFilter } from '../../app/settingsService'
 import { PageHeader } from '../components/PageHeader'
 import styles from './targets.module.css'
 
@@ -43,14 +44,18 @@ export function JobTargetsPage() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [exportNote, setExportNote] = useState<string | null>(null)
-  const [filter, setFilter] = useState<'all' | JobStatus>('all')
+  const [filter, setFilter] = useState<TargetsFilter>('all')
 
   useEffect(() => {
     let cancelled = false
-    loadTargetsOverview()
-      .then((value) => {
+    // The filter is read with the listings, so the list first paints the way it
+    // was left rather than showing everything and then narrowing. A filter that
+    // will not read is no filter: every listing shows.
+    Promise.all([loadTargetsOverview(), loadTargetsFilter().catch(() => 'all' as TargetsFilter)])
+      .then(([value, storedFilter]) => {
         if (!cancelled) {
           setOverview(value)
+          setFilter(storedFilter)
         }
       })
       .catch((caught: unknown) => {
@@ -62,6 +67,16 @@ export function JobTargetsPage() {
       cancelled = true
     }
   }, [])
+
+  /**
+   * A filter is a way of looking at the list, so it is stored as it is chosen:
+   * coming back to the page finds the same view, and a write that fails is not
+   * worth interrupting the reading over.
+   */
+  const onFilter = (next: TargetsFilter) => {
+    setFilter(next)
+    void saveTargetsFilter(next).catch(() => {})
+  }
 
   const reload = async () => {
     setOverview(await loadTargetsOverview())
@@ -284,7 +299,7 @@ export function JobTargetsPage() {
               <span>Status</span>
               <select
                 value={filter}
-                onChange={(event) => setFilter(event.target.value as 'all' | JobStatus)}
+                onChange={(event) => onFilter(event.target.value as TargetsFilter)}
               >
                 <option value="all">All</option>
                 {JOB_STATUSES.map((status) => (

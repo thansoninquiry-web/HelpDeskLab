@@ -196,6 +196,15 @@ export function hasOwnHintPolicy(catalogue: HintCatalogue, familyId: string): bo
 }
 
 /**
+ * True when two prices charge differently. The per-attempt budget is not part of
+ * the price — it rations how many rungs may be revealed, it does not price them —
+ * so a budget-only change is not a price the debrief has to explain.
+ */
+export function hintPricesDiffer(left: HintPolicy, right: HintPolicy): boolean {
+  return left.perHint !== right.perHint || left.cap !== right.cap
+}
+
+/**
  * Reads a stored pricing back into a usable one. A row written before the source
  * was recorded holds nothing but the numbers, and reads as the default price —
  * which is what those attempts paid, since per-family prices did not exist.

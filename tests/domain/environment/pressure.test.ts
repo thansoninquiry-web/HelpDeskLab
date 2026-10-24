@@ -24,6 +24,16 @@ const SCRIPT: readonly PressureLine[] = [
     message: 'You never looked.',
   },
   {
+    id: 'reading',
+    trigger: { kind: 'read', consoleId: 'directory' },
+    message: 'You are looking me up.',
+  },
+  {
+    id: 'queue',
+    trigger: { kind: 'read', consoleId: 'printers', entryId: 'PRN-DEPOT-01' },
+    message: 'That is the queue.',
+  },
+  {
     id: 'ignored',
     trigger: { kind: 'stalled', afterSteps: 4, afterMinutes: 3 },
     onceSaid: ['unverified', 'blind'],
@@ -57,7 +67,7 @@ function command(text: string, effects: readonly EffectType[] = []): PressureSte
 }
 
 function state(overrides: Partial<PressureState> = {}): PressureState {
-  return { steps: [], minutesWaiting: 0, said: [], ...overrides }
+  return { steps: [], minutesSinceLastAction: 0, said: [], ...overrides }
 }
 
 const asks = (count: number): PressureStep[] =>
@@ -77,14 +87,16 @@ describe('pressured caller', () => {
     expect(line?.message).toMatch(/still there/i)
   })
 
-  it('counts minutes at the desk even when nothing has been run', () => {
-    expect(duePressureLine(SCRIPT, state({ minutesWaiting: 2 }))?.id).toBe('waiting')
+  it('counts minutes of silence even when nothing has been run', () => {
+    expect(duePressureLine(SCRIPT, state({ minutesSinceLastAction: 2 }))?.id).toBe('waiting')
   })
 
   it('stands down once the caller has been verified', () => {
     const verified: PressureStep[] = [...asks(4), { kind: 'verified' }]
 
-    expect(duePressureLine(SCRIPT, state({ steps: verified, minutesWaiting: 90 }))).toBeNull()
+    expect(
+      duePressureLine(SCRIPT, state({ steps: verified, minutesSinceLastAction: 90 })),
+    ).toBeNull()
   })
 
   it('has something to say about the fix it asked for', () => {
@@ -130,6 +142,47 @@ describe('pressured caller', () => {
     // Verified, so the caller is not complaining about the code; they are
     // pleased that nobody opened the account.
     expect(duePressureLine(SCRIPT, state({ steps }))?.id).toBe('blind')
+  })
+
+  it('speaks when the desk opens a tool, and when a record in one is read', () => {
+    expect(
+      duePressureLine(SCRIPT, state({ steps: [{ kind: 'read', consoleId: 'directory', entryId: null }] }))
+        ?.id,
+    ).toBe('reading')
+
+    // A trigger can name the record as well as the console, so a caller reacts
+    // to their own queue being opened rather than to the tool.
+    expect(
+      duePressureLine(
+        SCRIPT,
+        state({ steps: [{ kind: 'read', consoleId: 'printers', entryId: 'PRN-DEPOT-01' }] }),
+      )?.id,
+    ).toBe('queue')
+    expect(
+      duePressureLine(
+        SCRIPT,
+        state({ steps: [{ kind: 'read', consoleId: 'printers', entryId: 'PRN-FIN-01' }] }),
+      ),
+    ).toBeNull()
+
+    // A look in another tool is not what this line is about.
+    expect(
+      duePressureLine(SCRIPT, state({ steps: [{ kind: 'read', consoleId: 'mail-admin', entryId: null }] }))
+        ?.id,
+    ).not.toBe('reading')
+  })
+
+  it('does not walk the ladder just because tools were opened', () => {
+    const looks: PressureStep[] = Array.from({ length: 9 }, () => ({
+      kind: 'read',
+      consoleId: 'directory',
+      entryId: null,
+    }))
+
+    // Nine records read is nine steps in the log but no work on the call: the
+    // ladder counts commands and questions, and nothing about the clock moved.
+    expect(duePressureLine(SCRIPT, state({ steps: looks }))?.id).toBe('reading')
+    expect(duePressureLine(SCRIPT, state({ steps: looks, said: ['reading'] }))).toBeNull()
   })
 
   it('escalates one line at a time and never repeats itself', () => {

@@ -1,6 +1,7 @@
 import type { PressureLine } from '../environment/pressure'
 import type { Device, DirectoryUser, Site, VerificationMethod, World } from '../environment/types'
-import type { DecisionOutcome, Rubric } from '../scoring/types'
+import type { DecisionOutcome, RefusalReason, Rubric } from '../scoring/types'
+import type { VoicemailArrival } from '../tickets/voicemail'
 import type { Rng } from '../shared/rng'
 
 export type Severity = 'critical' | 'high' | 'medium' | 'low'
@@ -33,6 +34,12 @@ export interface PublicTicket {
   device: TicketDeviceSummary
   reportedSymptoms: string[]
   createdAt: number
+  /**
+   * Present when the request arrived as a message on the desk's voicemail. The
+   * report above is the recording's transcript, so a ticket read in the queue
+   * and the message played in the workspace are the same words.
+   */
+  voicemail?: VoicemailArrival
 }
 
 export type ReferenceNoteKind = 'troubleshooting' | 'customer' | 'resolution'
@@ -51,7 +58,8 @@ export type ReferenceStep =
     }
   /** How the reference proves who is on the call; a code unless it says otherwise. */
   | { type: 'verify-caller'; method?: VerificationMethod }
-  | { type: 'deny-caller' }
+  /** The refusal the path takes, with the reason the ticket needs when it matters. */
+  | { type: 'deny-caller'; reason?: RefusalReason }
   | { type: 'ask-user'; intent: string }
   | { type: 'note'; noteKind: ReferenceNoteKind; text: string }
 

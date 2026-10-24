@@ -1,5 +1,5 @@
 import type { ActionRepository } from '../../domain/ports'
-import type { TakenHint } from '../../domain/progress/types'
+import type { RewindRecord, TakenHint, VerificationCheckRecord } from '../../domain/progress/types'
 import type {
   NewSessionAction,
   Session,
@@ -8,13 +8,13 @@ import type {
 } from '../../domain/tickets/types'
 import { NotFoundError } from '../errors'
 import type { RepositoryContext } from './context'
-import { mapAction, mapTakenHint } from './mappers'
+import { mapAction, mapRewind, mapTakenHint, mapVerificationCheck } from './mappers'
 import { assertLimit, assertNonEmpty } from './validation'
 
 /** The curriculum folds the action log, so it reads well past a single attempt. */
 const MAX_HISTORY_LIMIT = 5_000
 
-const COLUMNS = 'id, session_id, seq, at_ms, kind, input_json, output_json'
+const COLUMNS = 'id, session_id, seq, at_ms, wall_ms, kind, input_json, output_json'
 
 export class SqliteActionRepository implements ActionRepository {
   private readonly context: RepositoryContext
@@ -39,12 +39,16 @@ export class SqliteActionRepository implements ActionRepository {
         throw new Error('Could not compute the next action sequence number')
       }
 
+      // The wall clock is stamped here rather than passed in: it says when the
+      // row was written, which is the repository's fact and no caller's to guess.
+      const wallMs = Date.now()
       db.run(
-        `INSERT INTO actions (session_id, seq, at_ms, kind, input_json, output_json) VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO actions (session_id, seq, at_ms, wall_ms, kind, input_json, output_json) VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [
           action.sessionId,
           next,
           action.atMs,
+          wallMs,
           action.kind,
           JSON.stringify(action.input),
           JSON.stringify(action.output),
@@ -61,6 +65,7 @@ export class SqliteActionRepository implements ActionRepository {
         sessionId: action.sessionId,
         seq: next,
         atMs: action.atMs,
+        wallMs,
         kind: action.kind,
         input: action.input,
         output: action.output,
@@ -98,11 +103,12 @@ export class SqliteActionRepository implements ActionRepository {
 
       // The cut frees exactly `fromSeq`, so the marker keeps the log contiguous.
       db.run(
-        `INSERT INTO actions (session_id, seq, at_ms, kind, input_json, output_json) VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO actions (session_id, seq, at_ms, wall_ms, kind, input_json, output_json) VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [
           sessionId,
           fromSeq,
           marker.atMs,
+          Date.now(),
           marker.kind,
           JSON.stringify(marker.input),
           JSON.stringify(marker.output),
@@ -171,14 +177,19 @@ export class SqliteActionRepository implements ActionRepository {
         throw new NotFoundError(`No rewind at step ${seq} to put back`)
       }
 
+      // Putting a cut back is an act in its own right, so the restored steps are
+      // stamped now: the caller's clock restarts at the moment the desk undid the
+      // mistake, not at the time of a step that had been deleted.
+      const wallMs = Date.now()
       const restored = [...steps, ...tail]
       restored.forEach((step, index) => {
         db.run(
-          `INSERT INTO actions (session_id, seq, at_ms, kind, input_json, output_json) VALUES (?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO actions (session_id, seq, at_ms, wall_ms, kind, input_json, output_json) VALUES (?, ?, ?, ?, ?, ?, ?)`,
           [
             sessionId,
             seq + index,
             step.atMs,
+            wallMs,
             step.kind,
             JSON.stringify(step.input),
             JSON.stringify(step.output),
@@ -218,11 +229,63 @@ export class SqliteActionRepository implements ActionRepository {
     )
   }
 
+  /**
+   * Every cut left in a log, oldest first, joined to the family its attempt was
+   * on. A marker holds the steps it dropped, so this reads what was un-run
+   * without folding an attempt back. A cut that was put back leaves no marker,
+   * and so is not here — this is the rewinding the learner kept.
+   */
+  listRewinds(): Promise<RewindRecord[]> {
+    return this.context.read((db) =>
+      db
+        .exec(
+          `SELECT a.session_id AS session_id,
+                  t.scenario_id AS scenario_id,
+                  a.at_ms AS at_ms,
+                  a.input_json AS input_json
+           FROM actions a
+           JOIN sessions se ON se.id = a.session_id
+           JOIN tickets t ON t.id = se.ticket_id
+           WHERE a.kind = 'rewind'
+           ORDER BY a.at_ms ASC, a.id ASC`,
+        )
+        .map(mapRewind),
+    )
+  }
+
+  /**
+   * Every caller check in every log, oldest first. Un-run steps are already
+   * gone: a rewind deletes the tail, so this reads the checks the logs hold.
+   */
+  listVerificationChecks(): Promise<VerificationCheckRecord[]> {
+    return this.context.read((db) =>
+      db
+        .exec(
+          `SELECT session_id, input_json, output_json FROM actions WHERE kind = 'verify-caller' ORDER BY at_ms ASC, id ASC`,
+        )
+        .map(mapVerificationCheck)
+        .filter((check): check is VerificationCheckRecord => check !== null),
+    )
+  }
+
   listBySession(sessionId: SessionId): Promise<SessionAction[]> {
     return this.context.read((db) =>
       db
         .exec(`SELECT ${COLUMNS} FROM actions WHERE session_id = ? ORDER BY seq ASC`, [sessionId])
         .map(mapAction),
     )
+  }
+
+  async countBySession(sessionId: SessionId): Promise<number> {
+    assertNonEmpty(sessionId, 'action.sessionId')
+    return this.context.read((db) => {
+      const count = db.exec('SELECT COUNT(*) AS steps FROM actions WHERE session_id = ?', [
+        sessionId,
+      ])[0]?.steps
+      if (typeof count !== 'number') {
+        throw new Error('Could not count the steps in the log')
+      }
+      return count
+    })
   }
 }

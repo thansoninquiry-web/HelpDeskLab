@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { hintHabitBand, hintHabits, summarizeHintHabits } from '../../../src/domain/progress/hints'
-import type { ScoredStep, TakenHint } from '../../../src/domain/progress/types'
+import type {
+  ScoredAttemptHints,
+  ScoredStep,
+  TakenHint,
+} from '../../../src/domain/progress/types'
 
 function step(sessionId: string, itemId: string, label = itemId): ScoredStep {
   return { sessionId, itemId, label }
@@ -154,6 +158,8 @@ describe('hintHabits', () => {
       everBought: 1,
       workedAlone: 1,
       rungs: 2,
+      unaccountedRungs: 0,
+      attemptsWithUnaccountedHints: 0,
     })
   })
 
@@ -166,6 +172,81 @@ describe('hintHabits', () => {
       everBought: 0,
       workedAlone: 0,
       rungs: 0,
+      unaccountedRungs: 0,
+      attemptsWithUnaccountedHints: 0,
     })
+  })
+})
+
+describe('hint reconciliation', () => {
+  function charged(sessionId: string, hintsUsed: number): ScoredAttemptHints {
+    return { sessionId, hintsUsed }
+  }
+
+  it('reports a charged rung the log can no longer place', () => {
+    const steps = [step('s1', 'unlock'), step('s1', 'verify-caller')]
+    // The score says two rungs were taken; the log kept one of the two rows.
+    const hints = [hint('s1', 'verify-caller', 0)]
+
+    const summary = summarizeHintHabits(steps, hints, [charged('s1', 2)])
+
+    expect(summary.rungs).toBe(1)
+    expect(summary.unaccountedRungs).toBe(1)
+    expect(summary.attemptsWithUnaccountedHints).toBe(1)
+  })
+
+  it('says nothing when the log accounts for every charged rung', () => {
+    const steps = [step('s1', 'unlock')]
+    const hints = [hint('s1', 'unlock', 0), hint('s1', 'unlock', 1)]
+
+    const summary = summarizeHintHabits(steps, hints, [charged('s1', 2)])
+
+    expect(summary.unaccountedRungs).toBe(0)
+    expect(summary.attemptsWithUnaccountedHints).toBe(0)
+  })
+
+  it("does not let one attempt's spare rungs hide another attempt's lost one", () => {
+    const steps = [step('s1', 'unlock'), step('s2', 'unlock')]
+    // s1's log has a rung the score never charged for; s2's lost the one it did.
+    const hints = [hint('s1', 'unlock', 0), hint('s1', 'unlock', 1)]
+
+    const summary = summarizeHintHabits(steps, hints, [charged('s1', 1), charged('s2', 1)])
+
+    expect(summary.rungs).toBe(2)
+    // Compared per attempt and then summed, so the two do not cancel out.
+    expect(summary.unaccountedRungs).toBe(1)
+    expect(summary.attemptsWithUnaccountedHints).toBe(1)
+  })
+
+  it('leaves an attempt scored before hints were counted to the log alone', () => {
+    const steps = [step('s1', 'unlock')]
+    const hints = [hint('s1', 'unlock', 0)]
+
+    // No stored count: the log is the only account, and nothing is invented.
+    const summary = summarizeHintHabits(steps, hints, [])
+
+    expect(summary.rungs).toBe(1)
+    expect(summary.unaccountedRungs).toBe(0)
+    expect(summary.attemptsWithUnaccountedHints).toBe(0)
+  })
+
+  it('ignores a score whose rubric never named its steps', () => {
+    const steps = [step('s1', 'unlock')]
+
+    // s2 was scored but kept no rubric, so it is not part of this habit; its
+    // charge is not a missing row on a step that was never recorded.
+    const summary = summarizeHintHabits(steps, [], [charged('s1', 0), charged('s2', 3)])
+
+    expect(summary.attempts).toBe(1)
+    expect(summary.unaccountedRungs).toBe(0)
+  })
+
+  it('counts a repeated stored row once', () => {
+    const steps = [step('s1', 'unlock')]
+
+    const summary = summarizeHintHabits(steps, [], [charged('s1', 1), charged('s1', 1)])
+
+    expect(summary.unaccountedRungs).toBe(1)
+    expect(summary.attemptsWithUnaccountedHints).toBe(1)
   })
 })

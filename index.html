@@ -19,8 +19,9 @@
       // corrected from the database as soon as settings open. Keep these keys,
       // the 07:00 and 19:00 defaults, and the dawn-to-dusk rule in step with
       // themeService.ts and domain/appearance/theme.ts. The terminal's own
-      // surface is cached separately, so it can stay dark on white paper
-      // without waiting for the bundle.
+      // surface and the text size are cached separately, so they can be applied
+      // without waiting for the bundle; keep their keys and the "default"
+      // fallback in step with themeService.ts and textSizeService.ts.
       function clockMinutes(value) {
         var parts = /^([01][0-9]|2[0-3]):([0-5][0-9])$/.exec(
           typeof value === 'string' ? value : ''
@@ -74,6 +75,11 @@
           : 'dark'
         document.documentElement.dataset.terminal =
           localStorage.getItem('helpdesklab.terminal') === 'follow' ? 'follow' : 'dark'
+        // Anything unrecognized, and every install that has never chosen, reads
+        // as Default: the size the workspace was laid out at.
+        var textSize = localStorage.getItem('helpdesklab.textSize')
+        document.documentElement.dataset.textSize =
+          textSize === 'small' || textSize === 'large' ? textSize : 'default'
       } catch (error) {
         // Storage can be unavailable; the dark defaults still apply.
       }

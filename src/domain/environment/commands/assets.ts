@@ -1,4 +1,5 @@
 import { errorLine, line, mutedLine } from '../output'
+import { stockStateLabel } from '../stock'
 import type { Device, DirectoryUser, OutputLine, SiteId, StockItem, World } from '../types'
 import type { CommandContext, CommandDefinition, CommandOutcome } from './types'
 import { failed, succeeded, usageFailure } from './types'
@@ -22,12 +23,6 @@ const KIND_LABELS: Record<Device['kind'], string> = {
   server: 'Server',
 }
 
-const STATE_LABELS: Record<StockItem['state'], string> = {
-  ready: 'Ready to go out',
-  'needs-image': 'Needs imaging',
-  'awaiting-parts': 'Waiting on parts',
-  quarantined: 'Held, do not issue',
-}
 
 function siteName(world: World, siteId: SiteId): string {
   return world.sites.find((site) => site.id === siteId)?.name ?? siteId
@@ -106,7 +101,7 @@ function describeStock(context: CommandContext, item: StockItem): OutputLine[] {
     line(`Kind            : ${KIND_LABELS[item.kind]}`),
     line(`Model           : ${item.model}`),
     line(`Site            : ${siteName(context.world, item.siteId)}`),
-    line(`Shelf state     : ${STATE_LABELS[item.state]}`),
+    line(`Shelf state     : ${stockStateLabel(item.state)}`),
     line(`Days on shelf   : ${item.daysOnShelf}`),
     line(`Shelf note      : ${item.notes}`),
     line(

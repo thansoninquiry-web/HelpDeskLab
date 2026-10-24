@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { hintLedger, type HintLedgerAction } from '../../../src/domain/scoring/hints'
+import {
+  hintLedger,
+  normalizeHintRepair,
+  reconstructHintRungs,
+  type HintLedgerAction,
+  type HintRepair,
+} from '../../../src/domain/scoring/hints'
+import { totalHintCost } from '../../../src/domain/scoring/policy'
 
 const ITEMS = [
   { id: 'verify-caller', label: 'Verified the caller', hints: ['Verify first.', 'Send a code.', 'Have them read it back.'] },
@@ -77,5 +84,106 @@ describe('hintLedger', () => {
 
     expect(ledger).toHaveLength(1)
     expect(ledger[0]?.cost).toBe(5)
+  })
+})
+
+describe('reconstructHintRungs', () => {
+  const policy = { perHint: 5, cap: 15, budget: 0 }
+
+  it('prices the lost rungs where they can only have fallen, after the survivors', () => {
+    const repair = reconstructHintRungs(policy, 1, 1, 5)
+
+    expect(repair).toMatchObject({ placed: 1, missing: 1, cost: 5, charged: 5 })
+    // The one rung the log kept was the first; the lost one was the second.
+    expect(repair.rungs).toEqual([{ sequence: 2, cost: 5 }])
+  })
+
+  it('adds up to the part of the charge the steps cannot show, cap included', () => {
+    // Two rungs survive, two were lost, and the attempt was charged the 15 cap.
+    const repair = reconstructHintRungs(policy, 2, 2, 5)
+
+    expect(repair.rungs.map((rung) => rung.cost)).toEqual([5, 0])
+    expect(repair.cost).toBe(5)
+    expect(repair.charged).toBe(5)
+    // The identity the reconstruction relies on, stated as a check of its own.
+    expect(repair.cost).toBe(totalHintCost(policy, 4) - totalHintCost(policy, 2))
+  })
+
+  it('prices a wholly lost record from the first rung', () => {
+    const repair = reconstructHintRungs(policy, 0, 2, 10)
+
+    expect(repair.rungs).toEqual([
+      { sequence: 1, cost: 5 },
+      { sequence: 2, cost: 5 },
+    ])
+    expect(repair.cost).toBe(10)
+  })
+
+  it('keeps both numbers when the policy no longer prices the charge', () => {
+    // A score charged at a dearer rate than the policy read back beside it.
+    const repair = reconstructHintRungs(policy, 0, 1, 25)
+
+    expect(repair.cost).toBe(5)
+    expect(repair.charged).toBe(25)
+  })
+
+  it('reads free hints as free rungs rather than no rungs', () => {
+    const repair = reconstructHintRungs({ perHint: 0, cap: 0, budget: 0 }, 1, 3, 0)
+
+    expect(repair.rungs.map((rung) => rung.cost)).toEqual([0, 0, 0])
+    // The count is still repaired: the log lost three rungs whatever they cost.
+    expect(repair.missing).toBe(3)
+    expect(repair.cost).toBe(0)
+  })
+
+  it('refuses to invent a rung when nothing is missing', () => {
+    const repair = reconstructHintRungs(policy, 2, 0, 0)
+
+    expect(repair.rungs).toEqual([])
+    expect(repair.missing).toBe(0)
+  })
+})
+
+describe('normalizeHintRepair', () => {
+  const stored: HintRepair = {
+    placed: 1,
+    missing: 2,
+    rungs: [
+      { sequence: 2, cost: 5 },
+      { sequence: 3, cost: 0 },
+    ],
+    cost: 5,
+    charged: 5,
+    policy: { perHint: 5, cap: 15, budget: 0 },
+    repairedAt: 1_700_000_000_000,
+    source: 'policy',
+  }
+
+  it('reads a stored repair back unchanged', () => {
+    expect(normalizeHintRepair(JSON.parse(JSON.stringify(stored)))).toEqual(stored)
+  })
+
+  it('rejects a record that lists fewer rungs than it says were lost', () => {
+    expect(normalizeHintRepair({ ...stored, rungs: [stored.rungs[0]] })).toBeNull()
+    expect(normalizeHintRepair({ ...stored, missing: 0 })).toBeNull()
+  })
+
+  it('rejects anything that is not a policy reconstruction', () => {
+    expect(normalizeHintRepair(null)).toBeNull()
+    expect(normalizeHintRepair([])).toBeNull()
+    expect(normalizeHintRepair({ ...stored, source: 'guess' })).toBeNull()
+    expect(normalizeHintRepair({ ...stored, repairedAt: -1 })).toBeNull()
+    expect(normalizeHintRepair({ ...stored, cost: 'free' })).toBeNull()
+    expect(normalizeHintRepair({ ...stored, rungs: [{ sequence: 0, cost: 5 }, stored.rungs[1]] }))
+      .toBeNull()
+  })
+
+  it('normalizes a policy a later build wrote', () => {
+    const repair = normalizeHintRepair({
+      ...stored,
+      policy: { perHint: 5, cap: 15, budget: 99 },
+    })
+
+    expect(repair?.policy).toEqual({ perHint: 5, cap: 15, budget: 50 })
   })
 })

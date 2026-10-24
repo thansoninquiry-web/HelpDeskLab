@@ -168,6 +168,93 @@
   text-transform: uppercase;
 }
 
+/*
+ * What a rung costs in each family before a ticket is opened. The price is
+ * fixed when an attempt starts, so the panel says that too: it is a forecast of
+ * the next ticket, not a running total.
+ */
+.hintPrices {
+  margin-top: 1rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+
+.hintPricesHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.75rem;
+}
+
+.hintPricesTitle {
+  margin: 0;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hintPricesNote {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--type-sm);
+  line-height: 1.5;
+}
+
+.hintPriceList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.7rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hintPriceChip {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  font-size: var(--type-sm);
+}
+
+/* A family that carries its own price is marked, and the mark is a word as
+   well as a colour: inherited is the quiet default, not the exception. */
+.hintPriceChip[data-source='family'] {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+
+.hintPriceFamily {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.hintPriceValue {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+}
+
+.hintPriceSource {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.hintPriceChip[data-source='family'] .hintPriceSource {
+  color: var(--accent);
+}
+
 .queue {
   display: flex;
   flex-direction: column;
@@ -225,6 +312,23 @@
   text-transform: uppercase;
 }
 
+/*
+ * How the request arrived, when it did not arrive as a conversation. The queue
+ * says so up front: a ticket left on the voicemail is worked differently, and
+ * the learner should know that before choosing what to open.
+ */
+.arrival {
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
 .subject {
   font-size: var(--type-xl);
   letter-spacing: -0.01em;
@@ -234,6 +338,18 @@
   margin-top: 0.25rem;
   color: var(--text-faint);
   font-size: var(--type-md);
+}
+
+/*
+ * Where an open ticket was left. Sits under the subject because it is the
+ * ticket's own state, and takes the accent so it reads as the next action
+ * rather than as another line of the request.
+ */
+.resumeLine {
+  margin-top: 0.35rem;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
 }
 
 .queueSide {
@@ -706,6 +822,55 @@
   color: var(--accent);
 }
 
+/*
+ * Which consoles the attempt used, in the order it first opened them. One row a
+ * console, numbered like the trail above so the two read as the same log.
+ */
+.toolUseList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.toolUseRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.3rem 0.6rem;
+  border-left: 2px solid var(--border-strong);
+  background: var(--surface-sunken);
+}
+
+/* A console that was opened and left without a command reads as a look, not a
+   dead branch: the border says so without the row claiming it was wasted. */
+.toolUseRow[data-idle='true'] {
+  border-left-style: dashed;
+}
+
+.toolUseStep {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+}
+
+.toolUseCounts {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+}
+
+/* The reading under the rows: the point of counting them at all. */
+.toolUseTakeaway {
+  margin: 0.7rem 0 0;
+  color: var(--text-muted);
+  font-size: var(--type-md);
+  line-height: 1.5;
+}
+
 /* The commands of one tool, and what the score made of each of them. */
 .toolGroup {
   margin-top: 0.85rem;
@@ -806,6 +971,30 @@
   color: var(--text-faint);
 }
 
+/*
+ * The same narrow pane, from the entries' own stylesheet. The terminal measures
+ * itself in `workspace.module.css`; the pieces it holds are styled here, and a
+ * prompt sharing a line with a long command is what wraps a path mid-token at
+ * 300px. Giving the prompt its own line keeps the command starting at the margin
+ * where a reader looks for it. The query only fires inside a pane that measures
+ * itself, so the same entries elsewhere are untouched.
+ */
+@container (max-width: 22rem) {
+  .commandLine .prompt {
+    display: block;
+    margin-bottom: 0.15rem;
+  }
+
+  .entry {
+    margin-bottom: 0.7rem;
+  }
+
+  .chatEntry,
+  .interruptionEntry {
+    padding: 0.45rem 0.55rem;
+  }
+}
+
 .chatEntry {
   margin-bottom: 0.9rem;
   padding: 0.55rem 0.7rem;
@@ -891,8 +1080,9 @@
   font-size: var(--type-md);
 }
 
-.commandInput:focus {
-  outline: none;
+/* The input is borderless and transparent, so it keeps the global focus ring. */
+.commandForm:focus-within {
+  border-top-color: var(--accent-border);
 }
 
 .runButton {
@@ -932,6 +1122,39 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-muted);
+}
+
+/*
+ * A case-file section on a phone: the heading is the whole control, and the row is
+ * a thumb's worth of height. It stays a `list-item` rather than a flex row so the
+ * browser draws its own disclosure marker — a flex box renders no marker at all,
+ * and the folded sections then read as labels instead of something to open — and
+ * the heading shares the marker's line rather than starting under it.
+ */
+.sectionSummary {
+  padding: 0.6rem 0;
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.sectionSummary h2 {
+  display: inline;
+}
+
+.sectionSummary::marker {
+  color: var(--accent);
+}
+
+.sectionSummary:hover h2,
+.sectionSummary:focus-visible h2 {
+  color: var(--text);
+}
+
+/* The close form is the one section whose body is a form of its own. */
+.sectionForm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
 }
 
 .buttonRow {
@@ -1154,6 +1377,55 @@
   color: var(--danger-text);
   font-size: var(--type-lg);
   font-weight: 600;
+}
+
+/* A change tried after the refusal: stopped, but still worth naming beside the
+   decision it argued with, while the ticket is open rather than only in the
+   debrief. */
+.retryNotice {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+  color: var(--warning-text);
+  font-size: var(--type-md);
+}
+
+.retryNotice ul {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.retryNotice code {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+}
+
+/* The commands a refusal stops. Named as the reference names them, so an entry
+   here is the same word the cheat sheet and `help` use. */
+.blockedCommands {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.blockedCommand {
+  padding: 0.15rem 0.4rem;
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-sm);
+  color: var(--danger-text);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
 }
 
 .verificationForm {
@@ -1495,6 +1767,12 @@
   border-left-color: var(--danger);
 }
 
+/* A step answered without being fully earned keeps its own colour, so it does
+   not read as either a pass or a total miss. */
+.item[data-partial='true'] {
+  border-left-color: var(--warning);
+}
+
 .itemHeader {
   display: flex;
   flex-wrap: wrap;
@@ -1548,6 +1826,73 @@
 
 .hintGap strong {
   color: var(--warning-text);
+}
+
+.hintGapLine {
+  margin: 0;
+}
+
+.hintRepairButton {
+  margin-top: 0.6rem;
+}
+
+/* The offer sits under its own button, so the price is read after the press
+   that would pay it rather than as another warning line. */
+.hintRepairHint {
+  margin: 0.5rem 0 0;
+  color: var(--text-faint);
+  font-size: var(--type-sm);
+  line-height: 1.5;
+}
+
+.hintRepairError {
+  margin: 0.5rem 0 0;
+  color: var(--danger-text);
+  font-size: var(--type-sm);
+  line-height: 1.5;
+}
+
+/*
+ * A reconstructed record reads as a reading, not as a finding: the accent says
+ * so, the tag says it in a word, and the rungs are priced without a ladder they
+ * were never proved to belong to.
+ */
+.hintRepair {
+  margin: 0.2rem 0 0.9rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px dashed var(--border-strong);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+}
+
+.hintRepairHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--type-md);
+}
+
+.hintRepairTag {
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hintRepairNote {
+  margin: 0.45rem 0 0;
+  color: var(--text-muted);
+  font-size: var(--type-sm);
+  line-height: 1.5;
 }
 
 .hintUse {
@@ -1617,6 +1962,17 @@
   border: 1px solid var(--danger-border);
   border-radius: var(--radius-sm);
   color: var(--danger-text);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.partialTag {
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-sm);
+  color: var(--warning-text);
   font-size: var(--type-2xs);
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1977,6 +2333,62 @@
   letter-spacing: 0.06em;
 }
 
+/* The count and the simulator filter share the right end of a section header. */
+.sectionTools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1rem;
+}
+
+.simulatorFilter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.simulatorFilterButton {
+  padding: 0.3rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.simulatorFilterButton:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.simulatorFilterButton[aria-pressed='true'] {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* Which simulator a scenario belongs to, beside its id and its title. */
+.simulatorTag {
+  display: inline-block;
+  margin-left: 0.45rem;
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-family: var(--font-display);
+  font-size: var(--type-2xs);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  line-height: 1.5;
+  text-transform: uppercase;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
 .numeric {
   color: var(--text);
   font-family: var(--font-mono);
@@ -2230,4 +2642,42 @@
   letter-spacing: 0.09em;
   white-space: nowrap;
   text-transform: uppercase;
+}
+
+/*
+ * Rewinds share the habit row: same shape, same meter, banded by how much of a
+ * family's practice gets un-run. A family cut on most attempts is the one worth
+ * naming, so its edge and its meter carry the loudest colour.
+ */
+.habitRow[data-band='heavy'] {
+  border-left-color: var(--danger);
+}
+
+.habitRow[data-band='some'] {
+  border-left-color: var(--warning);
+}
+
+.habitRow[data-band='rare'] {
+  border-left-color: var(--accent);
+}
+
+.habitRow[data-band='heavy'] .habitMeterFill {
+  background: var(--danger);
+}
+
+.habitRow[data-band='some'] .habitMeterFill {
+  background: var(--warning);
+}
+
+/* The band and the way into practice, stacked in the row's trailing column. */
+.rewindAside {
+  display: grid;
+  justify-items: end;
+  gap: 0.4rem;
+}
+
+@media (max-width: 640px) {
+  .rewindAside {
+    justify-items: start;
+  }
 }

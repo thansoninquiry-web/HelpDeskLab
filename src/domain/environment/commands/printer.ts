@@ -70,13 +70,9 @@ function getPrinters(context: CommandContext): CommandOutcome {
 }
 
 function getPrintQueue(context: CommandContext): CommandOutcome {
-  if (context.device.spoolerStatus === 'stopped') {
-    return failed([
-      errorLine('The Print Spooler service is not running on this device.'),
-      mutedLine('Start the service before inspecting queues: restart-spooler'),
-    ])
-  }
-
+  // A stopped spooler is refused before this runs, by the policy that reads
+  // `needsSpooler` off the registry: reading a queue and clearing one need the
+  // same service, so the rule is written once.
   const resolved = resolvePrinter(context, context.args[0])
   if (!resolved.ok) {
     return resolved.outcome
@@ -206,6 +202,7 @@ export const printerCommands: readonly CommandDefinition[] = [
     aliases: ['get-print-queue'],
     group: 'printer',
     access: 'read',
+    needsSpooler: true,
     usage: 'get-printqueue [printerName]',
     summary: 'Show the documents waiting in a printer queue',
     run: getPrintQueue,
@@ -224,6 +221,7 @@ export const printerCommands: readonly CommandDefinition[] = [
     aliases: ['clear-print-queue'],
     group: 'printer',
     access: 'change',
+    needsSpooler: true,
     usage: 'clear-printqueue [printerName]',
     summary: 'Delete stalled jobs and return an offline printer to service',
     run: clearPrintQueue,

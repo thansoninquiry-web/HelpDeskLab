@@ -132,10 +132,17 @@ export function isDestructive(action: DeviceAction): boolean {
   return DESTRUCTIVE_ACTIONS.includes(action)
 }
 
+/**
+ * What the activity log can hold. `review` is the read step: opening the record
+ * and reading the reasons before deciding, which changes nothing on the device
+ * but is what the diagnosis category is scored from.
+ */
+export type IntuneEventAction = DeviceAction | 'review'
+
 export interface IntuneEvent {
   id: number
   deviceId: string
-  action: DeviceAction
+  action: IntuneEventAction
   at: number
   /** Whether the console carried the action out, or refused it. */
   outcome: 'applied' | 'refused' | 'failed'

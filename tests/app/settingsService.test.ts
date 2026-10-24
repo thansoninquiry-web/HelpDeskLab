@@ -25,13 +25,23 @@ import {
   loadExamMode,
   loadHintPolicy,
   loadHintTargets,
+  loadProgressSection,
+  loadSplitRatio,
   loadSplitView,
+  loadDockShare,
+  loadStageRatio,
+  loadTargetsFilter,
   resolveHintPolicy,
   resolveHintPricing,
   saveExamMode,
   saveFamilyHintPolicy,
   saveHintPolicy,
+  saveDockShare,
+  saveProgressSection,
+  saveSplitRatio,
   saveSplitView,
+  saveStageRatio,
+  saveTargetsFilter,
   validateHintPolicy,
 } from '../../src/app/settingsService'
 
@@ -315,6 +325,139 @@ describe('hint settings', () => {
     expect(await loadSplitView()).toBe(false)
   })
 
+  it('trades width between the columns only once the learner has', async () => {
+    // No row is not the default ratio: a learner who has never moved this divider
+    // keeps the fractions the grid shipped with, and nothing is written for them.
+    expect(await loadStageRatio()).toBeNull()
+    expect(await saveStageRatio(0.32)).toBe(0.32)
+    expect(await loadStageRatio()).toBe(0.32)
+  })
+
+  it('keeps the trade across a reopen', async () => {
+    await saveStageRatio(0.55)
+
+    await holder.current?.close()
+    holder.current = await openPersistence({ snapshotStore: store, wasmBinary: loadWasmBinary() })
+
+    expect(await loadStageRatio()).toBe(0.55)
+  })
+
+  it('reads a trade edited outside the app inside the bounds rather than failing', async () => {
+    const db = holder.current
+    if (!db) {
+      throw new Error('Test database is missing')
+    }
+
+    await db.settings.set('stageRatio', 'wide')
+    expect(await loadStageRatio()).toBeNull()
+
+    await db.settings.set('stageRatio', { ratio: 0.95 })
+    expect(await loadStageRatio()).toBe(0.65)
+
+    await db.settings.set('stageRatio', { ratio: 0.02 })
+    expect(await loadStageRatio()).toBe(0.2)
+
+    // A ratio stored as a string is nothing stored, like the split's.
+    await db.settings.set('stageRatio', { ratio: '0.5' })
+    expect(await loadStageRatio()).toBeNull()
+  })
+
+  it('gives the docked card a share only once its edge has been moved', async () => {
+    // Same contract as the dividers: no row means the stylesheet's own share, so
+    // a log's card and a desktop's are free to differ until one is dragged.
+    expect(await loadDockShare()).toBeNull()
+    expect(await saveDockShare(0.68)).toBe(0.68)
+    expect(await loadDockShare()).toBe(0.68)
+  })
+
+  it('reads a card share edited outside the app inside the bounds', async () => {
+    const db = holder.current
+    if (!db) {
+      throw new Error('Test database is missing')
+    }
+
+    await db.settings.set('dockShare', 'tall')
+    expect(await loadDockShare()).toBeNull()
+
+    await db.settings.set('dockShare', { share: 1.4 })
+    expect(await loadDockShare()).toBe(0.92)
+
+    await db.settings.set('dockShare', { share: 0.1 })
+    expect(await loadDockShare()).toBe(0.3)
+
+    await db.settings.set('dockShare', { share: '0.6' })
+    expect(await loadDockShare()).toBeNull()
+  })
+
+  it('remembers the job-target filter, and shows everything until one is chosen', async () => {
+    expect(await loadTargetsFilter()).toBe('all')
+
+    expect(await saveTargetsFilter('interviewing')).toBe('interviewing')
+    expect(await loadTargetsFilter()).toBe('interviewing')
+
+    await holder.current?.close()
+    holder.current = await openPersistence({ snapshotStore: store, wasmBinary: loadWasmBinary() })
+
+    expect(await loadTargetsFilter()).toBe('interviewing')
+
+    // Back to everything when the learner says so, which is a choice too.
+    expect(await saveTargetsFilter('all')).toBe('all')
+    expect(await loadTargetsFilter()).toBe('all')
+  })
+
+  it('reads a filter edited outside the app as every listing rather than failing', async () => {
+    const db = holder.current
+    if (!db) {
+      throw new Error('Test database is missing')
+    }
+
+    await db.settings.set('targetsFilter', 'interviewing')
+    expect(await loadTargetsFilter()).toBe('all')
+
+    await db.settings.set('targetsFilter', { filter: 'archived' })
+    expect(await loadTargetsFilter()).toBe('all')
+
+    // A status this build has, but stored where the reader does not look.
+    await db.settings.set('targetsFilter', { status: 'offer' })
+    expect(await loadTargetsFilter()).toBe('all')
+
+    await db.settings.set('targetsFilter', { filter: 'offer' })
+    expect(await loadTargetsFilter()).toBe('offer')
+  })
+
+  it('remembers the Progress section being read, and writes nothing for one it cannot read', async () => {
+    expect(await loadProgressSection()).toBeNull()
+
+    expect(await saveProgressSection('progress-hints')).toBe('progress-hints')
+    expect(await loadProgressSection()).toBe('progress-hints')
+
+    // A section id that is not an id at all is refused rather than stored, and
+    // the reading already there is left alone.
+    expect(await saveProgressSection('Not A Section!')).toBeNull()
+    expect(await loadProgressSection()).toBe('progress-hints')
+
+    await holder.current?.close()
+    holder.current = await openPersistence({ snapshotStore: store, wasmBinary: loadWasmBinary() })
+
+    expect(await loadProgressSection()).toBe('progress-hints')
+  })
+
+  it('reads a stored section edited outside the app as no reading rather than failing', async () => {
+    const db = holder.current
+    if (!db) {
+      throw new Error('Test database is missing')
+    }
+
+    await db.settings.set('progressSection', 'progress-rewinds')
+    expect(await loadProgressSection()).toBeNull()
+
+    await db.settings.set('progressSection', { section: 7 })
+    expect(await loadProgressSection()).toBeNull()
+
+    await db.settings.set('progressSection', { section: 'progress-rewinds' })
+    expect(await loadProgressSection()).toBe('progress-rewinds')
+  })
+
   it('keeps the split across a reopen, and across every ticket', async () => {
     await saveSplitView(true)
 
@@ -339,6 +482,48 @@ describe('hint settings', () => {
 
     await db.settings.set('splitView', { on: true })
     expect(await loadSplitView()).toBe(true)
+  })
+
+  it('keeps the divider where the learner left it, across every ticket', async () => {
+    // Nothing stored is not the same as a stored half: a first visit must not
+    // write a position for a divider nobody has touched.
+    expect(await loadSplitRatio()).toBeNull()
+
+    expect(await saveSplitRatio(0.62)).toBe(0.62)
+    expect(await loadSplitRatio()).toBe(0.62)
+
+    await holder.current?.close()
+    holder.current = await openPersistence({ snapshotStore: store, wasmBinary: loadWasmBinary() })
+
+    // The split switch is untouched by the divider's row, and the other way round.
+    expect(await loadSplitRatio()).toBe(0.62)
+    expect(await loadSplitView()).toBe(false)
+  })
+
+  it('stores a divider clamped to the bounds it was dragged within', async () => {
+    expect(await saveSplitRatio(0.9)).toBe(0.75)
+    expect(await loadSplitRatio()).toBe(0.75)
+    expect(await saveSplitRatio(0.01)).toBe(0.25)
+    expect(await loadSplitRatio()).toBe(0.25)
+  })
+
+  it('reads a divider edited outside the app inside its bounds, or as nothing', async () => {
+    const db = holder.current
+    if (!db) {
+      throw new Error('Test database is missing')
+    }
+
+    await db.settings.set('splitRatio', { ratio: 4 })
+    expect(await loadSplitRatio()).toBe(0.75)
+
+    await db.settings.set('splitRatio', 'half')
+    expect(await loadSplitRatio()).toBeNull()
+
+    await db.settings.set('splitRatio', { ratio: 'wide' })
+    expect(await loadSplitRatio()).toBeNull()
+
+    await db.settings.set('splitRatio', {})
+    expect(await loadSplitRatio()).toBeNull()
   })
 
   it('spells the budget out beside the price', () => {

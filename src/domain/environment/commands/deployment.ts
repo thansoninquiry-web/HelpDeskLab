@@ -1,4 +1,5 @@
 import { errorLine, line, mutedLine, successLine } from '../output'
+import { stockPolicy } from '../policy'
 import type { DeploymentState, DeploymentTask, OutputLine, StockItem } from '../types'
 import type { CommandContext, CommandDefinition, CommandOutcome } from './types'
 import { failed, succeeded, usageFailure } from './types'
@@ -104,17 +105,13 @@ function startDeployment(context: CommandContext): CommandOutcome {
   if (!stock) {
     return failed([errorLine(`${task.assetTag} is not on any shelf.`)])
   }
-  if (stock.state === 'quarantined') {
-    return failed([
-      errorLine(`${task.assetTag} is held: ${stock.notes}`),
-      mutedLine('Imaging will not clear a damage case. Resolve the hold first.'),
-    ])
-  }
-  if (stock.state === 'awaiting-parts') {
-    return failed([
-      errorLine(`${task.assetTag} is waiting on parts: ${stock.notes}`),
-      mutedLine('Do not image a machine that cannot be issued yet.'),
-    ])
+
+  // The same rule the shelf consults before it hands a machine over: a hold is
+  // not cleared by imaging a machine, and parts that have not arrived are not
+  // there because a sequence ran.
+  const unavailable = stockPolicy(stock, 'image')
+  if (unavailable) {
+    return failed(unavailable.lines)
   }
 
   const previousAttempts = task.attempts

@@ -49,10 +49,27 @@ claims to have covered, so the scope statement is accurate for the entry set:
 Reproduce:
 
 ```bash
-curl -s https://servicedesk-simulator.com/ | grep -o 'assets/[A-Za-z0-9_.-]*\.js'
-curl -s -o chunk.js -w '%{http_code} %{size_download}\n' \
-  https://servicedesk-simulator.com/assets/ServerRoomPanel-BnsE39qI.js
+npm run check:claims
 ```
+
+That is the whole check. The tables in this note are transcribed once into
+[`reference-bundle-claims.json`](reference-bundle-claims.json) — every entry keeps
+the sentence the spec made — and `scripts/check-bundle-claims.mjs` fetches each
+asset the file names, once, then answers every claim against the bytes that were
+served. Nothing is executed and nothing is written to the target.
+
+- `node scripts/check-bundle-claims.mjs <other-spec>.json` checks a different
+  claim file, which is how a freshly pasted spec is checked.
+- `--assets <dir>` re-checks a saved copy instead of the deployment;
+  `--save <dir>` writes the bytes the run fetched, so a check can be repeated
+  offline.
+- The exit code is the result: `0` every claim held, `1` a claim was
+  contradicted, `2` nothing was contradicted but part of the spec could not be
+  checked (a file is no longer served, a pattern matched nothing, a fetch
+  failed), `3` the claim file or the options could not be used.
+- The registry rows carry exact content hashes because that is what the spec
+  claimed. The literal rows name `assets/Name-*.js` instead, because those
+  claims are about the feature, not about the hash of the day.
 
 ---
 
@@ -140,3 +157,39 @@ Lazy chunks that only load behind a route would not appear in the entry manifest
 - **Could not check:** the evidence id itself — the REA provider attached to this
   workspace retains **0 records**, rechecked for this run, so the spec cannot be
   re-inspected from here and rests on its own output plus these checks.
+
+---
+
+## 6. Re-checked 2026-10-20 — the deployment moved, and the check says so
+
+The same claim file, run against the deployment two days later, reports:
+**0 of 12 files at the claimed size, all 12 no longer served (HTTP 404), 1 of 22
+literal claims resolvable, and the entry-page claim holds** (15 bundle
+references, as claimed). Exit code `2`: nothing in the spec is contradicted,
+but most of it can no longer be checked against what is served.
+
+The one claim that still resolved is `lastAnsweredAt` in `LiveMode-0xAyGJ6v.js`,
+found by pattern rather than by the spec's hash. The panel chunks the spec names —
+`ServerRoomPanel`, `MailAdminPanel`, `DeploymentModule`, `MailSecurityPanel`,
+`ShipManagerPanel`, `MockInterviewPanel`, `VoicemailModal`,
+`TeacherDashboardModal`, `PhoneCallSimulation` — are named by nothing the current
+entry page loads (and their literals are not in those bundles either). The current
+entry page names `index`, `app-shell`, `auth-shell`, `workflow-suite`,
+`sim-data`, `it-support-simulator` (as a lazy chunk) and the same vendor set, so
+the served build has a different module layout from the one this note describes.
+A chunk that nothing references would not be found by this check either: the
+search is the entry page and one level out from it, not the whole deployment.
+
+What that means for this note, which stays a record of 2026-10-18:
+
+- The **registry** was true of one deployment and is now stale by construction.
+  Re-checking it is not a way to learn about the product; it is a way to learn
+  that the product was rebuilt.
+- The **literals** are the durable half, but they can only be checked where a
+  matching chunk is served. Until a current spec names the current chunks, 21 of
+  the 22 claims stay `unverifiable` rather than `false` — which is the honest
+  answer, and the reason the script separates the two.
+- The **six unsupported details** in §3 stay as they were recorded. They rest on
+the 2026-10-18 bytes of panels that are no longer served, so today they are
+`unverifiable` too — not re-confirmed, and not withdrawn. What would withdraw
+them is the panel bytes of whatever build is live when someone asks again.

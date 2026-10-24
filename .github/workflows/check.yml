@@ -1,0 +1,47 @@
+name: Check
+
+# The app ships its dependencies to the browser and calls no server of its own,
+# so a compromised package is the realistic way this project is attacked. Until
+# now nothing checked for one: these runs are the only automated defence.
+on:
+  push:
+  pull_request:
+
+# A new push supersedes the run for the same branch instead of queueing behind it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      # Reading the repository is all this job needs.
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # package.json asks for >=20.19.0; 22 is the current LTS.
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck, lint, test and build
+        run: npm run check
+
+      # What the bundle ships is a hard gate: an advisory here runs on a
+      # learner's machine.
+      - name: Audit shipped dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      # A build-time package can still run install scripts, but a freshly
+      # disclosed advisory in one should be seen and judged that day rather than
+      # block an unrelated change, so this step reports without failing.
+      - name: Audit build-time dependencies
+        continue-on-error: true
+        run: npm audit --audit-level=high

@@ -2,6 +2,7 @@ import { Link, useParams } from 'react-router'
 import { ComplianceBadge, LifecycleBadge } from './Badges'
 import { DeviceActions } from './DeviceActions'
 import { IntuneNav } from './IntuneNav'
+import { EVENT_ACTION_LABELS } from './labels'
 import { relativeTime, useIntune } from './useIntune'
 import { appName, policyAppliesTo, requiredAppsFor } from '../logic/compliance'
 import styles from './intune.module.css'
@@ -169,7 +170,8 @@ export function IntuneDevicePage() {
             {events.map((event) => (
               <div key={event.id} className={styles.card}>
                 <h3>
-                  {event.action} · {relativeTime(event.at)} · {event.outcome}
+                  {EVENT_ACTION_LABELS[event.action]} · {relativeTime(event.at)} ·{' '}
+                  {event.outcome}
                 </h3>
                 <p>{event.summary}</p>
                 {event.notes.length > 0 ? (

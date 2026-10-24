@@ -9,7 +9,7 @@ import { assertLimit, assertNonEmpty } from './validation'
 const MAX_HISTORY_LIMIT = 5_000
 
 const COLUMNS =
-  'id, ticket_id, started_at, ended_at, world_json, hint_policy_json, closure_draft_json, exam_mode, resolution, outcome'
+  'id, ticket_id, started_at, ended_at, world_json, hint_policy_json, closure_draft_json, workspace_layout_json, console_focus_json, exam_mode, resolution, outcome'
 
 export class SqliteSessionRepository implements SessionRepository {
   private readonly context: RepositoryContext
@@ -21,7 +21,7 @@ export class SqliteSessionRepository implements SessionRepository {
   async create(session: Session): Promise<void> {
     assertNonEmpty(session.id, 'session.id')
     await this.context.write((db) => {
-      db.run(`INSERT INTO sessions (${COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
+      db.run(`INSERT INTO sessions (${COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
         session.id,
         session.ticketId,
         session.startedAt,
@@ -29,6 +29,8 @@ export class SqliteSessionRepository implements SessionRepository {
         JSON.stringify(session.world),
         session.hintPolicy === null ? null : JSON.stringify(session.hintPolicy),
         session.closureDraft === null ? null : JSON.stringify(session.closureDraft),
+        session.workspaceLayout === null ? null : JSON.stringify(session.workspaceLayout),
+        session.consoleFocus === null ? null : JSON.stringify(session.consoleFocus),
         session.examMode ? 1 : 0,
         session.resolution,
         session.outcome,
@@ -98,6 +100,36 @@ export class SqliteSessionRepository implements SessionRepository {
     })
   }
 
+  async saveWorkspaceLayout(
+    id: SessionId,
+    layout: Session['workspaceLayout'],
+  ): Promise<void> {
+    await this.context.write((db) => {
+      const changed = db.run(
+        'UPDATE sessions SET workspace_layout_json = ? WHERE id = ? AND ended_at IS NULL',
+        [layout === null ? null : JSON.stringify(layout), id],
+      )
+      if (changed === 0) {
+        throw new NotFoundError(`Active session not found: ${id}`)
+      }
+    })
+  }
+
+  async saveConsoleFocus(
+    id: SessionId,
+    focus: Session['consoleFocus'],
+  ): Promise<void> {
+    await this.context.write((db) => {
+      const changed = db.run(
+        'UPDATE sessions SET console_focus_json = ? WHERE id = ? AND ended_at IS NULL',
+        [focus === null ? null : JSON.stringify(focus), id],
+      )
+      if (changed === 0) {
+        throw new NotFoundError(`Active session not found: ${id}`)
+      }
+    })
+  }
+
   async finish(
     id: SessionId,
     ending: { endedAt: number; resolution: string; outcome: SessionOutcome },
@@ -105,7 +137,7 @@ export class SqliteSessionRepository implements SessionRepository {
     assertNonEmpty(ending.resolution, 'ending.resolution')
     await this.context.write((db) => {
       const changed = db.run(
-        'UPDATE sessions SET ended_at = ?, resolution = ?, outcome = ?, closure_draft_json = NULL WHERE id = ? AND ended_at IS NULL',
+        'UPDATE sessions SET ended_at = ?, resolution = ?, outcome = ?, closure_draft_json = NULL, workspace_layout_json = NULL, console_focus_json = NULL WHERE id = ? AND ended_at IS NULL',
         [ending.endedAt, ending.resolution, ending.outcome, id],
       )
       if (changed === 0) {

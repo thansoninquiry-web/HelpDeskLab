@@ -146,6 +146,23 @@ export function findCommand(name: string): CommandDefinition | undefined {
 }
 
 /**
+ * The commands a refusal stops, named in the order the reference lists them.
+ *
+ * The reducer refuses exactly these — whatever the registry marks as changing an
+ * account — so the workspace can name what is off the table before a learner
+ * types one, instead of answering with an error they had to earn first. The list
+ * is read from the registry rather than written down, so an account-changing
+ * command added later is refused *and* named without a second place to keep in
+ * step. Reading is never blocked: a refused ticket still has a log to fill and a
+ * report to write.
+ */
+export function accountChangingCommands(): string[] {
+  return COMMANDS.filter((command) => command.changesAccount === true).map(
+    (command) => command.name,
+  )
+}
+
+/**
  * What a typed command line does: `read` looks, `change` alters. A command the
  * registry does not know, or a line that cannot be parsed, answers null — it
  * never ran, so it is neither. Argument-sensitive reads are answered here too,
@@ -166,4 +183,20 @@ export function commandAccess(line: string): CommandAccess | null {
   const args = parsed.command.args.map((arg) => arg.toLowerCase())
   const changes = definition.changingArgs?.some((flag) => args.includes(flag.toLowerCase()))
   return changes ? 'change' : 'read'
+}
+
+/**
+ * Whether a typed line is one a refusal stops.
+ *
+ * The same flag the reducer reads, expressed for a line instead of a definition,
+ * so the block itself, the list the workspace names and the debrief that reports
+ * an attempt to get round it all answer from one rule. Every argument is left as
+ * the learner typed it: a refusal stops the command, not the argument it got.
+ */
+export function isAccountChanging(line: string): boolean {
+  const parsed = parseCommandLine(line)
+  if (!parsed.ok) {
+    return false
+  }
+  return findCommand(parsed.command.name)?.changesAccount === true
 }

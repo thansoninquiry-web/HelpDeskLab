@@ -4,6 +4,10 @@ import { fileURLToPath } from 'node:url'
 import { runInNewContext } from 'node:vm'
 import { describe, expect, it } from 'vitest'
 import {
+  DEFAULT_TEXT_SIZE,
+  TEXT_SIZE_CHOICES,
+} from '../../src/domain/appearance/textSize'
+import {
   DEFAULT_THEME_SCHEDULE,
   isDaylight,
   parseThemeSchedule,
@@ -25,6 +29,7 @@ interface Cached {
   /** Left undefined when nothing has been cached yet. */
   schedule?: unknown
   terminal?: string
+  textSize?: string
   prefersLight?: boolean
 }
 
@@ -39,6 +44,9 @@ function firstFrame(cached: Cached, at: string): Record<string, string> {
   }
   if (cached.terminal !== undefined) {
     storage.set('helpdesklab.terminal', cached.terminal)
+  }
+  if (cached.textSize !== undefined) {
+    storage.set('helpdesklab.textSize', cached.textSize)
   }
 
   const dataset: Record<string, string> = {}
@@ -179,6 +187,7 @@ describe('the first frame', () => {
     expect(firstFrame({ choice: 'light' }, '2026-10-17T12:00:00')).toEqual({
       theme: 'light',
       terminal: 'dark',
+      textSize: 'default',
     })
   })
 
@@ -186,10 +195,12 @@ describe('the first frame', () => {
     expect(firstFrame({ prefersLight: true }, '2026-10-17T12:00:00')).toEqual({
       theme: 'light',
       terminal: 'dark',
+      textSize: 'default',
     })
     expect(firstFrame({ prefersLight: false }, '2026-10-17T12:00:00')).toEqual({
       theme: 'dark',
       terminal: 'dark',
+      textSize: 'default',
     })
   })
 
@@ -197,10 +208,34 @@ describe('the first frame', () => {
     expect(firstFrame({ choice: 'dark', terminal: 'follow' }, '2026-10-17T12:00:00')).toEqual({
       theme: 'dark',
       terminal: 'follow',
+      textSize: 'default',
     })
     expect(firstFrame({ choice: 'light', terminal: 'sepia' }, '2026-10-17T12:00:00')).toEqual({
       theme: 'light',
       terminal: 'dark',
+      textSize: 'default',
     })
+  })
+
+  it('paints the cached text size before the bundle, and the design size for anything else', () => {
+    const at = '2026-10-17T12:00:00'
+
+    // Nothing saved, and a value from another build: the design size, the same
+    // one the service reads an unreadable row as.
+    expect(firstFrame({}, at).textSize).toBe('default')
+    expect(firstFrame({ textSize: 'gigantic' }, at).textSize).toBe('default')
+    expect(firstFrame({ textSize: 'DEFAULT' }, at).textSize).toBe('default')
+
+    expect(firstFrame({ textSize: 'small' }, at).textSize).toBe('small')
+    expect(firstFrame({ textSize: 'large' }, at).textSize).toBe('large')
+  })
+
+  it('reads every size the settings offer, so a new one cannot miss the first frame', () => {
+    for (const choice of TEXT_SIZE_CHOICES) {
+      expect(firstFrame({ textSize: choice.value }, '2026-10-17T12:00:00').textSize).toBe(
+        choice.value,
+      )
+    }
+    expect(TEXT_SIZE_CHOICES.map((choice) => choice.value)).toContain(DEFAULT_TEXT_SIZE)
   })
 })

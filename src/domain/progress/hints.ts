@@ -1,4 +1,4 @@
-import type { ScoredStep, TakenHint } from './types'
+import type { ScoredAttemptHints, ScoredStep, TakenHint } from './types'
 
 /**
  * How a learner takes hints, step by step.
@@ -68,22 +68,27 @@ export interface HintHabitSummary {
   everBought: number
   /** Steps no attempt ever took a hint on. */
   workedAlone: number
-  /** Rungs taken in total. */
+  /** Rungs the log places on a step, which is what the rows add up to. */
   rungs: number
+  /**
+   * Charged rungs no step above can show, because the action log no longer
+   * holds the hint that bought them. Adding this to `rungs` is the full count,
+   * and a score that never stored a count contributes nothing here: absent is
+   * not the same as zero.
+   */
+  unaccountedRungs: number
+  /** Scored attempts with at least one such rung. */
+  attemptsWithUnaccountedHints: number
 }
 
-/**
- * One row per rubric step, most habitually bought first. Hints from attempts
- * without a score are ignored: they belong to a habit that was never finished.
- *
- * Two variants can name the same behaviour with different item ids, so rows are
- * keyed by their label: "did not reset the password as a workaround" is one
- * habit whether it appeared under this id or that one.
- */
-export function hintHabits(
-  steps: readonly ScoredStep[],
-  hints: readonly TakenHint[],
-): StepHintHabit[] {
+/** The rows, and the per-attempt rung counts they were built from. */
+interface HabitReading {
+  habits: StepHintHabit[]
+  /** Rungs the log places, per attempt: the same numbers the rows are built from. */
+  placedBySession: Map<string, number>
+}
+
+function readHabits(steps: readonly ScoredStep[], hints: readonly TakenHint[]): HabitReading {
   const byItem = new Map<string, { label: string; sessions: Set<string> }>()
   for (const step of steps) {
     const entry = byItem.get(step.itemId) ?? { label: step.label, sessions: new Set<string>() }
@@ -153,23 +158,90 @@ export function hintHabits(
     })
   }
 
-  return habits.sort(
-    (left, right) =>
-      right.boughtPercent - left.boughtPercent ||
-      right.rungs - left.rungs ||
-      left.label.localeCompare(right.label),
-  )
+  // The rungs the log can place, per attempt, from the same sets the rows read.
+  const placedBySession = new Map<string, number>()
+  for (const sessions of taken.values()) {
+    for (const [sessionId, rungs] of sessions) {
+      placedBySession.set(sessionId, (placedBySession.get(sessionId) ?? 0) + rungs.size)
+    }
+  }
+
+  return {
+    habits: habits.sort(
+      (left, right) =>
+        right.boughtPercent - left.boughtPercent ||
+        right.rungs - left.rungs ||
+        left.label.localeCompare(right.label),
+    ),
+    placedBySession,
+  }
+}
+
+/**
+ * One row per rubric step, most habitually bought first. Hints from attempts
+ * without a score are ignored: they belong to a habit that was never finished.
+ *
+ * Two variants can name the same behaviour with different item ids, so rows are
+ * keyed by their label: "did not reset the password as a workaround" is one
+ * habit whether it appeared under this id or that one.
+ */
+export function hintHabits(
+  steps: readonly ScoredStep[],
+  hints: readonly TakenHint[],
+): StepHintHabit[] {
+  return readHabits(steps, hints).habits
+}
+
+/**
+ * What the scores say the learner paid that the log cannot place on a step.
+ *
+ * The debrief does the same thing for one attempt: it keeps the charged count
+ * and reports the part the log lost, rather than showing two numbers that
+ * disagree. Here the comparison is per attempt and then summed, because one
+ * attempt that logged more rungs than it was charged for must not quietly cancel
+ * out another attempt that lost one.
+ *
+ * An attempt with no stored count (a score written before hints were counted)
+ * contributes nothing: the log is then the only account, and nothing is
+ * invented.
+ */
+function reconcileHints(
+  placedBySession: ReadonlyMap<string, number>,
+  recorded: readonly ScoredAttemptHints[],
+  scored: ReadonlySet<string>,
+): Pick<HintHabitSummary, 'unaccountedRungs' | 'attemptsWithUnaccountedHints'> {
+  const charged = new Map<string, number>()
+  for (const entry of recorded) {
+    // A score per attempt is the rule; the map makes a repeated row harmless.
+    charged.set(entry.sessionId, entry.hintsUsed)
+  }
+
+  let unaccountedRungs = 0
+  let attemptsWithUnaccountedHints = 0
+  for (const [sessionId, hintsUsed] of charged) {
+    // Only attempts whose rubric named their steps are part of this habit.
+    if (!scored.has(sessionId)) {
+      continue
+    }
+    const missing = hintsUsed - (placedBySession.get(sessionId) ?? 0)
+    if (missing > 0) {
+      unaccountedRungs += missing
+      attemptsWithUnaccountedHints += 1
+    }
+  }
+
+  return { unaccountedRungs, attemptsWithUnaccountedHints }
 }
 
 export function summarizeHintHabits(
   steps: readonly ScoredStep[],
   hints: readonly TakenHint[],
+  recorded: readonly ScoredAttemptHints[] = [],
 ): HintHabitSummary {
-  const habits = hintHabits(steps, hints)
+  const { habits, placedBySession } = readHabits(steps, hints)
   const attempts = new Set(steps.map((step) => step.sessionId))
-  const scored = new Set(attempts)
   const attemptsWithHints = new Set(
-    hints.filter((hint) => scored.has(hint.sessionId)).map((hint) => hint.sessionId),
+    hints.filter((hint) => attempts.has(hint.sessionId)).map((hint) => hint.sessionId),
   )
 
   return {
@@ -179,5 +251,6 @@ export function summarizeHintHabits(
     everBought: habits.filter((habit) => habit.bought > 0).length,
     workedAlone: habits.filter((habit) => habit.bought === 0).length,
     rungs: habits.reduce((total, habit) => total + habit.rungs, 0),
+    ...reconcileHints(placedBySession, recorded, attempts),
   }
 }

@@ -2,6 +2,7 @@ import { findCommand } from './commands'
 import type { CommandContext } from './commands/types'
 import { CLOCK_STEP_MS } from './fixtures'
 import { errorLine, mutedLine } from './output'
+import { commandPolicy } from './policy'
 import { parseCommandLine } from './parser'
 import type { CommandResult, DeviceId, World } from './types'
 
@@ -62,28 +63,29 @@ export function applyCommand(
     }
   }
 
-  // A refusal on the call closes the account work in this ticket for good: the
-  // commands that change an account do not run, whatever the world state is.
-  const refusal = nextWorld.refusal
-  if (refusal && definition.changesAccount === true) {
-    return {
-      world: nextWorld,
-      lines: [
-        errorLine(`${definition.name} will not run: this request was refused on this ticket.`),
-        mutedLine(`The refusal is recorded — ${refusal.label.toLowerCase()}.`),
-        mutedLine(
-          'A refusal is not undone by making the change anyway. Close the ticket as denied and report it.',
-        ),
-      ],
-      effects: [],
-      ok: false,
-    }
-  }
-
   const deviceId = options.deviceId ?? nextWorld.currentDeviceId
   const device = nextWorld.devices.find((candidate) => candidate.id === deviceId)
   if (!device) {
     throw new Error(`World has no device to run the command on: ${deviceId}`)
+  }
+
+  // The machine a remote command names, resolved once from the registry. The
+  // rules below read it, and the command reads the same device through its
+  // context rather than looking the name up again — so a rule and the change it
+  // guards cannot disagree about which machine the desk meant.
+  const target = definition.targetDevice?.(nextWorld, parsed.command.args)
+
+  // Every rule that stops a command because of something already on record is
+  // asked here, once, for every command and every surface that runs one. The
+  // rules themselves are in `policy.ts`; this is the only place they are applied.
+  const refusal = commandPolicy({
+    world: nextWorld,
+    device,
+    definition,
+    target,
+  })
+  if (refusal) {
+    return { world: nextWorld, lines: refusal.lines, effects: [], ok: false }
   }
 
   const site = nextWorld.sites.find((candidate) => candidate.id === device.siteId)
@@ -102,6 +104,7 @@ export function applyCommand(
     user,
     args: parsed.command.args,
     now: nextWorld.clock,
+    target,
   }
 
   const outcome = definition.run(context)

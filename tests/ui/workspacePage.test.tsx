@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   ConsoleAction,
   ConsoleActionArgument,
@@ -48,6 +48,8 @@ function makeView(overrides: Partial<WorkspaceView> = {}): WorkspaceView {
       },
       symptoms: ['Names fail while IP addresses work'],
       reportedAt: Date.UTC(2026, 9, 16, 9, 30),
+      voicemail: null,
+      resume: null,
     },
     entries: [
       {
@@ -107,6 +109,11 @@ function makeView(overrides: Partial<WorkspaceView> = {}): WorkspaceView {
     },
     denial: null,
     closureDraft: { code: null, note: '' },
+    // The workspace a ticket opens in when the learner has not moved: the
+    // terminal, no tools. Tests that care pass their own.
+    layout: { pane: 'terminal', tool: null, tabs: [], pinned: [], ratio: null },
+    // No console has been searched or opened a record in until a test says so.
+    consoleFocus: {},
     exam: false,
     canRewind: true,
     ...overrides,
@@ -129,6 +136,7 @@ vi.mock('../../src/app/practiceService', async (importOriginal) => {
     openSession: vi.fn(),
     abandonAttempt: vi.fn(),
     callerInterjection: vi.fn(),
+    recordConsoleRead: vi.fn(),
     addNote: vi.fn(),
     askCaller: vi.fn(),
     callerPrompts: vi.fn().mockReturnValue([
@@ -137,6 +145,12 @@ vi.mock('../../src/app/practiceService', async (importOriginal) => {
     closureOptions: vi.fn().mockReturnValue([
       { code: 'resolved-remote', label: 'Resolved remotely', outcome: 'resolved' },
       { code: 'escalated-tier2', label: 'Escalated to Tier 2', outcome: 'escalated' },
+      {
+        code: 'denied-social-engineering',
+        label: 'Denied (social engineering) — reported to Security',
+        outcome: 'escalated',
+        refusal: true,
+      },
     ]),
     denialReasons: vi.fn().mockReturnValue([
       {
@@ -166,15 +180,29 @@ vi.mock('../../src/app/practiceService', async (importOriginal) => {
     rewindAttempt: vi.fn(),
     reapplyRewind: vi.fn(),
     saveClosureDraft: vi.fn(),
+    saveConsoleFocus: vi.fn(),
+    saveWorkspaceLayout: vi.fn(),
   }
 })
 
-// The layout preference is a settings read, not attempt data, so it is stubbed
-// here and asserted through the service rather than through a database.
-vi.mock('../../src/app/settingsService', () => ({
-  loadSplitView: vi.fn(),
-  saveSplitView: vi.fn(),
-}))
+// The layout preferences are settings reads, not attempt data, so they are stubbed
+// here and asserted through the service rather than through a database. The bounds
+// and the clamp stay real: they are the domain's, and a stub would hide a divider
+// drawn outside them.
+vi.mock('../../src/app/settingsService', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/app/settingsService')>()
+  return {
+    ...actual,
+    loadSplitView: vi.fn(),
+    saveSplitView: vi.fn(),
+    loadSplitRatio: vi.fn(),
+    saveSplitRatio: vi.fn(),
+    loadStageRatio: vi.fn(),
+    saveStageRatio: vi.fn(),
+    loadDockShare: vi.fn(),
+    saveDockShare: vi.fn(),
+  }
+})
 
 /** Opening a tool is two steps now: the Tools tab, then the tool itself. */
 async function openTool(name: string): Promise<HTMLElement> {
@@ -213,6 +241,157 @@ function toolPane(): HTMLElement {
 function backToShelf(): HTMLElement {
   fireEvent.click(screen.getByRole('button', { name: '← All tools' }))
   return toolPane()
+}
+
+/**
+ * A drag event that carries the pointer. `fireEvent.dragOver` cannot: jsdom has
+ * no `DragEvent`, so the event falls back to a plain `Event` and the init's
+ * `clientX` is dropped — which is the one thing a drop reads. A real
+ * `MouseEvent` named like the drag event keeps the coordinate.
+ */
+function dragEventAt(
+  type: 'dragover' | 'drop',
+  element: Element,
+  clientX: number,
+): void {
+  fireEvent(element, new MouseEvent(type, { bubbles: true, cancelable: true, clientX }))
+}
+
+/**
+ * jsdom lays nothing out, so the strip's tabs are given boxes: 100px wide, 8px
+ * apart, end to end from the page's left edge. That is enough to say which half
+ * of which tab a pointer is in, which is all a drop asks.
+ */
+function stubStripTabBoxes(tabs: readonly HTMLElement[]): void {
+  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (
+    this: Element,
+  ) {
+    const index = tabs.indexOf(this as HTMLElement)
+    const left = index < 0 ? 0 : index * 108
+    const width = index < 0 ? 0 : 100
+    return {
+      x: left,
+      y: 0,
+      left,
+      right: left + width,
+      width,
+      top: 0,
+      bottom: 24,
+      height: 24,
+      toJSON: () => ({}),
+    } as DOMRect
+  })
+}
+
+/**
+ * jsdom lays nothing out, so the drag's geometry is stated here: a thousand-pixel
+ * card, a ten-pixel handle, and a console that loses 1.8rem of its pane to its own
+ * padding. The console's width follows the ratio the card is drawn at, which is
+ * what the page measures too.
+ */
+function stubWorkspaceGeometry(): void {
+  const STAGE = 1200
+  const CARD = 1000
+  const HANDLE = 10
+  const CONSOLE_PADDING = 28.8
+  const box = (width: number): DOMRect =>
+    ({
+      x: 0,
+      y: 0,
+      width,
+      height: 600,
+      top: 0,
+      left: 0,
+      right: width,
+      bottom: 600,
+      toJSON: () => ({}),
+    }) as DOMRect
+
+  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (
+    this: Element,
+  ) {
+    if (!(this instanceof HTMLElement)) {
+      return box(0)
+    }
+    if (this.dataset.split === 'true') {
+      return box(CARD)
+    }
+    if (this.hasAttribute('data-stage')) {
+      return box(STAGE)
+    }
+    if (this.getAttribute('role') === 'separator') {
+      return box(HANDLE)
+    }
+    if (this.hasAttribute('data-console-frame')) {
+      const card = document.querySelector<HTMLElement>('[data-split="true"]')
+      const ratio = Number(card?.style.getPropertyValue('--split-ratio') ?? '0.5')
+      return box((CARD - HANDLE) * (1 - ratio) - CONSOLE_PADDING)
+    }
+    return box(0)
+  })
+}
+
+/** The pointer x that asks the stubbed split divider for a ratio. */
+function splitPointerX(ratio: number): number {
+  return 5 + ratio * 990
+}
+
+/**
+ * jsdom ships no matchMedia, so the window's size is ours to set. The fold is the
+ * only thing in the page that a breakpoint is read in JavaScript for — a folded
+ * section is a different document tree, not a different style — and every other
+ * part of the workspace layout is left to the stylesheet.
+ */
+function stubPhoneLayout(): void {
+  window.matchMedia = ((query: string) => ({
+    matches: /max-width/.test(query),
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  })) as unknown as typeof window.matchMedia
+}
+
+/**
+ * A short landscape window: wide enough for the side dock, too short for the
+ * phone one. The case file keeps its 361px column there, which is why it folds.
+ */
+function stubShortLayout(): void {
+  window.matchMedia = ((query: string) => ({
+    matches: /max-height/.test(query),
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  })) as unknown as typeof window.matchMedia
+}
+
+/**
+ * jsdom has no visual viewport, so a phone with its keyboard up is a window whose
+ * visible area is shorter than its layout one by the height of the keys, with the
+ * page not scrolled under them.
+ */
+function stubKeyboard(inset: number): void {
+  Object.defineProperty(window, 'visualViewport', {
+    configurable: true,
+    value: {
+      height: window.innerHeight - inset,
+      offsetTop: 0,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    },
+  })
+}
+
+/** The pointer x that asks the stubbed stage divider for a ratio. */
+function stagePointerX(ratio: number): number {
+  return 5 + ratio * 1190
 }
 
 /** A fixture input that only insists on a value, like the real account one. */
@@ -433,11 +612,27 @@ function renderWorkspace() {
 
 let serverRoomTopology: TopologyView
 
+afterEach(() => {
+  // The width is a stub, not the window: the next test is a desk again.
+  Reflect.deleteProperty(window, 'matchMedia')
+  // So is the keyboard: the next test is a window with nothing over it.
+  Reflect.deleteProperty(window, 'visualViewport')
+})
+
 beforeEach(async () => {
   const practice = await import('../../src/app/practiceService')
   const settings = await import('../../src/app/settingsService')
   vi.mocked(settings.loadSplitView).mockResolvedValue(false)
   vi.mocked(settings.saveSplitView).mockResolvedValue(true)
+  // No divider stored until a test says so: the default half is the fixture.
+  vi.mocked(settings.loadSplitRatio).mockResolvedValue(null)
+  vi.mocked(settings.saveSplitRatio).mockResolvedValue(0.5)
+  // No trade stored either: the fractions the grid shipped with are the fixture.
+  vi.mocked(settings.loadStageRatio).mockResolvedValue(null)
+  vi.mocked(settings.saveStageRatio).mockResolvedValue(0.388)
+  // Nor a card height: an untouched phone keeps the stylesheet's own share.
+  vi.mocked(settings.loadDockShare).mockResolvedValue(null)
+  vi.mocked(settings.saveDockShare).mockResolvedValue(0.55)
   serverRoomTopology = makeTopology('unknown')
   vi.mocked(practice.openSession).mockResolvedValue(makeView())
   vi.mocked(practice.submitCommand).mockResolvedValue(makeView())
@@ -446,8 +641,12 @@ beforeEach(async () => {
   vi.mocked(practice.verifyCallerWithCode).mockResolvedValue(makeView({ hasVerifiedCaller: true }))
   vi.mocked(practice.addNote).mockResolvedValue(makeView())
   vi.mocked(practice.abandonAttempt).mockResolvedValue(undefined)
+  vi.mocked(practice.saveWorkspaceLayout).mockResolvedValue(undefined)
+  vi.mocked(practice.saveConsoleFocus).mockResolvedValue(undefined)
   // The caller has nothing to say unless a test gives them a line.
   vi.mocked(practice.callerInterjection).mockResolvedValue(null)
+  // A read is recorded on every open, but it says nothing back by default.
+  vi.mocked(practice.recordConsoleRead).mockResolvedValue(null)
   vi.mocked(practice.loadConsole).mockImplementation(async (consoleId) =>
     consoleId === 'directory'
       ? consoleView('directory', [
@@ -618,7 +817,9 @@ beforeEach(async () => {
         hint: 'Confirm identity before acting.',
       },
     ],
+    partial: [],
     topology: null,
+    report: null,
     pendingBonusXp: 0,
   })
 })
@@ -646,7 +847,9 @@ describe('TicketWorkspacePage', () => {
       hintPenalty: 5,
       criticalFailures: [],
       blocking: [],
+      partial: [],
       topology: null,
+      report: null,
       pendingBonusXp: 0,
     })
 
@@ -674,7 +877,9 @@ describe('TicketWorkspacePage', () => {
       hintPenalty: 5,
       criticalFailures: [],
       blocking: [],
+      partial: [],
       topology: null,
+      report: null,
       pendingBonusXp: 0,
     })
 
@@ -693,7 +898,9 @@ describe('TicketWorkspacePage', () => {
       hintPenalty: 5,
       criticalFailures: [],
       blocking: [],
+      partial: [],
       topology: null,
+      report: null,
       pendingBonusXp: 0,
     })
     fireEvent.change(screen.getByLabelText('Closure code'), {
@@ -928,6 +1135,7 @@ describe('TicketWorkspacePage', () => {
             contactId: 'requester-desk',
             contactName: 'Dana Whitfield',
             destination: 'desk •••-•••-3311',
+            answeredBy: null,
             atMs: Date.UTC(2026, 9, 16, 9, 32),
           },
         },
@@ -956,6 +1164,7 @@ describe('TicketWorkspacePage', () => {
             contactId: 'requester',
             contactName: 'Dana Whitfield',
             destination: 'mobile •••-•••-8842',
+            answeredBy: null,
             atMs: Date.UTC(2026, 9, 16, 9, 32),
           },
         },
@@ -983,6 +1192,7 @@ describe('TicketWorkspacePage', () => {
             destination: 'mobile •••-•••-8842',
             issuedAt: Date.UTC(2026, 9, 16, 9, 31),
             expiresAt: Date.UTC(2026, 9, 16, 9, 41),
+            remainingMs: 9 * 60_000,
             forCaller: false,
             callerImpersonating: false,
             recipientReachable: false,
@@ -1011,6 +1221,7 @@ describe('TicketWorkspacePage', () => {
             destination: 'mobile •••-•••-8842',
             issuedAt: Date.UTC(2026, 9, 16, 9, 31),
             expiresAt: Date.UTC(2026, 9, 16, 9, 41),
+            remainingMs: 9 * 60_000,
             forCaller: true,
             callerImpersonating: false,
             recipientReachable: true,
@@ -1040,6 +1251,133 @@ describe('TicketWorkspacePage', () => {
     ).toBeInTheDocument()
   })
 
+  it('shows how long the live code has left, in the simulation’s minutes', async () => {
+    const practice = await import('../../src/app/practiceService')
+    vi.mocked(practice.openSession).mockResolvedValue(
+      makeView({
+        verification: {
+          ...makeView().verification,
+          active: {
+            recipientId: 'requester',
+            recipientName: 'Dana Whitfield',
+            destination: 'mobile •••-•••-8842',
+            issuedAt: Date.UTC(2026, 9, 16, 9, 31),
+            expiresAt: Date.UTC(2026, 9, 16, 9, 41),
+            remainingMs: 9 * 60_000,
+            forCaller: true,
+            callerImpersonating: false,
+            recipientReachable: true,
+            readBack: '482 913',
+          },
+        },
+      }),
+    )
+    // The clock is the app's, so this test reads the real formatter rather than
+    // the constant the rest of the file stubs it with.
+    vi.mocked(practice.formatSimClock).mockImplementation((clock: number) =>
+      new Date(clock).toISOString().slice(11, 16),
+    )
+    renderWorkspace()
+
+    // Both halves of the deadline: how long is left, and the clock time it ends at.
+    expect(await screen.findByText(/Code sent to Dana Whitfield/)).toBeInTheDocument()
+    expect(screen.getByText('Expires in 9 min, at 09:41.')).toBeInTheDocument()
+    expect(screen.getByText(/482 913/)).toBeInTheDocument()
+  })
+
+  it('says a live code has expired rather than waiting for six digits to fail', async () => {
+    const practice = await import('../../src/app/practiceService')
+    vi.mocked(practice.openSession).mockResolvedValue(
+      makeView({
+        verification: {
+          ...makeView().verification,
+          active: {
+            recipientId: 'requester',
+            recipientName: 'Dana Whitfield',
+            destination: 'mobile •••-•••-8842',
+            issuedAt: Date.UTC(2026, 9, 16, 9, 31),
+            expiresAt: Date.UTC(2026, 9, 16, 9, 41),
+            remainingMs: 0,
+            forCaller: true,
+            callerImpersonating: false,
+            recipientReachable: true,
+            readBack: '482 913',
+          },
+        },
+      }),
+    )
+    vi.mocked(practice.formatSimClock).mockImplementation((clock: number) =>
+      new Date(clock).toISOString().slice(11, 16),
+    )
+    renderWorkspace()
+
+    expect(await screen.findByText('Expired at 09:41 — send a new code.')).toBeInTheDocument()
+    expect(screen.queryByText(/Expires in/)).not.toBeInTheDocument()
+  })
+
+  it('lists a shared team line as the team’s, and warns what ringing it proves', async () => {
+    const practice = await import('../../src/app/practiceService')
+    const view = makeView()
+    const withTeamLine = makeView({
+      verification: {
+        ...view.verification,
+        recipients: [
+          ...view.verification.recipients,
+          {
+            id: 'team-line',
+            name: 'Finance team line',
+            role: 'team',
+            destination: 'team line •••-•••-4410',
+            methods: ['callback'],
+            reachable: true,
+            answeredBy: 'Priya Raman',
+          },
+        ],
+      },
+    })
+    vi.mocked(practice.openSession).mockResolvedValue(withTeamLine)
+    vi.mocked(practice.placeCallback).mockResolvedValue(
+      makeView({
+        verification: {
+          ...withTeamLine.verification,
+          callback: {
+            result: 'colleague-answered',
+            message:
+              'Priya Raman answered the Finance team line and confirmed the request. That line is shared, so the call proves a colleague took it — not that whoever is on this call is the person on the ticket.',
+            contactId: 'team-line',
+            contactName: 'Finance team line',
+            destination: 'team line •••-•••-4410',
+            answeredBy: 'Priya Raman',
+            atMs: Date.UTC(2026, 9, 16, 9, 32),
+          },
+        },
+      }),
+    )
+    renderWorkspace()
+
+    fireEvent.change(await screen.findByLabelText('Contact to reach'), {
+      target: { value: 'team-line' },
+    })
+
+    // The record says whose line it is, what it can take, and who picks it up.
+    expect(screen.getByLabelText('Contact to reach')).toHaveTextContent(
+      'Finance team line — shared team line',
+    )
+    expect(screen.getByText(/is shared: whoever is at that desk picks it up/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Send verification code' })).toBeDisabled()
+    // The old nudge to ring a contact that cannot take a code would be wrong here:
+    // ringing is exactly what the shared line makes useless.
+    expect(screen.queryByText(/cannot take a code/)).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ring this contact back' }))
+    await waitFor(() => {
+      expect(practice.placeCallback).toHaveBeenCalledWith('team-line')
+    })
+    expect(await screen.findByText(/Priya Raman answered the Finance team line/)).toBeInTheDocument()
+    // A colleague on the line is not the caller verified.
+    expect(screen.queryByText(/Caller verified/)).not.toBeInTheDocument()
+  })
+
   it('shows that a code sent to the manager is not on this ticket', async () => {
     renderWorkspace()
     const practice = await import('../../src/app/practiceService')
@@ -1053,6 +1391,7 @@ describe('TicketWorkspacePage', () => {
             destination: 'office •••-•••-0197',
             issuedAt: Date.UTC(2026, 9, 16, 9, 31),
             expiresAt: Date.UTC(2026, 9, 16, 9, 41),
+            remainingMs: 9 * 60_000,
             forCaller: false,
             callerImpersonating: false,
             recipientReachable: true,
@@ -1088,6 +1427,7 @@ describe('TicketWorkspacePage', () => {
             destination: 'mobile •••-•••-8842',
             issuedAt: Date.UTC(2026, 9, 16, 9, 31),
             expiresAt: Date.UTC(2026, 9, 16, 9, 41),
+            remainingMs: 9 * 60_000,
             forCaller: false,
             callerImpersonating: true,
             recipientReachable: true,
@@ -1141,6 +1481,7 @@ describe('TicketWorkspacePage', () => {
             destination: 'mobile •••-•••-8842',
             issuedAt: Date.UTC(2026, 9, 16, 9, 31),
             expiresAt: Date.UTC(2026, 9, 16, 9, 41),
+            remainingMs: 9 * 60_000,
             forCaller: false,
             callerImpersonating: true,
             recipientReachable: true,
@@ -1169,7 +1510,7 @@ describe('TicketWorkspacePage', () => {
     ).toBeInTheDocument()
   })
 
-  it('records a refusal only after the reason is confirmed', async () => {
+  it('records a refusal only after the reason is confirmed, and names what it stops', async () => {
     renderWorkspace()
     const practice = await import('../../src/app/practiceService')
     vi.mocked(practice.denyCaller).mockResolvedValue(
@@ -1179,6 +1520,9 @@ describe('TicketWorkspacePage', () => {
           label: 'Asked for a password or a code',
           summary: 'Refused the request — asked for a password or a code.',
           atMs: Date.UTC(2026, 9, 16, 9, 33),
+          closingCode: 'denied-social-engineering',
+          blockedCommands: ['unlock-account', 'reset-mfa'],
+          retried: [],
         },
         verification: {
           ...makeView().verification,
@@ -1211,9 +1555,141 @@ describe('TicketWorkspacePage', () => {
     expect(
       screen.queryByRole('button', { name: 'Deny (social engineering)' }),
     ).not.toBeInTheDocument()
+
+    // The same list, in the two places it matters: where the decision was
+    // recorded and where the next command would be typed.
+    const named = screen.getAllByRole('list', { name: 'Commands off the table' })
+    expect(named).toHaveLength(2)
+    for (const list of named) {
+      expect(within(list).getByText('unlock-account')).toBeInTheDocument()
+      expect(within(list).getByText('reset-mfa')).toBeInTheDocument()
+    }
+    const notice = screen.getByRole('status', { name: 'Commands the refusal stops' })
+    expect(within(notice).getByText(/these commands will not run/i)).toBeInTheDocument()
+    expect(within(notice).getByText(/Looking things up still works/i)).toBeInTheDocument()
     // The evidence stays beside the refusal, not only in the debrief.
     const findings = screen.getByLabelText('Contradicted claims')
     expect(within(findings).getByText(/status: active/)).toBeInTheDocument()
+
+    // The close becomes the report: the disposition opens on the refusal, the
+    // note is what Security reads, and the ordinary resolve form is gone.
+    expect(screen.getByRole('heading', { name: 'Report the refusal' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Security report')).toHaveValue('')
+    expect(screen.getByLabelText('Closure code')).toHaveValue('denied-social-engineering')
+    expect(screen.getByRole('button', { name: 'Close and report' })).toBeInTheDocument()
+    expect(screen.getByText(/what was asked, what you checked before deciding/i)).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Close the ticket' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Handoff note')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Resolve ticket' })).not.toBeInTheDocument()
+    // Nothing was tried after the refusal, so the case file does not accuse it.
+    expect(screen.queryByLabelText('Changes tried after the refusal')).not.toBeInTheDocument()
+  })
+
+  it('calls out an account change tried after the refusal, beside the refusal', async () => {
+    renderWorkspace()
+    const practice = await import('../../src/app/practiceService')
+    vi.mocked(practice.denyCaller).mockResolvedValue(
+      makeView({
+        denial: {
+          reason: 'unverified-identity',
+          label: 'Could not verify who is calling',
+          summary: 'Refused the request — could not verify who is calling.',
+          atMs: Date.UTC(2026, 9, 16, 9, 33),
+          closingCode: 'denied-social-engineering',
+          blockedCommands: ['unlock-account', 'reset-mfa'],
+          retried: [
+            {
+              seq: 7,
+              command: 'unlock-account tbrooks',
+              atMs: Date.UTC(2026, 9, 16, 9, 40),
+            },
+          ],
+        },
+      }),
+    )
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Deny (social engineering)' }))
+    fireEvent.change(screen.getByLabelText('Reason for refusing'), {
+      target: { value: 'unverified-identity' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm denial' }))
+
+    const notice = await screen.findByLabelText('Changes tried after the refusal')
+    expect(within(notice).getByText('Tried after you refused')).toBeInTheDocument()
+    expect(within(notice).getByText('unlock-account tbrooks')).toBeInTheDocument()
+    expect(within(notice).getByText(/the refusal stopped it/)).toBeInTheDocument()
+    expect(within(notice).getByText(/not a step to work around/)).toBeInTheDocument()
+    // It sits with the refusal it argued with, in the case file.
+    const caseFile = screen.getByLabelText('Case file')
+    expect(within(caseFile).getByText('unlock-account tbrooks')).toBeInTheDocument()
+  })
+
+  it('will not close a refusal until the security report says what Security needs', async () => {
+    renderWorkspace()
+    const practice = await import('../../src/app/practiceService')
+    vi.mocked(practice.denyCaller).mockResolvedValue(
+      makeView({
+        denial: {
+          reason: 'third-party-request',
+          label: 'Asked for someone else’s account',
+          summary: 'Refused the request — asked for someone else’s account.',
+          atMs: Date.UTC(2026, 9, 16, 9, 33),
+          closingCode: 'denied-social-engineering',
+          blockedCommands: ['unlock-account'],
+          retried: [],
+        },
+      }),
+    )
+    const baseReview = {
+      total: 80,
+      passed: true,
+      procedurePenalty: 0,
+      hintPenalty: 0,
+      criticalFailures: [],
+      blocking: [],
+      partial: [],
+      topology: null,
+      pendingBonusXp: 0,
+    }
+    vi.mocked(practice.reviewClosure).mockResolvedValue({
+      ...baseReview,
+      report: {
+        missing: ['what you checked before refusing'],
+        tooShort: false,
+        message:
+          'This security report is not ready: it still has to say what you checked before refusing.',
+      },
+    })
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Deny (social engineering)' }))
+    fireEvent.change(screen.getByLabelText('Reason for refusing'), {
+      target: { value: 'third-party-request' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm denial' }))
+    await screen.findByRole('heading', { name: 'Report the refusal' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close and report' }))
+
+    expect(await screen.findByText('The security report is missing something')).toBeInTheDocument()
+    expect(
+      screen.getByText(/still has to say what you checked before refusing/),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Close and report' })).toBeInTheDocument()
+    expect(practice.resolveAttempt).not.toHaveBeenCalled()
+
+    // With the part written, the same button closes the ticket.
+    vi.mocked(practice.reviewClosure).mockResolvedValue({ ...baseReview, report: null })
+    fireEvent.change(screen.getByLabelText('Security report'), {
+      target: {
+        value:
+          'Denied a request for another account. I checked the account and the caller’s own record before refusing, and nothing was changed. Security should confirm who called.',
+      },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Close and report' }))
+
+    await waitFor(() => {
+      expect(practice.resolveAttempt).toHaveBeenCalledTimes(1)
+    })
   })
 
   it('asks for the value an action cannot run without, and sends it', async () => {
@@ -1332,6 +1808,94 @@ describe('TicketWorkspacePage', () => {
     expect(terminalPane).not.toBeNull()
     expect(terminalPane).toHaveTextContent('get-account dwhitfield')
     expect(terminalPane).toHaveTextContent('via Directory')
+  })
+
+  it('reopens the console on the machine it was left on, search and record and all', async () => {
+    const practice = await import('../../src/app/practiceService')
+    vi.mocked(practice.openSession).mockResolvedValue(
+      makeView({
+        layout: { pane: 'tools', tool: 'directory', tabs: ['directory'], pinned: [], ratio: null },
+        consoleFocus: { directory: { query: 'whitfield', selectedId: 'dwhitfield' } },
+      }),
+    )
+
+    renderWorkspace()
+
+    // The search the ticket was left with is back in the box…
+    await waitFor(() =>
+      expect(screen.getByLabelText('Search the directory')).toHaveValue('whitfield'),
+    )
+    // …and the record it had open is the one on screen, rather than a list.
+    expect(screen.getByText('E-8842')).toBeInTheDocument()
+    expect(screen.getByText(/LT-4471 · laptop/)).toBeInTheDocument()
+    // Reading it back is not a change: arriving on a ticket writes nothing.
+    expect(practice.saveConsoleFocus).not.toHaveBeenCalled()
+  })
+
+  it('writes the search and the record once they come to rest', async () => {
+    const practice = await import('../../src/app/practiceService')
+    renderWorkspace()
+
+    await openTool('Directory')
+    fireEvent.change(await screen.findByLabelText('Search the directory'), {
+      target: { value: 'whitfield' },
+    })
+
+    // A search on its own is where the desk was: it is written without waiting
+    // for a record to be opened beside it.
+    await waitFor(() =>
+      expect(practice.saveConsoleFocus).toHaveBeenLastCalledWith('directory', {
+        query: 'whitfield',
+        selectedId: null,
+      }),
+    )
+
+    fireEvent.click(await screen.findByRole('button', { name: /dwhitfield · Finance/ }))
+
+    await waitFor(() =>
+      expect(practice.saveConsoleFocus).toHaveBeenLastCalledWith('directory', {
+        query: 'whitfield',
+        selectedId: 'dwhitfield',
+      }),
+    )
+  })
+
+  it('keeps each console’s search to itself', async () => {
+    renderWorkspace()
+
+    await openTool('Directory')
+    fireEvent.change(await screen.findByLabelText('Search the directory'), {
+      target: { value: 'whitfield' },
+    })
+
+    // Another console opens on its own list rather than on the search beside it.
+    await openToolFromMenu('Mail Admin')
+    expect(await screen.findByLabelText('Search the mailboxes')).toHaveValue('')
+
+    // And going back finds the Directory's own search still in its box.
+    const strip = screen.getByRole('tablist', { name: 'Open tools' })
+    fireEvent.click(within(strip).getByRole('tab', { name: 'Directory' }))
+    expect(await screen.findByLabelText('Search the directory')).toHaveValue('whitfield')
+  })
+
+  it('records the tools the desk opens and the records it reads', async () => {
+    renderWorkspace()
+    const practice = await import('../../src/app/practiceService')
+
+    await openTool('Directory')
+
+    // Opening the tool is a look in its own right, before any record is chosen.
+    await waitFor(() => {
+      expect(practice.recordConsoleRead).toHaveBeenCalledWith('directory', null)
+    })
+
+    const record = await screen.findByRole('button', { name: /dwhitfield · Finance/ })
+    fireEvent.click(record)
+
+    // The record itself is the read the caller can hear, and it is logged by id.
+    await waitFor(() => {
+      expect(practice.recordConsoleRead).toHaveBeenLastCalledWith('directory', 'dwhitfield')
+    })
   })
 
   it('filters the directory by the account state the world reports', async () => {
@@ -1510,6 +2074,496 @@ describe('TicketWorkspacePage', () => {
     expect(within(terminal).getByLabelText('Command')).toBeInTheDocument()
   })
 
+  it('folds the case file into sections on a phone, closed until they are opened', async () => {
+    stubPhoneLayout()
+    const { container } = renderWorkspace()
+
+    await screen.findByRole('heading', { name: 'Case file' })
+    // The sections are disclosures, and the headings are what a learner sees of
+    // them: the machine is a thumb below rather than four screens below.
+    const folds = [...container.querySelectorAll('details')].filter((fold) =>
+      fold.querySelector('summary h2'),
+    )
+    expect(folds.map((fold) => fold.querySelector('h2')?.textContent)).toEqual([
+      'Verify the caller',
+      'Ask the requester',
+      'Troubleshooting notes',
+      'Customer notes',
+      'Close the ticket',
+      'Abandon the ticket',
+    ])
+    expect(folds.every((fold) => !fold.open)).toBe(true)
+
+    // Opening one is the whole interaction: its body is then the block it is on a
+    // window with room.
+    const notes = folds.find(
+      (fold) => fold.querySelector('h2')?.textContent === 'Troubleshooting notes',
+    ) as HTMLDetailsElement
+    fireEvent.click(notes.querySelector('summary') as HTMLElement)
+    expect(notes.open).toBe(true)
+    expect(within(notes).getByPlaceholderText(/What did you check/)).toBeInTheDocument()
+
+    fireEvent.click(notes.querySelector('summary') as HTMLElement)
+    expect(notes.open).toBe(false)
+  })
+
+  it('folds the case file in a short landscape window, where the column is too narrow to read through', async () => {
+    stubShortLayout()
+    const { container } = renderWorkspace()
+
+    await screen.findByRole('heading', { name: 'Case file' })
+    // The same list the phone gets: in a 361px column beside the dock, the
+    // unfolded case file is a three-thousand-pixel scroll of sections, and the
+    // one being worked on is the only one that needs to be open.
+    const folds = [...container.querySelectorAll('details')].filter((fold) =>
+      fold.querySelector('summary h2'),
+    )
+    expect(folds.map((fold) => fold.querySelector('h2')?.textContent)).toEqual([
+      'Verify the caller',
+      'Ask the requester',
+      'Troubleshooting notes',
+      'Customer notes',
+      'Close the ticket',
+      'Abandon the ticket',
+    ])
+    expect(folds.every((fold) => !fold.open)).toBe(true)
+
+    // The ticket's own paperwork folds with it, so the card is the call rather
+    // than the reference.
+    expect(screen.getByText('Ticket details')).toBeInTheDocument()
+
+    // And a section still opens into the block it is on a window with room.
+    const notes = folds.find(
+      (fold) => fold.querySelector('h2')?.textContent === 'Troubleshooting notes',
+    ) as HTMLDetailsElement
+    fireEvent.click(notes.querySelector('summary') as HTMLElement)
+    expect(notes.open).toBe(true)
+    expect(within(notes).getByPlaceholderText(/What did you check/)).toBeInTheDocument()
+  })
+
+  it('climbs above the on-screen keyboard so the command line stays in view', async () => {
+    stubPhoneLayout()
+    stubKeyboard(300)
+    const { container } = renderWorkspace()
+
+    await screen.findByRole('heading', { name: 'Case file' })
+    const workspace = container.querySelector<HTMLElement>('[style*="--keyboard-inset"]')
+    expect(workspace).not.toBeNull()
+    // The dock is fixed to the layout viewport, and the keyboard floats over it:
+    // the page hands the covered strip to the stylesheet, which lifts the card
+    // by that much. The variable sits on an ancestor of the console, so the dock
+    // inherits it without knowing about the keyboard itself.
+    expect(workspace?.style.getPropertyValue('--keyboard-inset')).toBe('300px')
+    expect(workspace?.contains(screen.getByLabelText('Command'))).toBe(true)
+  })
+
+  it('stays on the bottom edge when nothing is covering it', async () => {
+    stubPhoneLayout()
+    stubKeyboard(0)
+    const { container } = renderWorkspace()
+
+    await screen.findByRole('heading', { name: 'Case file' })
+    const workspace = container.querySelector<HTMLElement>('[style*="--keyboard-inset"]')
+    expect(workspace?.style.getPropertyValue('--keyboard-inset')).toBe('0px')
+  })
+
+  it('leaves the case file unfolded where there is room for it', async () => {
+    const { container } = renderWorkspace()
+
+    await screen.findByRole('heading', { name: 'Case file' })
+    // A desk reads the sections side by side with the machine, so there is no
+    // heading to open: the same blocks, with no disclosure around them.
+    expect([...container.querySelectorAll('details summary h2')]).toEqual([])
+    expect(screen.getByRole('heading', { name: 'Troubleshooting notes' })).toBeInTheDocument()
+    expect(screen.getByPlaceholderText(/What did you check/)).toBeInTheDocument()
+  })
+
+  it('folds the ticket’s paperwork behind a summary on a phone', async () => {
+    stubPhoneLayout()
+    renderWorkspace()
+
+    const card = await screen.findByRole('region', { name: 'Ticket' })
+    // The subject and the report are the card on a phone; the rest is reference
+    // the learner can open when they need it.
+    expect(
+      within(card).getByRole('heading', { name: 'Dana cannot reach the file server' }),
+    ).toBeInTheDocument()
+    expect(
+      within(card).getByText('Nothing loads since I restarted my laptop. Teams still works.'),
+    ).toBeInTheDocument()
+    const summary = within(card).getByText('Ticket details').closest('summary')
+    if (!summary) {
+      throw new Error('The ticket details are not behind a summary')
+    }
+    const fold = summary.closest('details')
+    expect(fold?.open).toBe(false)
+    // The paperwork is in the document, behind a disclosure the browser keeps
+    // shut, rather than beside the report where a desk reads it.
+    expect(within(fold as HTMLElement).getByText('Reported by')).toBeInTheDocument()
+    expect(within(fold as HTMLElement).getByText('Business impact')).toBeInTheDocument()
+    expect(within(fold as HTMLElement).getByText('High')).toBeInTheDocument()
+
+    fireEvent.click(summary)
+
+    // Opening it is the whole interaction: the paperwork is the block it is on a
+    // desk, severity and all, and the report above it has not moved.
+    expect(fold?.open).toBe(true)
+    expect(within(card).getByText('Reported by')).toBeInTheDocument()
+    expect(within(card).getByText('Business impact')).toBeInTheDocument()
+    expect(within(card).getByText('High')).toBeInTheDocument()
+    expect(within(card).getByText(/LT-4471 · Windows 11/)).toBeInTheDocument()
+    expect(
+      within(card).getByText('Nothing loads since I restarted my laptop. Teams still works.'),
+    ).toBeInTheDocument()
+  })
+
+  it('keeps the ticket’s paperwork open where there is room for it', async () => {
+    renderWorkspace()
+
+    const card = await screen.findByRole('region', { name: 'Ticket' })
+    // A desk reads the reference beside the report, and has no fold to open.
+    expect(within(card).getByText('Reported by')).toBeInTheDocument()
+    expect(within(card).getByText('Business impact')).toBeInTheDocument()
+    expect(within(card).getByText('High')).toBeInTheDocument()
+    expect(within(card).queryByText('Ticket details')).not.toBeInTheDocument()
+  })
+
+  it('keeps the close form and its note reachable through a fold', async () => {
+    stubPhoneLayout()
+    renderWorkspace()
+
+    await screen.findByRole('heading', { name: 'Case file' })
+    const fold = screen
+      .getByRole('heading', { name: 'Close the ticket' })
+      .closest('details') as HTMLDetailsElement
+    fireEvent.click(fold.querySelector('summary') as HTMLElement)
+
+    // The form is still the form: the fold changes where it sits, not what it does.
+    expect(within(fold).getByLabelText('Closure code')).toBeInTheDocument()
+    expect(within(fold).getByRole('button', { name: /Resolve ticket/ })).toBeInTheDocument()
+  })
+
+  it('trades width between the case file and the card from a divider', async () => {
+    const { container } = renderWorkspace()
+
+    const divider = await screen.findByRole('separator', {
+      name: 'Resize the case file and the tool card',
+    })
+    expect(divider).toHaveAttribute('aria-orientation', 'vertical')
+    // The fractions the grid shipped with: 0.92 of the stage against 1.45.
+    expect(divider).toHaveAttribute('aria-valuenow', '39')
+    expect(divider).toHaveAttribute('aria-valuemin', '20')
+    expect(divider).toHaveAttribute('aria-valuemax', '65')
+    expect(
+      (container.querySelector('[data-stage]') as HTMLElement).style.getPropertyValue(
+        '--stage-ratio',
+      ),
+    ).toBe('0.388')
+  })
+
+  it('reopens the columns in the trade they were left in, and stores nothing for looking', async () => {
+    const settings = await import('../../src/app/settingsService')
+    vi.mocked(settings.loadStageRatio).mockResolvedValue(0.55)
+
+    const { container } = renderWorkspace()
+
+    const divider = await screen.findByRole('separator', {
+      name: 'Resize the case file and the tool card',
+    })
+    await waitFor(() => expect(divider).toHaveAttribute('aria-valuenow', '55'))
+    expect(
+      (container.querySelector('[data-stage]') as HTMLElement).style.getPropertyValue(
+        '--stage-ratio',
+      ),
+    ).toBe('0.55')
+    // Arriving on a ticket is not moving it.
+    expect(settings.saveStageRatio).not.toHaveBeenCalled()
+  })
+
+  it('drags the columns, and stops where one of them would get too narrow', async () => {
+    renderWorkspace()
+
+    const divider = await screen.findByRole('separator', {
+      name: 'Resize the case file and the tool card',
+    })
+    stubWorkspaceGeometry()
+
+    fireEvent.pointerDown(divider, { clientX: stagePointerX(0.5) })
+    expect(divider).toHaveAttribute('aria-valuenow', '50')
+
+    // Far left: 300px of case file is a quarter of this stage, and no further.
+    fireEvent.pointerMove(divider, { clientX: stagePointerX(0.05) })
+    expect(divider).toHaveAttribute('aria-valuenow', '25')
+
+    // Far right: the card keeps its own 420px.
+    fireEvent.pointerMove(divider, { clientX: stagePointerX(0.95) })
+    expect(divider).toHaveAttribute('aria-valuenow', '65')
+  })
+
+  it('adjusts the trade from the keyboard, and puts the shipped fractions back', async () => {
+    renderWorkspace()
+
+    const divider = await screen.findByRole('separator', {
+      name: 'Resize the case file and the tool card',
+    })
+    stubWorkspaceGeometry()
+
+    fireEvent.keyDown(divider, { key: 'ArrowRight' })
+    expect(divider).toHaveAttribute('aria-valuenow', '41')
+    fireEvent.keyDown(divider, { key: 'ArrowLeft' })
+    expect(divider).toHaveAttribute('aria-valuenow', '39')
+
+    // Home and End reach the room the two columns' minimums leave here.
+    fireEvent.keyDown(divider, { key: 'Home' })
+    expect(divider).toHaveAttribute('aria-valuenow', '25')
+    fireEvent.keyDown(divider, { key: 'End' })
+    expect(divider).toHaveAttribute('aria-valuenow', '65')
+
+    fireEvent.keyDown(divider, { key: 'Enter' })
+    expect(divider).toHaveAttribute('aria-valuenow', '39')
+  })
+
+  it('keeps the trade where it came to rest', async () => {
+    const settings = await import('../../src/app/settingsService')
+    renderWorkspace()
+
+    const divider = await screen.findByRole('separator', {
+      name: 'Resize the case file and the tool card',
+    })
+    stubWorkspaceGeometry()
+
+    fireEvent.pointerDown(divider, { clientX: stagePointerX(0.5) })
+    fireEvent.pointerUp(divider, { clientX: stagePointerX(0.5) })
+
+    await waitFor(() => expect(settings.saveStageRatio).toHaveBeenLastCalledWith(0.5))
+  })
+
+  it('gives the docked card an edge to resize, at the share the sheet uses', async () => {
+    stubPhoneLayout()
+    const { container } = renderWorkspace()
+
+    const edge = await screen.findByRole('separator', { name: 'Resize the tool card' })
+    expect(edge).toHaveAttribute('aria-orientation', 'horizontal')
+    expect(edge).toHaveAttribute('aria-valuenow', '55')
+    expect(edge).toHaveAttribute('aria-valuemin', '30')
+    expect(edge).toHaveAttribute('aria-valuemax', '92')
+    // Untouched, the card keeps the share the stylesheet gives it — no variable,
+    // so a log's card and a desktop's can differ before anyone drags.
+    expect(
+      (container.querySelector('[data-stage]') as HTMLElement).style.getPropertyValue(
+        '--dock-share',
+      ),
+    ).toBe('')
+  })
+
+  it('drags the card taller, stops at its bounds, and keeps where it came to rest', async () => {
+    const settings = await import('../../src/app/settingsService')
+    stubPhoneLayout()
+    const { container } = renderWorkspace()
+
+    const edge = await screen.findByRole('separator', { name: 'Resize the tool card' })
+    const stage = container.querySelector('[data-stage]') as HTMLElement
+    const height = window.innerHeight
+
+    // The share is the part of the screen below the edge, so a pointer at 40% of
+    // the window asks for a card over the bottom 60% of it.
+    fireEvent.pointerDown(edge, { clientY: height * 0.4 })
+    expect(edge).toHaveAttribute('aria-valuenow', '60')
+    expect(stage.style.getPropertyValue('--dock-share')).toBe('60dvh')
+
+    // Down to the top: the card may take nine tenths of the screen, no more.
+    fireEvent.pointerMove(edge, { clientY: 0 })
+    expect(edge).toHaveAttribute('aria-valuenow', '92')
+    // And up to its floor, which keeps the console a console.
+    fireEvent.pointerMove(edge, { clientY: height - 4 })
+    expect(edge).toHaveAttribute('aria-valuenow', '30')
+    fireEvent.pointerUp(edge, { clientY: height - 4 })
+
+    await waitFor(() => expect(settings.saveDockShare).toHaveBeenLastCalledWith(0.3))
+  })
+
+  it('adjusts the card from the keyboard, and Enter puts back its own share', async () => {
+    stubPhoneLayout()
+    renderWorkspace()
+
+    const edge = await screen.findByRole('separator', { name: 'Resize the tool card' })
+
+    // Up makes the card taller, because the edge is moving up the screen.
+    fireEvent.keyDown(edge, { key: 'ArrowUp' })
+    expect(edge).toHaveAttribute('aria-valuenow', '57')
+    fireEvent.keyDown(edge, { key: 'ArrowDown' })
+    expect(edge).toHaveAttribute('aria-valuenow', '55')
+
+    fireEvent.keyDown(edge, { key: 'End' })
+    expect(edge).toHaveAttribute('aria-valuenow', '92')
+    fireEvent.keyDown(edge, { key: 'Home' })
+    expect(edge).toHaveAttribute('aria-valuenow', '30')
+
+    // With no desktop on the card, its own share is a log's.
+    fireEvent.keyDown(edge, { key: 'Enter' })
+    expect(edge).toHaveAttribute('aria-valuenow', '55')
+  })
+
+  it('writes the share on the bar while the edge is held, and not at rest', async () => {
+    stubPhoneLayout()
+    renderWorkspace()
+
+    const edge = await screen.findByRole('separator', { name: 'Resize the tool card' })
+    const height = window.innerHeight
+    const readout = () => edge.querySelector('[class*="dockHandleShare"]')
+
+    // Quiet until it is caught: a number sitting on the seam all the time would
+    // be one more thing to read above the console. It is still named for a
+    // screen reader, which cannot see the opacity.
+    expect(edge).toHaveAttribute('data-dragging', 'false')
+    expect(edge).toHaveAttribute('aria-valuetext', 'The tool card takes 55% of the screen')
+    expect(readout()).toHaveTextContent('55%')
+
+    fireEvent.pointerDown(edge, { clientY: height * 0.4 })
+    expect(edge).toHaveAttribute('data-dragging', 'true')
+    expect(edge).toHaveAttribute('aria-valuetext', 'The tool card takes 60% of the screen')
+    expect(readout()).toHaveTextContent('60%')
+
+    fireEvent.pointerUp(edge, { clientY: height * 0.4 })
+    expect(edge).toHaveAttribute('data-dragging', 'false')
+  })
+
+  it('reopens the card at the height it was left, and stores nothing for looking', async () => {
+    const settings = await import('../../src/app/settingsService')
+    vi.mocked(settings.loadDockShare).mockResolvedValue(0.7)
+    stubPhoneLayout()
+    const { container } = renderWorkspace()
+
+    const edge = await screen.findByRole('separator', { name: 'Resize the tool card' })
+    await waitFor(() => expect(edge).toHaveAttribute('aria-valuenow', '70'))
+    expect(
+      (container.querySelector('[data-stage]') as HTMLElement).style.getPropertyValue(
+        '--dock-share',
+      ),
+    ).toBe('70dvh')
+    expect(settings.saveDockShare).not.toHaveBeenCalled()
+  })
+
+  it('switches both trades from one preset key', async () => {
+    const { container } = renderWorkspace()
+
+    const stageDivider = await screen.findByRole('separator', {
+      name: 'Resize the case file and the tool card',
+    })
+    const stage = container.querySelector('[data-stage]') as HTMLElement
+    const card = container.querySelector('[data-split]') as HTMLElement
+
+    // One key moves the whole workspace: the case file widens and the log takes
+    // the larger half of the card that is left.
+    fireEvent.keyDown(window, { key: '1' })
+    expect(stageDivider).toHaveAttribute('aria-valuenow', '55')
+    expect(stage.style.getPropertyValue('--stage-ratio')).toBe('0.55')
+    expect(card.style.getPropertyValue('--split-ratio')).toBe('0.6')
+
+    // The split is set even before the card is split — it is where the divider
+    // will be when the learner flicks the switch.
+    fireEvent.click(screen.getByRole('switch', { name: 'Split screen view' }))
+    expect(
+      screen.getByRole('separator', { name: 'Resize the terminal and tools panes' }),
+    ).toHaveAttribute('aria-valuenow', '60')
+  })
+
+  it('lights the preset both dividers are sitting on', async () => {
+    const { container } = renderWorkspace()
+
+    const presets = await screen.findByRole('group', { name: 'Workspace layout' })
+    const balanced = within(presets).getByRole('button', { name: 'Balanced layout' })
+    const machine = within(presets).getByRole('button', { name: 'Machine layout' })
+    // The shipped fractions are a preset, so opening a ticket lights one.
+    expect(balanced).toHaveAttribute('aria-pressed', 'true')
+    expect(machine).toHaveAttribute('aria-pressed', 'false')
+    // The key that reaches it is on the button, in the title and for assistive
+    // technology, not only in the docs.
+    expect(machine).toHaveAttribute('title', expect.stringContaining('press 3'))
+    expect(machine).toHaveAttribute('aria-keyshortcuts', '3')
+
+    fireEvent.click(machine)
+    expect(machine).toHaveAttribute('aria-pressed', 'true')
+    expect(balanced).toHaveAttribute('aria-pressed', 'false')
+    // Both trades moved, not just the one the button is nearest.
+    expect(
+      (container.querySelector('[data-stage]') as HTMLElement).style.getPropertyValue(
+        '--stage-ratio',
+      ),
+    ).toBe('0.26')
+    expect(
+      (container.querySelector('[data-split]') as HTMLElement).style.getPropertyValue(
+        '--split-ratio',
+      ),
+    ).toBe('0.35')
+  })
+
+  it('stops lighting a preset once a divider has been moved off it', async () => {
+    renderWorkspace()
+
+    const presets = await screen.findByRole('group', { name: 'Workspace layout' })
+    const divider = screen.getByRole('separator', {
+      name: 'Resize the case file and the tool card',
+    })
+    stubWorkspaceGeometry()
+
+    fireEvent.keyDown(divider, { key: 'ArrowRight' })
+    // A nudge is not a preset: the strip reads both positions, and one of them
+    // has left the pair.
+    expect(within(presets).getByRole('button', { name: 'Balanced layout' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+  })
+
+  it('leaves the preset keys to the field the learner is typing in', async () => {
+    const { container } = renderWorkspace()
+
+    await screen.findByRole('group', { name: 'Workspace layout' })
+    const stage = container.querySelector('[data-stage]') as HTMLElement
+
+    // A digit is a character first: a command being typed keeps it.
+    fireEvent.keyDown(screen.getByLabelText('Command'), { key: '1' })
+    expect(stage.style.getPropertyValue('--stage-ratio')).toBe('0.388')
+  })
+
+  it('stores a preset like any other move of the dividers', async () => {
+    const settings = await import('../../src/app/settingsService')
+    renderWorkspace()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Paperwork layout' }))
+
+    await waitFor(() => expect(settings.saveStageRatio).toHaveBeenLastCalledWith(0.55))
+    await waitFor(() => expect(settings.saveSplitRatio).toHaveBeenLastCalledWith(0.6))
+  })
+
+  it('leaves the keys alone where the stage has no divider to move', async () => {
+    const { container } = renderWorkspace()
+
+    const divider = await screen.findByRole('separator', {
+      name: 'Resize the case file and the tool card',
+    })
+    const stage = container.querySelector('[data-stage]') as HTMLElement
+
+    // A window narrow enough to stack the columns hides the handle in the
+    // stylesheet; jsdom applies no media queries, so the handle's own computed
+    // display is stated here instead. The key reads that same display.
+    const original = window.getComputedStyle.bind(window)
+    vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) => {
+      const style = original(element, pseudo)
+      if (element !== divider) {
+        return style
+      }
+      return new Proxy(style, {
+        get: (target, property) =>
+          property === 'display' ? 'none' : Reflect.get(target, property),
+      })
+    })
+
+    fireEvent.keyDown(window, { key: '3' })
+    expect(stage.style.getPropertyValue('--stage-ratio')).toBe('0.388')
+  })
+
   it('sizes the split from a divider, half the card until it is moved', async () => {
     const { container } = renderWorkspace()
 
@@ -1526,6 +2580,130 @@ describe('TicketWorkspacePage', () => {
     expect((container.querySelector('[data-split="true"]') as HTMLElement).style.getPropertyValue('--split-ratio')).toBe(
       '0.5',
     )
+  })
+
+  it('reopens with the divider where it was left, and stores nothing for looking', async () => {
+    const settings = await import('../../src/app/settingsService')
+    vi.mocked(settings.loadSplitView).mockResolvedValue(true)
+    vi.mocked(settings.loadSplitRatio).mockResolvedValue(0.7)
+
+    const { container } = renderWorkspace()
+
+    const divider = await screen.findByRole('separator', {
+      name: 'Resize the terminal and tools panes',
+    })
+    await waitFor(() => expect(divider).toHaveAttribute('aria-valuenow', '70'))
+    expect(
+      (container.querySelector('[data-split="true"]') as HTMLElement).style.getPropertyValue(
+        '--split-ratio',
+      ),
+    ).toBe('0.7')
+    // Arriving on a ticket is not moving the divider: the stored position is not
+    // written back over itself.
+    expect(settings.saveSplitRatio).not.toHaveBeenCalled()
+  })
+
+  it('reopens the ticket at the width it was worked at, over the device preference', async () => {
+    const settings = await import('../../src/app/settingsService')
+    const practice = await import('../../src/app/practiceService')
+    vi.mocked(settings.loadSplitView).mockResolvedValue(true)
+    // The device was last sized on another ticket; this one carries its own.
+    vi.mocked(settings.loadSplitRatio).mockResolvedValue(0.3)
+    vi.mocked(practice.openSession).mockResolvedValue(
+      makeView({
+        layout: { pane: 'terminal', tool: null, tabs: [], pinned: [], ratio: 0.62 },
+      }),
+    )
+
+    const { container } = renderWorkspace()
+
+    const divider = await screen.findByRole('separator', {
+      name: 'Resize the terminal and tools panes',
+    })
+    await waitFor(() => expect(divider).toHaveAttribute('aria-valuenow', '62'))
+    expect(
+      (container.querySelector('[data-split="true"]') as HTMLElement).style.getPropertyValue(
+        '--split-ratio',
+      ),
+    ).toBe('0.62')
+    // Reading a ticket's width back is not moving it: the divider stores nothing,
+    // and the layout it writes is the one it opened in, which the service drops
+    // as a write that changes nothing.
+    expect(settings.saveSplitRatio).not.toHaveBeenCalled()
+    expect(practice.saveWorkspaceLayout).toHaveBeenCalledWith({
+      pane: 'terminal',
+      tool: null,
+      tabs: [],
+      pinned: [],
+      ratio: 0.62,
+    })
+  })
+
+  it('keeps the width the ticket was left at when a tab click rewrites its layout', async () => {
+    const practice = await import('../../src/app/practiceService')
+    renderWorkspace()
+
+    fireEvent.click(await screen.findByRole('switch', { name: 'Split screen view' }))
+    const divider = screen.getByRole('separator', {
+      name: 'Resize the terminal and tools panes',
+    })
+
+    // The divider moves: the ticket is now sized, and the write carries the width.
+    fireEvent.keyDown(divider, { key: 'ArrowRight', shiftKey: true })
+    await waitFor(() =>
+      expect(practice.saveWorkspaceLayout).toHaveBeenLastCalledWith(
+        expect.objectContaining({ ratio: 0.6 }),
+      ),
+    )
+
+    // Back to the tabs, still at the width the ticket was sized to: a tab click
+    // rewrites the rest of the layout and must keep that width.
+    fireEvent.click(screen.getByRole('switch', { name: 'Split screen view' }))
+    fireEvent.click(await screen.findByRole('tab', { name: 'Tools' }))
+    await waitFor(() =>
+      expect(practice.saveWorkspaceLayout).toHaveBeenLastCalledWith(
+        expect.objectContaining({ pane: 'tools', ratio: 0.6 }),
+      ),
+    )
+  })
+
+  it('carries a ticket’s stored width through a tab click, even in the tab layout', async () => {
+    const practice = await import('../../src/app/practiceService')
+    // The ticket was sized here once; the switch is off now, so the divider is
+    // not on screen and the width only matters when the layout is written.
+    vi.mocked(practice.openSession).mockResolvedValue(
+      makeView({
+        layout: { pane: 'terminal', tool: null, tabs: [], pinned: [], ratio: 0.62 },
+      }),
+    )
+
+    renderWorkspace()
+
+    fireEvent.click(await screen.findByRole('tab', { name: 'Tools' }))
+    await waitFor(() =>
+      expect(practice.saveWorkspaceLayout).toHaveBeenLastCalledWith(
+        expect.objectContaining({ pane: 'tools', ratio: 0.62 }),
+      ),
+    )
+  })
+
+  it('keeps the divider where it came to rest, and a reset is a move as well', async () => {
+    const settings = await import('../../src/app/settingsService')
+    renderWorkspace()
+
+    fireEvent.click(await screen.findByRole('switch', { name: 'Split screen view' }))
+    const divider = screen.getByRole('separator', {
+      name: 'Resize the terminal and tools panes',
+    })
+
+    fireEvent.keyDown(divider, { key: 'ArrowRight', shiftKey: true })
+    expect(divider).toHaveAttribute('aria-valuenow', '60')
+    await waitFor(() => expect(settings.saveSplitRatio).toHaveBeenLastCalledWith(0.6))
+
+    // Enter puts the default back, which is a position like any other.
+    fireEvent.keyDown(divider, { key: 'Enter' })
+    expect(divider).toHaveAttribute('aria-valuenow', '50')
+    await waitFor(() => expect(settings.saveSplitRatio).toHaveBeenLastCalledWith(0.5))
   })
 
   it('leaves the divider out when the card is not split', async () => {
@@ -1579,6 +2757,218 @@ describe('TicketWorkspacePage', () => {
     fireEvent.keyDown(divider, { key: 'a' })
     fireEvent.keyDown(divider, { key: 'Tab' })
     expect(divider).toHaveAttribute('aria-valuenow', '50')
+  })
+
+  it('jumps the divider between its stops from the card header', async () => {
+    renderWorkspace()
+
+    fireEvent.click(await screen.findByRole('switch', { name: 'Split screen view' }))
+    const divider = screen.getByRole('separator', {
+      name: 'Resize the terminal and tools panes',
+    })
+    const stops = screen.getByRole('group', { name: 'Divider position' })
+
+    // Half is a stop, so the strip says the divider is on it before anything is
+    // pressed.
+    expect(within(stops).getByRole('button', { name: 'Even split' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+
+    fireEvent.click(within(stops).getByRole('button', { name: 'Log-heavy split' }))
+    expect(divider).toHaveAttribute('aria-valuenow', '75')
+    expect(within(stops).getByRole('button', { name: 'Log-heavy split' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(within(stops).getByRole('button', { name: 'Even split' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+
+    fireEvent.click(within(stops).getByRole('button', { name: 'Tool-heavy split' }))
+    expect(divider).toHaveAttribute('aria-valuenow', '25')
+  })
+
+  it('stores a jumped position like any other move of the divider', async () => {
+    const settings = await import('../../src/app/settingsService')
+    renderWorkspace()
+
+    fireEvent.click(await screen.findByRole('switch', { name: 'Split screen view' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Tool-heavy split' }))
+
+    await waitFor(() => expect(settings.saveSplitRatio).toHaveBeenLastCalledWith(0.25))
+  })
+
+  it('offers the stops only while the card is split', async () => {
+    renderWorkspace()
+
+    await screen.findByRole('switch', { name: 'Split screen view' })
+    expect(screen.queryByRole('group', { name: 'Divider position' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('switch', { name: 'Split screen view' }))
+    expect(screen.getByRole('group', { name: 'Divider position' })).toBeInTheDocument()
+  })
+
+  it('steps the divider between the stops from the bracket keys', async () => {
+    renderWorkspace()
+
+    fireEvent.click(await screen.findByRole('switch', { name: 'Split screen view' }))
+    const divider = screen.getByRole('separator', {
+      name: 'Resize the terminal and tools panes',
+    })
+
+    fireEvent.keyDown(window, { key: ']' })
+    expect(divider).toHaveAttribute('aria-valuenow', '75')
+    // Held against the end, the key stays there rather than leaving the card.
+    fireEvent.keyDown(window, { key: ']' })
+    expect(divider).toHaveAttribute('aria-valuenow', '75')
+
+    fireEvent.keyDown(window, { key: '[' })
+    expect(divider).toHaveAttribute('aria-valuenow', '50')
+    fireEvent.keyDown(window, { key: '[' })
+    expect(divider).toHaveAttribute('aria-valuenow', '25')
+    fireEvent.keyDown(window, { key: '[' })
+    expect(divider).toHaveAttribute('aria-valuenow', '25')
+  })
+
+  it('leaves the bracket keys to the field the learner is typing in', async () => {
+    renderWorkspace()
+
+    fireEvent.click(await screen.findByRole('switch', { name: 'Split screen view' }))
+    const divider = screen.getByRole('separator', {
+      name: 'Resize the terminal and tools panes',
+    })
+
+    // A bracket is a character first: a command being typed keeps it.
+    fireEvent.keyDown(screen.getByLabelText('Command'), { key: ']' })
+    expect(divider).toHaveAttribute('aria-valuenow', '50')
+  })
+
+  it('lands a dragged divider on the width the console wants', async () => {
+    renderWorkspace()
+
+    fireEvent.click(await screen.findByRole('switch', { name: 'Split screen view' }))
+    await openToolFromMenu('Directory')
+    stubWorkspaceGeometry()
+    const divider = screen.getByRole('separator', {
+      name: 'Resize the terminal and tools panes',
+    })
+
+    // Grabbing it where the console is nowhere near a width its layout turns on
+    // leaves the divider under the pointer.
+    fireEvent.pointerDown(divider, { clientX: splitPointerX(0.5) })
+    expect(divider).toHaveAttribute('aria-valuenow', '50')
+
+    // Six pixels short of the console's 32rem, the divider catches on it: the
+    // console is at the first width that still holds a list beside its detail.
+    fireEvent.pointerMove(divider, { clientX: splitPointerX(0.445) })
+    expect(divider).toHaveAttribute('aria-valuenow', '45')
+    expect(divider).toHaveAttribute('data-snapped', 'true')
+
+    // Dragging on past it lets go, and the catch with it — and past the log's
+    // rest at 22rem too, which is the other width this card catches on.
+    fireEvent.pointerMove(divider, { clientX: splitPointerX(0.3) })
+    expect(divider).toHaveAttribute('aria-valuenow', '30')
+    expect(divider).not.toHaveAttribute('data-snapped')
+  })
+
+  it('lands a dragged divider on a named stop near the pointer', async () => {
+    renderWorkspace()
+
+    fireEvent.click(await screen.findByRole('switch', { name: 'Split screen view' }))
+    stubWorkspaceGeometry()
+    const divider = screen.getByRole('separator', {
+      name: 'Resize the terminal and tools panes',
+    })
+
+    // Five pixels past the even half, and the divider comes back to it: the stop
+    // is a place the header and the bracket keys already reach, and a pointer
+    // should not have to aim for it a pixel at a time.
+    fireEvent.pointerDown(divider, { clientX: splitPointerX(0.5) })
+    fireEvent.pointerMove(divider, { clientX: splitPointerX(0.505) })
+    expect(divider).toHaveAttribute('aria-valuenow', '50')
+    expect(divider).toHaveAttribute('data-snapped', 'true')
+
+    // Past the magnet it follows the pointer again.
+    fireEvent.pointerMove(divider, { clientX: splitPointerX(0.48) })
+    expect(divider).toHaveAttribute('aria-valuenow', '48')
+    expect(divider).not.toHaveAttribute('data-snapped')
+  })
+
+  it('stores where a caught drag came to rest', async () => {
+    const settings = await import('../../src/app/settingsService')
+    renderWorkspace()
+
+    fireEvent.click(await screen.findByRole('switch', { name: 'Split screen view' }))
+    await openToolFromMenu('Directory')
+    stubWorkspaceGeometry()
+    const divider = screen.getByRole('separator', {
+      name: 'Resize the terminal and tools panes',
+    })
+
+    fireEvent.pointerDown(divider, { clientX: splitPointerX(0.5) })
+    fireEvent.pointerMove(divider, { clientX: splitPointerX(0.445) })
+    fireEvent.pointerUp(divider, { clientX: splitPointerX(0.445) })
+
+    // The caught position, not the one the pointer asked for.
+    await waitFor(() => expect(settings.saveSplitRatio).toHaveBeenLastCalledWith(0.452))
+  })
+
+  it('has no console width to catch on while the tool half is empty', async () => {
+    renderWorkspace()
+
+    fireEvent.click(await screen.findByRole('switch', { name: 'Split screen view' }))
+    stubWorkspaceGeometry()
+    const divider = screen.getByRole('separator', {
+      name: 'Resize the terminal and tools panes',
+    })
+
+    fireEvent.pointerDown(divider, { clientX: splitPointerX(0.5) })
+    fireEvent.pointerMove(divider, { clientX: splitPointerX(0.444) })
+
+    // No console, so nothing on that side to catch on — and the pointer is well
+    // clear of the log's own rest, outside the catch.
+    expect(divider).toHaveAttribute('aria-valuenow', '44')
+    expect(divider).not.toHaveAttribute('data-snapped')
+  })
+
+  it('lands a dragged divider on the width where the log restacks', async () => {
+    renderWorkspace()
+
+    fireEvent.click(await screen.findByRole('switch', { name: 'Split screen view' }))
+    stubWorkspaceGeometry()
+    const divider = screen.getByRole('separator', {
+      name: 'Resize the terminal and tools panes',
+    })
+
+    fireEvent.pointerDown(divider, { clientX: splitPointerX(0.5) })
+    // A shade under the log's 22rem: the divider comes to rest on the tightest
+    // pane that still holds the summary across, with no console open to measure.
+    fireEvent.pointerMove(divider, { clientX: splitPointerX(0.35) })
+    expect(divider).toHaveAttribute('aria-valuenow', '36')
+    expect(divider).toHaveAttribute('data-snapped', 'true')
+
+    // Dragging on past it lets go, and the catch with it.
+    fireEvent.pointerMove(divider, { clientX: splitPointerX(0.28) })
+    expect(divider).toHaveAttribute('aria-valuenow', '28')
+    expect(divider).not.toHaveAttribute('data-snapped')
+  })
+
+  it('leaves the divider alone when the card is not split', async () => {
+    renderWorkspace()
+
+    await screen.findByRole('switch', { name: 'Split screen view' })
+    fireEvent.keyDown(window, { key: ']' })
+
+    // Nothing is drawn, so nothing is stored either: the shortcut does not reach
+    // a divider that is not on the card. (The stage's own divider is still there —
+    // it is the card's that is missing.)
+    expect(
+      screen.queryByRole('separator', { name: 'Resize the terminal and tools panes' }),
+    ).not.toBeInTheDocument()
+    const settings = await import('../../src/app/settingsService')
+    expect(settings.saveSplitRatio).not.toHaveBeenCalled()
   })
 
   it('follows the pointer while the divider is dragged', async () => {
@@ -1672,6 +3062,779 @@ describe('TicketWorkspacePage', () => {
 
     fireEvent.click(toggle)
     await waitFor(() => expect(settings.saveSplitView).toHaveBeenLastCalledWith(false))
+  })
+
+  it('reopens in the tool the learner was working in', async () => {
+    const practice = await import('../../src/app/practiceService')
+    vi.mocked(practice.openSession).mockResolvedValue(
+      makeView({
+        layout: { pane: 'tools', tool: 'directory', tabs: ['directory'], pinned: [], ratio: null },
+      }),
+    )
+
+    const { container } = renderWorkspace()
+
+    // No click: the ticket opens on the pane that was in front, with its tab.
+    expect(await screen.findByRole('tab', { name: 'Tools' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    const panel = await screen.findByRole('tabpanel', { name: 'Tools' })
+    expect(within(panel).getByRole('tab', { name: 'Directory' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    expect(container.querySelector('#pane-terminal')).toHaveAttribute('hidden')
+
+    // The tab is live: its console is read again rather than restored as it was.
+    await waitFor(() => expect(practice.loadConsole).toHaveBeenCalledWith('directory'))
+    await waitFor(() => expect(panel).toHaveTextContent('Dana Whitfield'))
+  })
+
+  it('remembers the tool and the pane for the next time the ticket is opened', async () => {
+    const practice = await import('../../src/app/practiceService')
+    renderWorkspace()
+
+    await openTool('Directory')
+    await waitFor(() =>
+      expect(practice.saveWorkspaceLayout).toHaveBeenCalledWith({
+        pane: 'tools',
+        tool: 'directory',
+        tabs: ['directory'],
+        pinned: [],
+        ratio: null,
+      }),
+    )
+
+    // Going back to the terminal keeps the tool open, and that is worth storing:
+    // the workspace was moved in.
+    fireEvent.click(screen.getByRole('tab', { name: 'Terminal' }))
+    await waitFor(() =>
+      expect(practice.saveWorkspaceLayout).toHaveBeenLastCalledWith({
+        pane: 'terminal',
+        tool: 'directory',
+        tabs: ['directory'],
+        pinned: [],
+        ratio: null,
+      }),
+    )
+  })
+
+  it('restores the open tools in the order they were opened, with the one in front selected', async () => {
+    const practice = await import('../../src/app/practiceService')
+    // The first of the two was in front, so a reopened ticket must not simply
+    // bring the last tab in the row forward.
+    vi.mocked(practice.openSession).mockResolvedValue(
+      makeView({
+        layout: {
+          pane: 'tools',
+          tool: 'directory',
+          tabs: ['directory', 'mail-admin'],
+          pinned: [],
+          ratio: null,
+        },
+      }),
+    )
+
+    renderWorkspace()
+
+    const strip = await screen.findByRole('tablist', { name: 'Open tools' })
+    const tabs = within(strip).getAllByRole('tab', { name: /Directory|Mail Admin/ })
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['Directory', 'Mail Admin'])
+    expect(tabs[0]).toHaveAttribute('aria-selected', 'true')
+    expect(tabs[1]).toHaveAttribute('aria-selected', 'false')
+
+    // Both tabs are live, not only the one that is showing.
+    await waitFor(() => expect(practice.loadConsole).toHaveBeenCalledWith('mail-admin'))
+    await waitFor(() => expect(practice.loadConsole).toHaveBeenCalledWith('directory'))
+  })
+
+  it('stores the tab order and the tab in front, and a closed tab stays closed', async () => {
+    const practice = await import('../../src/app/practiceService')
+    renderWorkspace()
+
+    fireEvent.click(await screen.findByRole('switch', { name: 'Split screen view' }))
+    await openToolFromMenu('Directory')
+    await openToolFromMenu('Mail Admin')
+    await waitFor(() =>
+      expect(practice.saveWorkspaceLayout).toHaveBeenLastCalledWith({
+        pane: 'tools',
+        tool: 'mail-admin',
+        tabs: ['directory', 'mail-admin'],
+        pinned: [],
+        ratio: null,
+      }),
+    )
+
+    // Going back to the older tab moves the selection, not the order.
+    const strip = within(toolPane()).getByRole('tablist', { name: 'Open tools' })
+    fireEvent.click(within(strip).getByRole('tab', { name: 'Directory' }))
+    await waitFor(() =>
+      expect(practice.saveWorkspaceLayout).toHaveBeenLastCalledWith({
+        pane: 'tools',
+        tool: 'directory',
+        tabs: ['directory', 'mail-admin'],
+        pinned: [],
+        ratio: null,
+      }),
+    )
+
+    // Closing one stores the strip without it, so a reload cannot put it back.
+    fireEvent.click(screen.getByRole('button', { name: 'Close Directory' }))
+    await waitFor(() =>
+      expect(practice.saveWorkspaceLayout).toHaveBeenLastCalledWith({
+        pane: 'tools',
+        tool: 'mail-admin',
+        tabs: ['mail-admin'],
+        pinned: [],
+        ratio: null,
+      }),
+    )
+  })
+
+  it('reopens what it stored: the tab order, the older tab in front, and no closed tab', async () => {
+    const practice = await import('../../src/app/practiceService')
+    const first = renderWorkspace()
+
+    fireEvent.click(await screen.findByRole('switch', { name: 'Split screen view' }))
+    await openToolFromMenu('Directory')
+    await openToolFromMenu('Mail Admin')
+    await openToolFromMenu('Printers')
+
+    // The middle tab is older than the one just opened and newer than the first:
+    // leaving on it is the case a reopen gets wrong by bringing the newest
+    // forward instead.
+    const strip = within(toolPane()).getByRole('tablist', { name: 'Open tools' })
+    fireEvent.click(within(strip).getByRole('tab', { name: 'Mail Admin' }))
+    await waitFor(() =>
+      expect(practice.saveWorkspaceLayout).toHaveBeenLastCalledWith({
+        pane: 'tools',
+        tool: 'mail-admin',
+        tabs: ['directory', 'mail-admin', 'printers'],
+        pinned: [],
+        ratio: null,
+      }),
+    )
+    const asLeft = vi.mocked(practice.saveWorkspaceLayout).mock.lastCall?.[0]
+    if (!asLeft) {
+      throw new Error('The workspace stored nothing to reopen')
+    }
+
+    // A reopen is a reload: the page puts back exactly what it stored.
+    first.unmount()
+    vi.mocked(practice.openSession).mockResolvedValue(makeView({ layout: asLeft }))
+    const second = renderWorkspace()
+
+    const reopened = await screen.findByRole('tablist', { name: 'Open tools' })
+    const reopenedTabs = within(reopened).getAllByRole('tab', {
+      name: /Directory|Mail Admin|Printers/,
+    })
+    expect(reopenedTabs.map((tab) => tab.textContent)).toEqual([
+      'Directory',
+      'Mail Admin',
+      'Printers',
+    ])
+    expect(reopenedTabs.map((tab) => tab.getAttribute('aria-selected'))).toEqual([
+      'false',
+      'true',
+      'false',
+    ])
+
+    // Closing the tab in front stores the strip without it, so the next reopen
+    // cannot put it back.
+    fireEvent.click(screen.getByRole('button', { name: 'Close Mail Admin' }))
+    await waitFor(() =>
+      expect(practice.saveWorkspaceLayout).toHaveBeenLastCalledWith({
+        pane: 'tools',
+        tool: 'printers',
+        tabs: ['directory', 'printers'],
+        pinned: [],
+        ratio: null,
+      }),
+    )
+    const afterClose = vi.mocked(practice.saveWorkspaceLayout).mock.lastCall?.[0]
+    if (!afterClose) {
+      throw new Error('Closing a tab stored nothing')
+    }
+
+    second.unmount()
+    vi.mocked(practice.openSession).mockResolvedValue(makeView({ layout: afterClose }))
+    renderWorkspace()
+
+    const reopenedAgain = await screen.findByRole('tablist', { name: 'Open tools' })
+    expect(
+      within(reopenedAgain)
+        .getAllByRole('tab', { name: /Directory|Mail Admin|Printers/ })
+        .map((tab) => tab.textContent),
+    ).toEqual(['Directory', 'Printers'])
+    expect(within(reopenedAgain).queryByRole('tab', { name: 'Mail Admin' })).not.toBeInTheDocument()
+    expect(within(reopenedAgain).getByRole('tab', { name: 'Printers' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+  })
+
+  it('marks a tab whose console has printed something since it was last in front', async () => {
+    const practice = await import('../../src/app/practiceService')
+    // Both pages move when the desk works. Only the one standing behind another
+    // tab may say so: the tab in front is the page being looked at.
+    let directoryCount = '104 accounts'
+    let mailCount = '108 mailboxes'
+    vi.mocked(practice.loadConsole).mockImplementation(async (consoleId) =>
+      consoleId === 'directory'
+        ? consoleView('directory', [
+            consoleEntry({ id: 'dwhitfield', title: 'Dana Whitfield', subtitle: directoryCount }),
+          ])
+        : consoleView('mail-admin', [
+            consoleEntry({ id: 'inbox', title: 'Inbox', subtitle: mailCount }),
+          ]),
+    )
+
+    renderWorkspace()
+    // Split screen: the terminal stays to hand, so a command can be run while the
+    // console in front is on screen — which is the case the mark has to get right.
+    fireEvent.click(await screen.findByRole('switch', { name: 'Split screen view' }))
+    await openToolFromMenu('Directory')
+    await openToolFromMenu('Mail Admin')
+
+    const strip = within(toolPane()).getByRole('tablist', { name: 'Open tools' })
+    // Opening a tool is looking at it, so the strip starts quiet.
+    expect(within(strip).getByRole('tab', { name: 'Directory' })).toBeInTheDocument()
+    expect(within(strip).getByRole('tab', { name: 'Mail Admin' })).toBeInTheDocument()
+
+    directoryCount = '105 accounts'
+    mailCount = '109 mailboxes'
+    fireEvent.change(await screen.findByLabelText('Command'), {
+      target: { value: 'unlock-account dwhitfield' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Run' }))
+
+    // Every open console is reread; the one behind the tab says it has news, and
+    // the one in front does not, because the learner is looking at it.
+    await waitFor(() =>
+      expect(within(strip).getByRole('tab', { name: 'Directory, new' })).toBeInTheDocument(),
+    )
+    expect(within(strip).getByRole('tab', { name: 'Mail Admin' })).toBeInTheDocument()
+
+    // Bringing the tab forward is looking at it, so the mark goes.
+    fireEvent.click(within(strip).getByRole('tab', { name: 'Directory, new' }))
+    await waitFor(() =>
+      expect(within(strip).getByRole('tab', { name: 'Directory' })).toBeInTheDocument(),
+    )
+  })
+
+  it('steps to the tab with news from the keyboard', async () => {
+    const practice = await import('../../src/app/practiceService')
+    // Two consoles both move when one command changes the world, so exactly one
+    // of them can carry news at a time — the one not in front.
+    let directoryCount = '104 accounts'
+    let mailCount = '108 mailboxes'
+    vi.mocked(practice.loadConsole).mockImplementation(async (consoleId) =>
+      consoleId === 'directory'
+        ? consoleView('directory', [
+            consoleEntry({ id: 'dwhitfield', title: 'Dana Whitfield', subtitle: directoryCount }),
+          ])
+        : consoleView('mail-admin', [
+            consoleEntry({ id: 'inbox', title: 'Inbox', subtitle: mailCount }),
+          ]),
+    )
+
+    renderWorkspace()
+    fireEvent.click(await screen.findByRole('switch', { name: 'Split screen view' }))
+    await openToolFromMenu('Directory')
+    await openToolFromMenu('Mail Admin')
+    const strip = within(toolPane()).getByRole('tablist', { name: 'Open tools' })
+    // The shortcut is advertised where it applies, so it is not a secret.
+    // Both of the strip's keys are named, not just the one that was here first.
+    expect(strip).toHaveAttribute('aria-keyshortcuts', 'N T')
+
+    directoryCount = '105 accounts'
+    mailCount = '109 mailboxes'
+    fireEvent.change(await screen.findByLabelText('Command'), {
+      target: { value: 'unlock-account dwhitfield' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Run' }))
+    await waitFor(() =>
+      expect(within(strip).getByRole('tab', { name: 'Directory, new' })).toBeInTheDocument(),
+    )
+    // The tab in front is never marked, not even for the frame before its own new
+    // page is filed as read: the dot is decided by the render, not by the effect.
+    expect(within(strip).getByRole('tab', { name: 'Mail Admin' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+
+    // A command being typed keeps the letter, as it keeps the brackets.
+    fireEvent.keyDown(screen.getByLabelText('Command'), { key: 'n' })
+    expect(within(strip).getByRole('tab', { name: 'Mail Admin' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    expect(within(strip).getByRole('tab', { name: 'Directory, new' })).toBeInTheDocument()
+
+    // The key the strip advertises steps to the dot and reads what it found.
+    fireEvent.keyDown(window, { key: 'n' })
+    await waitFor(() =>
+      expect(within(strip).getByRole('tab', { name: 'Directory' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      ),
+    )
+    expect(within(strip).queryByRole('tab', { name: 'Directory, new' })).not.toBeInTheDocument()
+
+    // With every tab read there is nowhere to step, so the key leaves the tab
+    // in front alone rather than cycling the strip.
+    fireEvent.keyDown(window, { key: 'n' })
+    expect(within(strip).getByRole('tab', { name: 'Directory' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+  })
+
+  it('switches to an open tool by typing its name', async () => {
+    renderWorkspace()
+    await openToolFromMenu('Directory')
+    await openToolFromMenu('Mail Admin')
+    await openToolFromMenu('Printers')
+
+    // No field has the keyboard, so the letter opens the switcher and the query
+    // inside it takes over.
+    fireEvent.keyDown(window, { key: 't' })
+    const dialog = await screen.findByRole('dialog', { name: 'Switch tool' })
+    const query = within(dialog).getByRole('combobox', { name: 'Switch to an open tool' })
+    await waitFor(() => expect(query).toHaveFocus())
+
+    // The list is the strip: its order, and the tool on screen said so.
+    expect(
+      within(dialog)
+        .getAllByRole('option')
+        .map((option) => option.getAttribute('aria-label')),
+    ).toEqual(['Directory', 'Mail Admin', 'Printers, open'])
+    // The list names itself as the matches, not as the strip it was opened from.
+    expect(within(dialog).getByRole('listbox', { name: 'Matching tools' })).toBeInTheDocument()
+
+    // The panel says it is modal, so Tab may not walk out into the page behind:
+    // the key is cancelled rather than left to move the focus, which jsdom would
+    // not do on its own and so must be read off the event.
+    expect(fireEvent.keyDown(query, { key: 'Tab' })).toBe(false)
+    expect(fireEvent.keyDown(query, { key: 'Tab', shiftKey: true })).toBe(false)
+    expect(query).toHaveFocus()
+
+    // Typing narrows it, and Enter opens what is left.
+    fireEvent.change(query, { target: { value: 'print' } })
+    expect(within(dialog).getAllByRole('option')).toHaveLength(1)
+    fireEvent.keyDown(query, { key: 'Enter' })
+
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Switch tool' })).not.toBeInTheDocument(),
+    )
+    expect(within(toolPane()).getByRole('tab', { name: 'Printers' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    // The tab is the anchor the keyboard lands on, so the strip keeps the keys.
+    await waitFor(() =>
+      expect(within(toolPane()).getByRole('tab', { name: 'Printers' })).toHaveFocus(),
+    )
+  })
+
+  it('walks the switcher with the arrows, wrapping at both ends', async () => {
+    renderWorkspace()
+    await openToolFromMenu('Directory')
+    await openToolFromMenu('Mail Admin')
+
+    fireEvent.keyDown(window, { key: 't' })
+    const dialog = await screen.findByRole('dialog', { name: 'Switch tool' })
+    const query = within(dialog).getByRole('combobox', { name: 'Switch to an open tool' })
+    await waitFor(() => expect(query).toHaveFocus())
+
+    // The first row is highlighted when the panel opens.
+    expect(query).toHaveAttribute('aria-activedescendant', 'tool-switcher-directory')
+    expect(within(dialog).getAllByRole('option')[0]).toHaveAttribute('aria-selected', 'true')
+
+    fireEvent.keyDown(query, { key: 'ArrowDown' })
+    expect(query).toHaveAttribute('aria-activedescendant', 'tool-switcher-mail-admin')
+
+    // Down from the last row is the first, and up from the first is the last.
+    fireEvent.keyDown(query, { key: 'ArrowDown' })
+    expect(query).toHaveAttribute('aria-activedescendant', 'tool-switcher-directory')
+    fireEvent.keyDown(query, { key: 'ArrowUp' })
+    expect(query).toHaveAttribute('aria-activedescendant', 'tool-switcher-mail-admin')
+  })
+
+  it('gives the keyboard back when the switcher is dismissed', async () => {
+    renderWorkspace()
+    await openToolFromMenu('Directory')
+
+    // Opened from the tools button, so that is where Escape has to put the keys.
+    const opener = screen.getByRole('button', { name: /^Tools/ })
+    // The key is named on the button that lists the tools, so it is findable.
+    expect(opener).toHaveAttribute('title', expect.stringContaining('press T'))
+    opener.focus()
+    fireEvent.keyDown(opener, { key: 't' })
+    const dialog = await screen.findByRole('dialog', { name: 'Switch tool' })
+    const query = within(dialog).getByRole('combobox', { name: 'Switch to an open tool' })
+    await waitFor(() => expect(query).toHaveFocus())
+
+    fireEvent.keyDown(query, { key: 'Escape' })
+    expect(screen.queryByRole('dialog', { name: 'Switch tool' })).not.toBeInTheDocument()
+    expect(opener).toHaveFocus()
+    expect(within(toolPane()).getByRole('tab', { name: 'Directory' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+  })
+
+  it('leaves the letter to a field, and has nothing to show with no tool open', async () => {
+    renderWorkspace()
+    const command = await screen.findByLabelText('Command')
+
+    // Nothing open: a switcher would be a panel with nothing to switch to.
+    fireEvent.keyDown(command, { key: 't' })
+    expect(screen.queryByRole('dialog', { name: 'Switch tool' })).not.toBeInTheDocument()
+
+    await openToolFromMenu('Directory')
+    fireEvent.keyDown(screen.getByLabelText('Command'), { key: 't' })
+    // The command line keeps the character, as it keeps the brackets and `n`.
+    expect(screen.queryByRole('dialog', { name: 'Switch tool' })).not.toBeInTheDocument()
+  })
+
+  it('rereads every open console when a console runs the check, not only its own', async () => {
+    const practice = await import('../../src/app/practiceService')
+    let mailCount = '108 mailboxes'
+    vi.mocked(practice.loadConsole).mockImplementation(async (consoleId) =>
+      consoleId === 'directory'
+        ? consoleView('directory', [
+            consoleEntry({
+              id: 'dwhitfield',
+              title: 'Dana Whitfield',
+              subtitle: 'Exceptions 7',
+              actions: [
+                consoleAction('unlock', 'Unlock the account', (id) => `unlock-account ${id}`),
+              ],
+            }),
+          ])
+        : consoleView('mail-admin', [
+            consoleEntry({ id: 'inbox', title: 'Inbox', subtitle: mailCount }),
+          ]),
+    )
+    vi.mocked(practice.runConsoleAction).mockResolvedValue(makeView())
+
+    renderWorkspace()
+    await openToolFromMenu('Directory')
+    await openToolFromMenu('Mail Admin')
+
+    const strip = within(toolPane()).getByRole('tablist', { name: 'Open tools' })
+    // Work in the Directory, which puts it in front and leaves Mail Admin behind.
+    fireEvent.click(within(strip).getByRole('tab', { name: 'Directory' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Dana Whitfield/ }))
+
+    // The check moves the world, so the tab that did not run it has news.
+    mailCount = '109 mailboxes'
+    fireEvent.click(screen.getByRole('button', { name: /Unlock the account/ }))
+
+    await waitFor(() =>
+      expect(within(strip).getByRole('tab', { name: 'Mail Admin, new' })).toBeInTheDocument(),
+    )
+    expect(within(strip).getByRole('tab', { name: 'Directory' })).toBeInTheDocument()
+  })
+
+  it('reopens with the pinned tab still holding the front of the strip', async () => {
+    const practice = await import('../../src/app/practiceService')
+    vi.mocked(practice.openSession).mockResolvedValue(
+      makeView({
+        layout: {
+          pane: 'tools',
+          tool: 'mail-admin',
+          tabs: ['mail-admin', 'directory'],
+          pinned: ['mail-admin'],
+          ratio: null,
+        },
+      }),
+    )
+
+    renderWorkspace()
+
+    const strip = await screen.findByRole('tablist', { name: 'Open tools' })
+    expect(within(strip).getAllByRole('tab')[0]).toHaveAttribute('id', 'console-tab-mail-admin')
+    expect(
+      screen.getByRole('button', { name: 'Unpin Mail Admin from the left of the strip' }),
+    ).toHaveAttribute('aria-pressed', 'true')
+    // A held tab is not the one being dragged, so it is not draggable at all.
+    expect(within(strip).getAllByRole('tab')[0]).toHaveAttribute('draggable', 'false')
+  })
+
+  it('pins the tool in front to the left of the strip, and remembers it', async () => {
+    const practice = await import('../../src/app/practiceService')
+    renderWorkspace()
+
+    fireEvent.click(await screen.findByRole('switch', { name: 'Split screen view' }))
+    await openToolFromMenu('Directory')
+    await openToolFromMenu('Mail Admin')
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Pin Mail Admin to the left of the strip' }),
+    )
+
+    const strip = within(toolPane()).getByRole('tablist', { name: 'Open tools' })
+    expect(within(strip).getAllByRole('tab').map((tab) => tab.id)).toEqual([
+      'console-tab-mail-admin',
+      'console-tab-directory',
+    ])
+    expect(
+      screen.getByRole('button', { name: 'Unpin Mail Admin from the left of the strip' }),
+    ).toHaveAttribute('aria-pressed', 'true')
+    await waitFor(() =>
+      expect(practice.saveWorkspaceLayout).toHaveBeenLastCalledWith({
+        pane: 'tools',
+        tool: 'mail-admin',
+        tabs: ['mail-admin', 'directory'],
+        pinned: ['mail-admin'],
+        ratio: null,
+      }),
+    )
+  })
+
+  it('holds several pinned tabs as a group, with the rest free to drag', async () => {
+    const practice = await import('../../src/app/practiceService')
+    renderWorkspace()
+
+    fireEvent.click(await screen.findByRole('switch', { name: 'Split screen view' }))
+    await openToolFromMenu('Directory')
+    await openToolFromMenu('Mail Admin')
+    // The tool in front is the one a pin holds, so each is brought forward to be
+    // pinned: Mail Admin first, then Directory.
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Pin Mail Admin to the left of the strip' }),
+    )
+    const strip = within(toolPane()).getByRole('tablist', { name: 'Open tools' })
+    fireEvent.click(within(strip).getByRole('tab', { name: 'Directory' }))
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Pin Directory to the left of the strip' }),
+    )
+
+    // A third tool is opened behind the group.
+    await openToolFromMenu('Printers')
+
+    expect(within(strip).getAllByRole('tab').map((tab) => tab.id)).toEqual([
+      'console-tab-mail-admin',
+      'console-tab-directory',
+      'console-tab-printers',
+    ])
+    const [first, second, third] = within(strip).getAllByRole('tab')
+    // Neither held tab is draggable, and the one outside the group is.
+    expect(first).toHaveAttribute('draggable', 'false')
+    expect(second).toHaveAttribute('draggable', 'false')
+    expect(third).toHaveAttribute('draggable', 'true')
+    // The seam is drawn on the first tab the learner can drag, not on the group.
+    expect(third?.className).toContain('consoleTabGroupStart')
+    expect(second?.className).not.toContain('consoleTabGroupStart')
+
+    // Nothing slips into the group: a drag or a keyboard move at it lands after
+    // the whole group, and the free order below stays the learner's.
+    fireEvent.dragStart(third!)
+    fireEvent.dragOver(first!)
+    fireEvent.drop(first!)
+    expect(within(strip).getAllByRole('tab').map((tab) => tab.id)).toEqual([
+      'console-tab-mail-admin',
+      'console-tab-directory',
+      'console-tab-printers',
+    ])
+
+    await waitFor(() =>
+      expect(practice.saveWorkspaceLayout).toHaveBeenLastCalledWith({
+        pane: 'tools',
+        tool: 'printers',
+        tabs: ['mail-admin', 'directory', 'printers'],
+        pinned: ['mail-admin', 'directory'],
+        ratio: null,
+      }),
+    )
+
+    // Releasing one pin leaves it at the edge the group leaves, not across the
+    // strip, and the other keeps its hold.
+    fireEvent.click(within(strip).getByRole('tab', { name: 'Mail Admin' }))
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Unpin Mail Admin from the left of the strip' }),
+    )
+    expect(within(strip).getAllByRole('tab').map((tab) => tab.id)).toEqual([
+      'console-tab-directory',
+      'console-tab-mail-admin',
+      'console-tab-printers',
+    ])
+    await waitFor(() =>
+      expect(practice.saveWorkspaceLayout).toHaveBeenLastCalledWith({
+        pane: 'tools',
+        tool: 'mail-admin',
+        tabs: ['directory', 'mail-admin', 'printers'],
+        pinned: ['directory'],
+        ratio: null,
+      }),
+    )
+  })
+
+  it('lets a dragged tab land where it was dropped, and stores that order', async () => {
+    const practice = await import('../../src/app/practiceService')
+    renderWorkspace()
+
+    fireEvent.click(await screen.findByRole('switch', { name: 'Split screen view' }))
+    await openToolFromMenu('Directory')
+    await openToolFromMenu('Mail Admin')
+
+    const strip = within(toolPane()).getByRole('tablist', { name: 'Open tools' })
+    const tabs = within(strip).getAllByRole('tab')
+    expect(tabs.map((tab) => tab.id)).toEqual([
+      'console-tab-directory',
+      'console-tab-mail-admin',
+    ])
+
+    fireEvent.dragStart(tabs[1]!)
+    fireEvent.dragOver(tabs[0]!)
+    fireEvent.drop(tabs[0]!)
+
+    expect(within(strip).getAllByRole('tab').map((tab) => tab.id)).toEqual([
+      'console-tab-mail-admin',
+      'console-tab-directory',
+    ])
+    await waitFor(() =>
+      expect(practice.saveWorkspaceLayout).toHaveBeenLastCalledWith({
+        pane: 'tools',
+        tool: 'mail-admin',
+        tabs: ['mail-admin', 'directory'],
+        pinned: [],
+        ratio: null,
+      }),
+    )
+  })
+
+  it('opens a tool dragged out of the shelf at the place it was dropped', async () => {
+    const practice = await import('../../src/app/practiceService')
+    renderWorkspace()
+    await openToolFromMenu('Directory')
+    await openToolFromMenu('Mail Admin')
+
+    // The shelf is the one place the picker and the strip are both in view.
+    const shelf = backToShelf()
+    expect(within(shelf).getByText(/Drag a tool onto the strip/)).toBeInTheDocument()
+
+    const strip = within(toolPane()).getByRole('tablist', { name: 'Open tools' })
+    stubStripTabBoxes(within(strip).getAllByRole('tab'))
+
+    const shares = within(shelf).getByRole('button', { name: /^File shares/ })
+    expect(shares).toHaveAttribute('draggable', 'true')
+    fireEvent.dragStart(shares)
+
+    // The pointer in the left half of the first tab is the place ahead of it.
+    dragEventAt('dragover', strip, 20)
+    expect(strip).toHaveAttribute('data-drop-active', 'true')
+    expect(
+      within(strip)
+        .getAllByRole('tab')[0]
+        ?.querySelector('[data-strip-caret="start"]'),
+    ).not.toBeNull()
+
+    dragEventAt('drop', strip, 20)
+
+    expect(within(strip).getAllByRole('tab').map((tab) => tab.id)).toEqual([
+      'console-tab-shares',
+      'console-tab-directory',
+      'console-tab-mail-admin',
+    ])
+    // Opened, not merely added: the dropped tool is the one in front.
+    expect(within(strip).getByRole('tab', { name: 'File shares' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    expect(strip).not.toHaveAttribute('data-drop-active')
+    await waitFor(() =>
+      expect(practice.saveWorkspaceLayout).toHaveBeenLastCalledWith({
+        pane: 'tools',
+        tool: 'shares',
+        tabs: ['shares', 'directory', 'mail-admin'],
+        pinned: [],
+        ratio: null,
+      }),
+    )
+  })
+
+  it('drops a carried tool behind the pinned tab, whatever the pointer says', async () => {
+    renderWorkspace()
+    await openToolFromMenu('Directory')
+    await openToolFromMenu('Mail Admin')
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Pin Mail Admin to the left of the strip' }),
+    )
+
+    const shelf = backToShelf()
+    const strip = within(toolPane()).getByRole('tablist', { name: 'Open tools' })
+    stubStripTabBoxes(within(strip).getAllByRole('tab'))
+
+    fireEvent.dragStart(within(shelf).getByRole('button', { name: /^File shares/ }))
+    // At the very start of the strip, which is the one place the pin outranks.
+    dragEventAt('dragover', strip, 1)
+    // The caret is in the second slot, showing where it will really land.
+    expect(
+      within(strip)
+        .getAllByRole('tab')[1]
+        ?.querySelector('[data-strip-caret="start"]'),
+    ).not.toBeNull()
+
+    dragEventAt('drop', strip, 1)
+
+    expect(within(strip).getAllByRole('tab').map((tab) => tab.id)).toEqual([
+      'console-tab-mail-admin',
+      'console-tab-shares',
+      'console-tab-directory',
+    ])
+  })
+
+  it('keeps the shelf from offering a drag it cannot finish, and the dropdown too', async () => {
+    renderWorkspace()
+    // With nothing open there is no strip to drop on, so the shelf does not
+    // invite a drag it would have to refuse.
+    fireEvent.click(await screen.findByRole('tab', { name: 'Tools' }))
+    const empty = await screen.findByRole('tabpanel', { name: 'Tools' })
+    expect(within(empty).queryByText(/Drag a tool onto the strip/)).not.toBeInTheDocument()
+    expect(
+      within(empty).getByRole('button', { name: /^File shares/ }),
+    ).not.toHaveAttribute('draggable')
+
+    // The dropdown covers the strip it would be dragged to, so it does not
+    // offer the gesture either.
+    const menu = await openToolFromMenu('Directory')
+    expect(
+      within(menu).getByRole('button', { name: /^File shares/ }),
+    ).not.toHaveAttribute('draggable')
+  })
+
+  it('reorders the tabs from the keyboard, because a drag is not for everyone', async () => {
+    const practice = await import('../../src/app/practiceService')
+    renderWorkspace()
+
+    fireEvent.click(await screen.findByRole('switch', { name: 'Split screen view' }))
+    await openToolFromMenu('Directory')
+    await openToolFromMenu('Mail Admin')
+
+    const strip = within(toolPane()).getByRole('tablist', { name: 'Open tools' })
+    // Ctrl with the arrow does what the drag does: one place along the strip.
+    fireEvent.keyDown(within(strip).getByRole('tab', { name: 'Mail Admin' }), {
+      key: 'ArrowLeft',
+      ctrlKey: true,
+    })
+
+    expect(within(strip).getAllByRole('tab').map((tab) => tab.id)).toEqual([
+      'console-tab-mail-admin',
+      'console-tab-directory',
+    ])
+    await waitFor(() =>
+      expect(practice.saveWorkspaceLayout).toHaveBeenLastCalledWith({
+        pane: 'tools',
+        tool: 'mail-admin',
+        tabs: ['mail-admin', 'directory'],
+        pinned: [],
+        ratio: null,
+      }),
+    )
   })
 
   it('opens the ticket even when the stored layout cannot be read', async () => {
@@ -2078,6 +4241,49 @@ describe('TicketWorkspacePage', () => {
     expect(await screen.findByText('Debrief landing')).toBeInTheDocument()
   })
 
+  it('says which step would only be partly credited before a passing close', async () => {
+    renderWorkspace()
+    const practice = await import('../../src/app/practiceService')
+    vi.mocked(practice.reviewClosure).mockResolvedValue({
+      total: 85,
+      passed: true,
+      procedurePenalty: 0,
+      hintPenalty: 0,
+      criticalFailures: [],
+      blocking: [],
+      partial: [
+        {
+          id: 'refuse-credential-request',
+          label: 'Refused the request for a password or a code',
+          earned: 15,
+          weight: 30,
+          reason:
+            'Partial credit: you refused the request, but filed it as “Could not verify who is calling”.',
+        },
+      ],
+      topology: null,
+      report: null,
+      pendingBonusXp: 0,
+    })
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Resolve ticket' }))
+
+    const heading = await screen.findByText('One step would only be partly credited')
+    const notice = heading.closest('div') as HTMLElement
+    // It passes, and the review does not pretend otherwise.
+    expect(within(notice).getByText(/85\/100 and pass/)).toBeInTheDocument()
+    expect(within(notice).getByText(/15 of 30 pts/)).toBeInTheDocument()
+    expect(within(notice).getByText(/Could not verify who is calling/)).toBeInTheDocument()
+    expect(practice.resolveAttempt).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close and score' }))
+
+    await waitFor(() => {
+      expect(practice.resolveAttempt).toHaveBeenCalledTimes(1)
+    })
+    expect(await screen.findByText('Debrief landing')).toBeInTheDocument()
+  })
+
   it('shows the network bonus still on the table before a passing close', async () => {
     renderWorkspace()
     const practice = await import('../../src/app/practiceService')
@@ -2088,6 +4294,7 @@ describe('TicketWorkspacePage', () => {
       hintPenalty: 0,
       criticalFailures: [],
       blocking: [],
+      partial: [],
       topology: {
         totalLinks: 6,
         provedLinks: 2,
@@ -2095,6 +4302,7 @@ describe('TicketWorkspacePage', () => {
         untested: [{ label: 'Larkspur Depot · Gateway', command: 'ping 10.20.4.1' }],
         failed: [{ label: 'Larkspur Depot · Name resolution', command: 'nslookup fileserver' }],
       },
+      report: null,
       pendingBonusXp: 25,
     })
 
@@ -2128,6 +4336,7 @@ describe('TicketWorkspacePage', () => {
       hintPenalty: 0,
       criticalFailures: [],
       blocking: [],
+      partial: [],
       topology: {
         totalLinks: 3,
         provedLinks: 1,
@@ -2135,6 +4344,7 @@ describe('TicketWorkspacePage', () => {
         untested: [{ label: 'This machine · Address', command: 'ipconfig /all' }],
         failed: [],
       },
+      report: null,
       pendingBonusXp: 25,
     })
 
@@ -2598,6 +4808,137 @@ describe('TicketWorkspacePage', () => {
     }
     expect(within(busyRow).getByRole('button', { name: 'End session' })).toBeInTheDocument()
     expect(within(busyRow).queryByRole('button', { name: 'Connect' })).not.toBeInTheDocument()
+  })
+
+  it('reads the Directory as a picker and opens the account from its row', async () => {
+    const practice = await import('../../src/app/practiceService')
+    vi.mocked(practice.loadConsole).mockResolvedValue(
+      consoleView('directory', [
+        consoleEntry({
+          id: 'kkhan',
+          title: 'Kira Khan',
+          subtitle: 'kkhan · Sales',
+          icon: 'account',
+          actions: [
+            consoleAction('open-record', 'Open the account record', (id) => `get-account ${id}`),
+          ],
+        }),
+        consoleEntry({
+          id: 'mchen',
+          title: 'Marcus Chen',
+          subtitle: 'mchen · Operations',
+          icon: 'account',
+          actions: [
+            consoleAction('open-record', 'Open the account record', (id) => `get-account ${id}`),
+          ],
+        }),
+      ]),
+    )
+    renderWorkspace()
+    const panel = await openTool('Directory')
+
+    expect(await within(panel).findByRole('heading', { name: 'Directory' })).toBeInTheDocument()
+    expect(within(panel).getByText('Select an account to read its record')).toBeInTheDocument()
+
+    const rows = within(panel).getByRole('list', { name: 'Directory accounts' })
+    expect(rows).toHaveAttribute('data-view', 'picker')
+    fireEvent.click(within(rows).getAllByRole('button', { name: 'Open record' })[0]!)
+
+    await waitFor(() => {
+      expect(practice.runConsoleAction).toHaveBeenCalledWith('directory', 'kkhan', 'open-record')
+    })
+  })
+
+  it('keeps the Directory’s tiles as a second reading of the same records', async () => {
+    const practice = await import('../../src/app/practiceService')
+    vi.mocked(practice.loadConsole).mockResolvedValue(
+      consoleView('directory', [
+        consoleEntry({
+          id: 'kkhan',
+          title: 'Kira Khan',
+          subtitle: 'kkhan · Sales',
+          icon: 'account',
+          facts: [
+            { label: 'Employee ID', value: 'E-1042' },
+            { label: 'Site', value: 'North Warehouse' },
+          ],
+          actions: [
+            consoleAction('open-record', 'Open the account record', (id) => `get-account ${id}`),
+          ],
+        }),
+      ]),
+    )
+    renderWorkspace()
+    const panel = await openTool('Directory')
+    const rows = await within(panel).findByRole('list', { name: 'Directory accounts' })
+
+    fireEvent.click(
+      within(within(panel).getByRole('group', { name: 'Directory view' })).getByRole('button', {
+        name: 'Grid',
+      }),
+    )
+
+    // The same records, read as tiles: the row button is a shortcut past opening
+    // the record, so it belongs to the rows and not to the tiles.
+    expect(rows).toHaveAttribute('data-view', 'grid')
+    expect(within(rows).queryByRole('button', { name: 'Open record' })).not.toBeInTheDocument()
+    expect(within(rows).getByText('E-1042')).toBeInTheDocument()
+
+    fireEvent.click(
+      within(within(panel).getByRole('group', { name: 'Directory view' })).getByRole('button', {
+        name: 'List',
+      }),
+    )
+    expect(rows).toHaveAttribute('data-view', 'picker')
+    expect(within(rows).getByRole('button', { name: 'Open record' })).toBeInTheDocument()
+  })
+
+  it('reads the Printers as a picker, with a queue read for each kind of record', async () => {
+    const practice = await import('../../src/app/practiceService')
+    vi.mocked(practice.loadConsole).mockResolvedValue(
+      consoleView('printers', [
+        consoleEntry({
+          id: 'LT-4471',
+          title: 'LT-4471',
+          subtitle: 'This machine · Larkspur HQ',
+          icon: 'machine',
+          actions: [
+            consoleAction('spooler-queue', 'Inspect the local queue', () => 'get-printqueue'),
+          ],
+        }),
+        consoleEntry({
+          id: 'prn-1',
+          title: 'HQ-Floor-2',
+          subtitle: 'Larkspur HQ · HP LaserJet M404',
+          icon: 'printer',
+          actions: [
+            consoleAction('printer-queue', 'Inspect the queue', (id) => `get-printqueue ${id}`),
+            consoleAction('printer-clear', 'Clear the queue', (id) => `clear-printqueue ${id}`),
+          ],
+        }),
+      ]),
+    )
+    renderWorkspace()
+    const panel = await openTool('Printers')
+
+    expect(await within(panel).findByRole('heading', { name: 'Printers' })).toBeInTheDocument()
+    const rows = within(panel).getByRole('list', { name: 'Printers and this machine' })
+
+    // Each row reads the queue it is about, and nothing destructive is a row
+    // button: clearing a queue stays in the record, after the read.
+    expect(within(rows).queryByRole('button', { name: 'Clear the queue' })).not.toBeInTheDocument()
+
+    fireEvent.click(within(rows).getByRole('button', { name: 'Inspect queue' }))
+    await waitFor(() => {
+      expect(practice.runConsoleAction).toHaveBeenCalledWith('printers', 'prn-1', 'printer-queue')
+    })
+
+    // One command at a time: the machine's row takes its own queue read once the
+    // printer's has finished, which is the same pipeline the record buttons use.
+    fireEvent.click(within(rows).getByRole('button', { name: 'Inspect local queue' }))
+    await waitFor(() => {
+      expect(practice.runConsoleAction).toHaveBeenCalledWith('printers', 'LT-4471', 'spooler-queue')
+    })
   })
 
   it('renders the documentation runbooks it loads', async () => {

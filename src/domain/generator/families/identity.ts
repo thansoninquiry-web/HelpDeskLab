@@ -442,7 +442,7 @@ export const identityFamily: ScenarioFamily = {
             category: 'safety',
             weight: 25,
             critical: true,
-            checks: [denyCaller()],
+            checks: [denyCaller('third-party-request')],
           }),
           makeItem({
             id: 'no-target-reset',
@@ -488,7 +488,7 @@ export const identityFamily: ScenarioFamily = {
         const target = requestedAccount(context)
         return [
           { type: 'command', input: `get-account ${target.samAccountName}` },
-          { type: 'deny-caller' },
+          { type: 'deny-caller', reason: 'third-party-request' },
           {
             type: 'note',
             noteKind: 'troubleshooting',
@@ -502,7 +502,7 @@ export const identityFamily: ScenarioFamily = {
           {
             type: 'note',
             noteKind: 'resolution',
-            text: 'Denied a third-party reset request and reported the pretext to Security. No account changes were made.',
+            text: `Denied a reset request relayed for ${target.displayName}: the caller asked for the password and offered to pass it back. I checked the account and the caller’s own record before refusing, and no account changes were made. Security should confirm who called and warn ${target.displayName}.`,
           },
         ]
       },
@@ -580,7 +580,7 @@ export const identityFamily: ScenarioFamily = {
             category: 'safety',
             weight: 25,
             critical: true,
-            checks: [denyCaller()],
+            checks: [denyCaller('unverified-identity')],
             hints: [
               'Refusing is a recorded action: use the deny control under the identity panel.',
               'Pick the reason that matches what happened — the caller’s identity was never established.',
@@ -647,7 +647,7 @@ export const identityFamily: ScenarioFamily = {
         const sam = context.user.samAccountName
         return [
           { type: 'command', input: `get-account ${sam}` },
-          { type: 'deny-caller' },
+          { type: 'deny-caller', reason: 'unverified-identity' },
           {
             type: 'note',
             noteKind: 'troubleshooting',
@@ -661,7 +661,145 @@ export const identityFamily: ScenarioFamily = {
           {
             type: 'note',
             noteKind: 'resolution',
-            text: 'Denied an unverified request made in the employee’s name and reported the impersonation attempt to Security. No account changes were made.',
+            text: `Denied an unlock and a reset asked for in ${context.user.displayName}’s name: the live code went to the employee’s own phone and was never read back. I looked at the account and its sign-in record before refusing, and nothing was changed. Security should trace the caller and let the employee know someone used their name.`,
+          },
+        ]
+      },
+      expectedOutcome: 'escalated',
+      expectedCodes: ['denied-social-engineering'],
+    },
+    {
+      id: 'credential-readout',
+      label: 'Caller asking for a password read-out',
+      summary:
+        'The caller wants the desk to read a password or a verification code out loud instead of going through a reset, and the ask itself is what has to be refused.',
+      difficulty: 1,
+      severity: 'high',
+      subjects: [
+        'Just read me the password - {firstName}',
+        'Password read out over the phone - {firstName} ({department})',
+      ],
+      bodies: [
+        'Hi, this is {displayName} in {department}. I am stuck getting into {hostname} - I know the username, I just cannot remember the password, and I do not have time for the whole reset rigmarole today. You can see it on your side, so read it out to me and I will type it in. If you are not allowed to say the password, then send the code and read that out instead; I will get in with that.',
+        '{displayName} here, {department}. I need my password for {hostname} - I never wrote it down and I have a report due at two. Rather than mess about with a reset, just read the password out to me over the phone. If that is against the rules, read me the code you would send instead - I only need to get through the sign-in once.',
+      ],
+      symptoms: [
+        'The caller asks for their password to be read out over the phone',
+        'The caller offers to take a verification code read aloud instead',
+        'No fault is described beyond not knowing the password',
+      ],
+      build(context) {
+        // The account is healthy and the password is current: there is no fault
+        // behind the call, so the request is the whole ticket and nothing on the
+        // account needs changing to answer it.
+        context.user.status = 'active'
+        context.user.passwordExpired = false
+        return `status:${context.user.status};passwordExpired:${context.user.passwordExpired}`
+      },
+      rubric(context) {
+        const sam = context.user.samAccountName
+        return makeRubric('PWD-01', 'credential-readout', [
+          makeItem({
+            id: 'diagnose-account',
+            label: 'Read the account state before answering the request',
+            why: 'The account settles whether there is a fault to fix at all: an active, unexpired account means the request is the whole ticket, and nothing here is a lockout or an expiry.',
+            category: 'diagnosis',
+            weight: 15,
+            checks: [ran('get-account', sam)],
+            hints: [
+              'The caller has described a forgotten password, not a fault. Read the account before deciding anything.',
+              'Run get-account <sam>; the status and the expiry line say whether a reset is even warranted.',
+              'get-account should show status: active and passwordExpired: False — nothing on the account needs changing.',
+            ],
+          }),
+          makeItem({
+            id: 'refuse-credential-request',
+            label: 'Refused the request for a password or a code',
+            why: 'A password and a live code are secrets only their holder may see. Reading one out — even to the account owner, even after a code comes back — puts a working credential in the ear of everyone on the call.',
+            category: 'safety',
+            weight: 30,
+            critical: true,
+            checks: [denyCaller('credential-request')],
+            hints: [
+              'The ask is the problem: no check makes reading out a password or a code acceptable.',
+              'Refuse it from the deny control, and pick the reason that is about the ask rather than about who is calling.',
+              'Choose “Asked for a password or a code”. Verifying the caller would not have made a read-out allowed.',
+            ],
+          }),
+          makeItem({
+            id: 'no-reset',
+            label: 'Did not reset a password to answer a read-out',
+            why: 'A reset is not what was asked for, and the account was never broken: it would leave the caller holding a credential they did not ask for, and put a secret into circulation to solve a conversation.',
+            category: 'safety',
+            weight: 15,
+            checks: [absent(effect('password_reset', sam))],
+            hints: [
+              'A reset answers “I cannot get in”, not “tell me the password”.',
+              'Leave the credentials alone; the account is active and its password is current.',
+              'reset-password <sam> is a scored miss here — a read-out is refused, not substituted.',
+            ],
+          }),
+          makeItem({
+            id: 'note-troubleshooting',
+            label: 'Recorded what was asked for and what was refused',
+            why: 'A desk asked outright for a password is the pattern Security needs to see, so the note has to name the ask rather than just the outcome.',
+            category: 'documentation',
+            weight: 15,
+            checks: [note('troubleshooting', 30)],
+            hints: [
+              'Write down what the caller asked for, in their words.',
+              'Say that a password and then a code were asked to be read out, and that neither was.',
+              'Example: “Caller asked for password read out, then for the code read out; account active, password current; refused as a credential request; nothing read out, nothing changed.”',
+            ],
+          }),
+          makeItem({
+            id: 'note-customer',
+            label: 'Told the caller what can happen instead',
+            why: 'The caller needs a route they can actually use, or they will ring back and ask the next desk for the same thing.',
+            category: 'documentation',
+            weight: 10,
+            checks: [note('customer', 20)],
+            hints: [
+              'Give the caller a plain next step that is allowed.',
+              'Point them at the reset route, and say a new password is set after verification.',
+              'Say nobody at the desk will ever read a password or a code out, and how to set a new one.',
+            ],
+          }),
+          makeItem({
+            id: 'decision',
+            label: 'Closed it as a denial and reported the request',
+            why: 'A request that had to be refused is not a fix: the close that reports it is what gets the pattern in front of Security.',
+            category: 'resolution',
+            weight: 15,
+            critical: true,
+            checks: [decision('escalated', ['denied-social-engineering'])],
+            hints: [
+              'A credential read-out is refused, not resolved.',
+              'Close it with the denial code that reports it.',
+              'Pick “Denied (social engineering) — reported to Security”.',
+            ],
+          }),
+        ])
+      },
+      reference(context) {
+        const sam = context.user.samAccountName
+        return [
+          { type: 'command', input: `get-account ${sam}` },
+          { type: 'deny-caller', reason: 'credential-request' },
+          {
+            type: 'note',
+            noteKind: 'troubleshooting',
+            text: `Caller asked for their password to be read out, and then offered to take the live code read out instead. The directory shows the account active with the password current, so there was no fault behind the call. Both asks were refused as a credential request: nothing was read out and nothing on the account was changed.`,
+          },
+          {
+            type: 'note',
+            noteKind: 'customer',
+            text: 'Nobody at the service desk will read a password or a verification code out, so I have not done that. Set a new password through the reset route and you will be able to sign in with it straight away.',
+          },
+          {
+            type: 'note',
+            noteKind: 'resolution',
+            text: 'Denied a request to read a password and then a verification code out loud. I checked the directory first: the account is active and the password current, so there was no fault behind the call. Nothing was read out and nothing changed. Security should treat the call as a credential harvest and warn the employee.',
           },
         ]
       },
@@ -761,7 +899,7 @@ export const identityFamily: ScenarioFamily = {
             category: 'safety',
             weight: 25,
             critical: true,
-            checks: [denyCaller()],
+            checks: [denyCaller('third-party-request')],
             hints: [
               'Refusing is a recorded action: use the deny control under the identity panel.',
               'Pick the reason that matches what was asked for, not who appeared to ask.',
@@ -833,7 +971,7 @@ export const identityFamily: ScenarioFamily = {
             input: `get-mailbox ${context.user.samAccountName}`,
             label: 'Read the mailbox of the colleague who asked',
           },
-          { type: 'deny-caller' },
+          { type: 'deny-caller', reason: 'third-party-request' },
           {
             type: 'note',
             noteKind: 'troubleshooting',
@@ -847,7 +985,7 @@ export const identityFamily: ScenarioFamily = {
           {
             type: 'note',
             noteKind: 'resolution',
-            text: 'Denied a reset relayed through chat by a compromised helpdesk account and reported it to Security. No account changes were made.',
+            text: `Denied a reset asked for in chat on ${target.displayName}’s behalf: the asking colleague’s mailbox forwards outside the organisation, so that account is compromised. I checked both accounts before refusing and changed nothing. Security should investigate the compromised helpdesk account and warn ${target.displayName}.`,
           },
         ]
       },
@@ -973,6 +1111,185 @@ export const identityFamily: ScenarioFamily = {
             type: 'note',
             noteKind: 'troubleshooting',
             text: 'Caller was locked out and their handset is out of action, so a code could not reach them. Directory confirmed the lockout, the caller was confirmed by a callback to the desk line on file, the account was unlocked, and the status returned to active. No password was changed.',
+          },
+          {
+            type: 'note',
+            noteKind: 'customer',
+            text: 'Your account is unlocked and no new password was issued. Sign in with your current password and call us back if it locks again today.',
+          },
+        ]
+      },
+      expectedOutcome: 'resolved',
+      expectedCodes: ['resolved-remote'],
+    },
+    {
+      id: 'shared-line-callback',
+      label: 'Rung back on a shared team line',
+      summary:
+        'The account is locked and the caller asks to be rung back on the team line on their record — a line the whole team answers, so a colleague confirms the request instead of the employee.',
+      difficulty: 2,
+      severity: 'high',
+      subjects: [
+        'Locked out and ringing from the team line - {firstName}',
+        'Unlock {firstName} ({department}) - callback to the team line',
+      ],
+      bodies: [
+        'This is {displayName} in {department}. My account is locked out of {hostname} and I am at my desk, so save yourself the text - the number on my record for the team is right here on the desk. Ring {teamLine} back and whoever picks it up will tell you the request is mine. I have a queue building, so the sooner this is cleared the better.',
+        '{displayName} here, {department}. Locked out of {hostname} again and I cannot get back in. Do not bother sending a code to my mobile, I left it in my bag in the other office; ring {teamLine} instead. Anyone on it can confirm I am asking for this, they all know I am locked out.',
+      ],
+      symptoms: [
+        'Sign-in is rejected with an account lockout message',
+        'The caller asks to be rung back on the team line rather than sent a code',
+        'The number on the caller’s record for the team is shared by the whole department',
+      ],
+      build(context) {
+        context.user.status = 'locked'
+        context.user.passwordExpired = false
+        // Somebody on the team picks the line up, and it is not the employee.
+        // The colleague is drawn from the same department so the answer sounds
+        // like exactly the person the caller promised would vouch for them — but
+        // not the manager on file, so the panel is not offering the same person
+        // twice and the line clearly reached somebody else.
+        const others = context.world.users.filter(
+          (candidate) => candidate.id !== context.user.id,
+        )
+        const colleague =
+          others.find(
+            (candidate) =>
+              candidate.department === context.user.department &&
+              candidate.displayName !== context.user.managerName,
+          ) ??
+          others.find((candidate) => candidate.department === context.user.department) ??
+          others[0]
+        context.world.sharedCallbackLine = {
+          label: `${context.user.department} team line`,
+          answeredBy: colleague?.displayName ?? 'a colleague',
+        }
+        context.world.callerClaims = [
+          {
+            id: 'claimed-team-vouch',
+            account: context.user.samAccountName,
+            statement: `It is me. Ring the ${context.world.sharedCallbackLine.label} and whoever answers will confirm the request is mine.`,
+            identity: true,
+          },
+        ]
+        return `status:${context.user.status};sharedLine:${context.world.sharedCallbackLine.label}`
+      },
+      rubric(context) {
+        const sam = context.user.samAccountName
+        const teamLine = context.world.sharedCallbackLine?.label ?? 'team line'
+        return makeRubric('PWD-01', 'shared-line-callback', [
+          makeItem({
+            id: 'diagnose-account',
+            label: 'Checked the directory account state',
+            why: 'Lockout, expiry, and disablement need different fixes, so confirm which one applies before changing anything.',
+            category: 'diagnosis',
+            weight: 15,
+            checks: [ran('get-account', sam)],
+            hints: [
+              'The account lookup shows lock state, password expiry, and sign-in hints.',
+              'Run get-account <sam>; status should read locked rather than disabled or expired.',
+              'get-account <sam> should print status: locked; that line is the diagnosis.',
+            ],
+          }),
+          makeItem({
+            id: 'verify-by-code',
+            label: 'Sent the code to the caller’s own phone and had it read back',
+            why: `The ${teamLine} is answered by whoever is at that desk, so a call to it confirms a colleague, not the person on the ticket. The mobile on file is the line that reaches them.`,
+            category: 'safety',
+            weight: 20,
+            critical: true,
+            checks: [ordered(verifyCaller('verification-code'), effect('account_unlocked', sam))],
+            hints: [
+              'The caller is steering you to a line the whole team shares; a person answering it is not proof of who is calling.',
+              'Send the live code to the caller’s own mobile and have them read it back before you touch the account.',
+              `A callback to the ${teamLine} only ever reaches a colleague — the read-back is the check this ticket needs.`,
+            ],
+          }),
+          makeItem({
+            id: 'unlock',
+            label: `Unlocked ${sam} after the read-back`,
+            why: 'Tier 1 can clear a lockout once the caller and the account state are confirmed. The proof has to come first, because the unlock cannot be undone.',
+            category: 'resolution',
+            weight: 25,
+            critical: true,
+            checks: [ordered(verifyCaller('verification-code'), effect('account_unlocked', sam))],
+            hints: [
+              'A locked account is cleared with unlock-account, not a password reset.',
+              'Read the code back first; the unlock has to follow the confirmation, not precede it.',
+              'Run unlock-account <sam> after the code is read back; the success line plus a second lookup is the proof.',
+            ],
+          }),
+          makeItem({
+            id: 'verify-fix',
+            label: 'Rechecked the account after unlocking',
+            why: 'A second lookup proves the lockout cleared instead of assuming it did.',
+            category: 'diagnosis',
+            weight: 10,
+            checks: [ordered(effect('account_unlocked', sam), ran('get-account', sam))],
+            hints: [
+              'Read the account again after unlocking.',
+              'A second lookup should show status: active.',
+              'The second get-account must show status: active after the unlock.',
+            ],
+          }),
+          makeItem({
+            id: 'note-troubleshooting',
+            label: 'Recorded what the team line actually proved',
+            why: 'The note is the evidence trail: if a colleague answered, the next person needs to know the caller was confirmed by a code, not by a team-mate saying yes.',
+            category: 'documentation',
+            weight: 15,
+            checks: [note('troubleshooting', 25)],
+            hints: [
+              'Record what you saw, how you identified the caller, and the result.',
+              'Name the line that proved it — and if a colleague answered the team line first, say so.',
+              `Example: “Status locked; called the ${teamLine} first, colleague answered (not the employee); code sent to the mobile on file and read back; unlocked; status active.”`,
+            ],
+          }),
+          makeItem({
+            id: 'note-customer',
+            label: 'Wrote a customer-facing note',
+            why: 'The user needs a plain-language update they can act on.',
+            category: 'documentation',
+            weight: 5,
+            checks: [note('customer', 15)],
+            hints: [
+              'Give the user a plain next step.',
+              'Tell them to sign in with their current password and report a repeat.',
+              'Say the account is unlocked, no password changed, and to call back if it locks again today.',
+            ],
+          }),
+          makeItem({
+            id: 'decision',
+            label: 'Resolved the ticket instead of escalating',
+            why: 'A lockout is a Tier 1 fix and a read-back is a check Tier 1 can place; escalating it wastes the user and the next team.',
+            category: 'resolution',
+            weight: 10,
+            critical: true,
+            checks: [decision('resolved', ['resolved-remote', 'resolved-user-guidance'])],
+            hints: [
+              'A lockout is a Tier 1 fix.',
+              'Resolve it remotely or with user guidance; do not escalate.',
+              'Pick “Resolved remotely”; a lockout is Tier 1.',
+            ],
+          }),
+        ])
+      },
+      reference(context) {
+        const sam = context.user.samAccountName
+        return [
+          { type: 'command', input: `get-account ${sam}` },
+          { type: 'verify-caller', method: 'verification-code' },
+          { type: 'command', input: `unlock-account ${sam}` },
+          {
+            type: 'command',
+            input: `get-account ${sam}`,
+            label: 'Recheck the account now it is unlocked',
+          },
+          {
+            type: 'note',
+            noteKind: 'troubleshooting',
+            text: `Caller was locked out and asked to be rung back on the ${context.world.sharedCallbackLine?.label ?? 'team line'}, a line the whole department answers. A colleague picked it up, which proves nothing about who called. The live code went to the mobile on file and was read back; the account was unlocked and the status returned to active. No password was changed.`,
           },
           {
             type: 'note',
@@ -1135,6 +1452,14 @@ export const identityFamily: ScenarioFamily = {
         // The desk was warned about the change it just made and carried on. These
         // two answer being ignored, so they sit ahead of the stall lines once the
         // warning has been said.
+        {
+          // Opening the directory is the desk doing the lookup it was told not to
+          // bother with; the caller reacts to being looked up, not to a command.
+          id: 'pressured-directory-read',
+          trigger: { kind: 'read', consoleId: 'directory' },
+          message:
+            'Are you looking me up now? It will say locked — I have been telling you that. Unlock it and send the password.',
+        },
         {
           id: 'pressured-ignored-warning',
           trigger: { kind: 'stalled', afterSteps: 4, afterMinutes: 3 },

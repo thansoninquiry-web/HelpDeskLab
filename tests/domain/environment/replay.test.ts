@@ -41,6 +41,22 @@ describe('foldWorld', () => {
     expect(worldsMatch(folded, runLive(generated.world, inputs))).toBe(true)
   })
 
+  it('leaves the world alone for a tool read, which is evidence and not a change', () => {
+    const generated = generateTicket(7, { familyId: 'PWD-01' })
+    const read: ReplayStep = {
+      kind: 'console-read',
+      atMs: 0,
+      input: { consoleId: 'directory', entryId: 'dwhitfield' },
+      output: { read: true },
+    }
+
+    // A read sits in the log for the caller's ladder and the stall clock, but a
+    // rewind must fold it without moving anything in the world.
+    const folded = foldWorld(generated.world, [read], { codeSeed: CODE_SEED })
+
+    expect(worldsMatch(folded, generated.world)).toBe(true)
+  })
+
   it('runs a desktop terminal command on the machine its session was open on', () => {
     const generated = generateTicket(7, { familyId: 'PWD-01' })
     const host = generated.public.device.hostname

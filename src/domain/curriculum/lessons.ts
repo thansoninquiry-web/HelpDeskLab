@@ -50,6 +50,12 @@ export type LessonPractice =
        * point would open a ticket that cannot exercise it.
        */
       variantId?: string
+      /**
+       * Asks the Practise entry point for a ticket that arrived as a message.
+       * The arrival is drawn from the seed, so the ticket is still generated
+       * from a seed the queue stores and rebuilds the same way.
+       */
+      arrival?: 'voicemail'
     }
   | { kind: 'targets' }
 
@@ -214,6 +220,40 @@ export const MODULE_LESSONS: Readonly<Record<string, ModuleLesson>> = {
         'Four different question types, one attempt that opens with a question, and ten questions in total.',
     },
     practice: { kind: 'tickets', families: ['M365-01'] },
+  },
+
+  'voicemails': {
+    concept: [
+      'A message on the desk’s machine is a report with nobody on the other end of it. The words are the same words a caller would have said, but the voice that could answer a follow-up question has gone back to their meeting, so every gap in the recording is a gap the ticket has to carry.',
+      'That leaves three habits. Ring the person back on the line the message leaves — the mobile on file, or the desk line when the handset is dead — because a callback is the quickest way to check a detail or to find that the voice was not who it claimed. Work the ticket from the machine’s evidence rather than from the recording, which is a claim, not a diagnosis. And write the message into the ticket before the audio is cleared, because a recording nobody can play is not a record.',
+      'Some messages can wait and some cannot. The rule is not the tone of the recording but what is blocked: a whole team unable to print at nine in the morning is a callback now, while one person’s dock that clicks is a ticket for later. Say which one you decided in the note, so the next shift knows it was a decision and not an oversight.',
+    ],
+    example: {
+      title: 'A lockout left at eight in the morning',
+      scenario:
+        'The queue holds a voicemail left at 08:10: Marcus cannot sign in, and his handset is out of action. The recording ends with a desk extension.',
+      steps: [
+        step(
+          'Read the card, then ring the line the message leaves',
+          'The callback is recorded against the attempt, and the desk line is the only line that reaches him today.',
+        ),
+        step(
+          'Run `get-account mchen`',
+          'The directory says locked or disabled. A message cannot tell the difference, and the fix is not the same one.',
+        ),
+        step(
+          'Unlock only if the output shows a lock',
+          'The change follows the evidence. A disabled account stays disabled until the reason is known.',
+        ),
+        step(
+          'Write the message into the ticket, then close it',
+          'What was asked for, what you found, and when you rang back — in a note a later shift can read.',
+        ),
+      ],
+      result:
+        'One closure on a ticket that arrived as a voicemail, one callback on file, and one note. The attempt still has to pass to complete the module.',
+    },
+    practice: { kind: 'tickets', families: ['PWD-01', 'M365-01', 'PRN-01'], arrival: 'voicemail' },
   },
 
   'the-phone': {

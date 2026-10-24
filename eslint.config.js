@@ -98,4 +98,11 @@ export default [
       globals: { ...globals.browser, ...globals.node },
     },
   },
+  {
+    // The claim check is a plain Node script: no build step, no dependencies.
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      globals: { ...globals.node },
+    },
+  },
 ]

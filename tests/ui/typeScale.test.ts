@@ -2,6 +2,10 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import {
+  DEFAULT_TEXT_SIZE,
+  TEXT_SIZE_CHOICES,
+} from '../../src/domain/appearance/textSize'
 
 /**
  * The type scale is a promise: every label and heading is one of the steps in
@@ -99,12 +103,19 @@ function fontSizeDeclarations(css: string): Declaration[] {
   return declarations
 }
 
+/**
+ * The root anchor global.css sets is the rem the scale is measured in, and the
+ * one size that may be computed rather than named: it multiplies the 16px design
+ * anchor by the interface scale, so the whole workspace can be grown or shrunk
+ * from one place. Nothing else may wear that shape.
+ */
+const ROOT_ANCHORS = [/^16px$/, /^calc\(\s*16px\s*\*\s*var\(--ui-scale\)\s*\)$/]
+
 /** Declarations that write a size instead of naming a step. */
 function handPickedSizes(css: string): string[] {
   return fontSizeDeclarations(css)
     .filter(({ selector, value }) => {
-      // The root anchor global.css sets is the rem the scale is measured in.
-      if (selector === 'html' && value === '16px') {
+      if (selector === 'html' && ROOT_ANCHORS.some((anchor) => anchor.test(value))) {
         return false
       }
       return !/^var\(--type-[a-z0-9-]+\)$/.test(value)
@@ -203,6 +214,32 @@ describe('the type scale', () => {
     expect(offenders).toEqual([])
   })
 
+  it('scales the workspace from the text size Settings offers', () => {
+    const steps = new Map<string, number>()
+    for (const match of tokensCss.matchAll(
+      /:root\[data-text-size='([a-z]+)'\]\s*\{\s*--ui-scale:\s*([\d.]+)\s*;\s*\}/g,
+    )) {
+      steps.set(match[1] ?? '', Number.parseFloat(match[2] ?? '0'))
+    }
+
+    // Every choice the settings offer is a choice the stylesheet knows, and the
+    // reverse: a value the form cannot produce would be a rule nobody can reach.
+    expect([...steps.keys()].sort()).toEqual(TEXT_SIZE_CHOICES.map((choice) => choice.value).sort())
+    expect(steps.get(DEFAULT_TEXT_SIZE)).toBe(1)
+
+    for (const [value, factor] of steps) {
+      // A step that quietly made the workspace unreadable is the failure this
+      // band exists to catch, at either end.
+      expect(factor, `${value} scales outside the band`).toBeGreaterThanOrEqual(0.85)
+      expect(factor, `${value} scales outside the band`).toBeLessThanOrEqual(1.25)
+    }
+
+    // The base declaration is the design size, so an install that has never
+    // chosen — and the first frame, before the attribute is read — is Default.
+    const base = /:root\s*\{[^}]*--ui-scale:\s*([\d.]+)\s*;/s.exec(tokensCss)
+    expect(base?.[1]).toBe('1')
+  })
+
   it('lets a stylesheet read only steps the scale declares', () => {
     const unknown = SHEETS.flatMap((file) =>
       unknownSteps(read(file)).map((token) => `${file} → var(${token})`),
@@ -218,7 +255,15 @@ describe('the type scale', () => {
     expect(handPickedSizes('.label { font-size: var(--type-md); }')).toEqual([])
     // The root anchor is the one size that is not a step of the scale.
     expect(handPickedSizes('html { font-size: 16px; }')).toEqual([])
+    expect(handPickedSizes('html { font-size: calc(16px * var(--ui-scale)); }')).toEqual([])
     expect(handPickedSizes('html { font-size: 15px; }')).toEqual(['html: font-size: 15px'])
+    // The scaled anchor is the only one allowed, and only on the root.
+    expect(handPickedSizes('html { font-size: calc(18px * var(--ui-scale)); }')).toEqual([
+      'html: font-size: calc(18px * var(--ui-scale))',
+    ])
+    expect(handPickedSizes('.label { font-size: calc(16px * var(--ui-scale)); }')).toEqual([
+      '.label: font-size: calc(16px * var(--ui-scale))',
+    ])
     // A nested rule inside a media block is read too, not skipped with it.
     expect(handPickedSizes('@media (max-width: 600px) { .label { font-size: 0.9rem; } }')).toEqual([
       '.label: font-size: 0.9rem',

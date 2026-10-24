@@ -1,9 +1,15 @@
 import { errorLine, line, mutedLine, successLine } from '../output'
-import type { DirectoryUser, MailMessage, MailboxRecord } from '../types'
+import type { DirectoryUser, MailMessage, MailMessageState, MailboxRecord } from '../types'
 import type { CommandContext, CommandDefinition, CommandOutcome } from './types'
 import { failed, succeeded, usageFailure } from './types'
 
 const ADDRESS = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+const MESSAGE_STATES: readonly MailMessageState[] = ['delivered', 'quarantined', 'blocked', 'deferred']
+
+function isMessageState(value: string): value is MailMessageState {
+  return (MESSAGE_STATES as readonly string[]).includes(value)
+}
 
 function stamp(ms: number): string {
   return new Date(ms).toISOString().slice(0, 16).replace('T', ' ')
@@ -120,6 +126,46 @@ function getQuarantine(context: CommandContext): CommandOutcome {
       line(`  Verdict : ${message.reason ?? 'No reason recorded.'}`),
     ]),
     mutedLine('Release a message only when the sender is expected and the content is safe.'),
+  ])
+}
+
+/**
+ * The mail the tenant recorded, optionally narrowed to one delivery state. The
+ * state is the tenant's record; the path a message took is what trace-message
+ * shows, and that is the audited check.
+ */
+function getMessages(context: CommandContext): CommandOutcome {
+  const [state, ...rest] = context.args
+  if (rest.length > 0) {
+    return usageFailure(`get-messages [${MESSAGE_STATES.join('|')}]`)
+  }
+  if (state !== undefined && !isMessageState(state)) {
+    return failed([
+      errorLine(`'${state}' is not a delivery state.`),
+      mutedLine(`Use one of: ${MESSAGE_STATES.join(', ')}.`),
+    ])
+  }
+
+  const messages = context.world.mail.messages.filter(
+    (message) => state === undefined || message.state === state,
+  )
+  if (messages.length === 0) {
+    return succeeded([
+      mutedLine(state ? `No mail is recorded as ${state}.` : 'No mail is recorded in the tenant.'),
+    ])
+  }
+
+  return succeeded([
+    line(`Messages        : ${messages.length}${state ? ` (${state})` : ''}`),
+    line(),
+    ...messages.flatMap((message) => [
+      line(`${message.id}  ${message.subject}`),
+      line(`  From    : ${message.from}`),
+      line(`  To      : ${message.to}`),
+      line(`  State   : ${message.state}`),
+      line(`  Received: ${stamp(message.receivedAt)}`),
+    ]),
+    mutedLine('Run trace-message <messageId> to see the path a message took.'),
   ])
 }
 
@@ -253,6 +299,15 @@ export const mailCommands: readonly CommandDefinition[] = [
     usage: 'get-quarantine',
     summary: 'List the mail the filter is holding for review',
     run: getQuarantine,
+  },
+  {
+    name: 'get-messages',
+    aliases: [],
+    group: 'mail',
+    access: 'read',
+    usage: `get-messages [${MESSAGE_STATES.join('|')}]`,
+    summary: 'List mail the tenant recorded, optionally by delivery state',
+    run: getMessages,
   },
   {
     name: 'release-quarantine',

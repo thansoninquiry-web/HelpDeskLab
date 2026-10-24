@@ -60,11 +60,15 @@ describe('directoryConsoleEntries', () => {
       'filterIds',
       'groups',
       'history',
+      'icon',
       'id',
       'note',
       'subtitle',
       'title',
     ])
+    // A picker row draws what the record is, which for the directory is always
+    // an account: the icon says which glyph, never what state the account is in.
+    expect(entry?.icon).toBe('account')
     expect(entry?.history).toEqual([])
     expect(entry?.actions).toEqual(ACCOUNT_CONSOLE_ACTIONS)
     expect(entry?.groups[0]?.label).toBe('Devices')
