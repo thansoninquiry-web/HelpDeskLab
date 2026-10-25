@@ -3,7 +3,7 @@ export interface Migration {
   statements: readonly string[]
 }
 
-export const SCHEMA_VERSION = 16
+export const SCHEMA_VERSION = 17
 
 export const REQUIRED_TABLES: readonly string[] = [
   'actions',
@@ -15,6 +15,8 @@ export const REQUIRED_TABLES: readonly string[] = [
   'azure_role_assignments',
   'dsa_attempts',
   'dsa_drafts',
+  'lang_attempts',
+  'lang_lesson_reads',
   'intune_apps',
   'intune_attempts',
   'intune_device_apps',
@@ -430,6 +432,29 @@ export const MIGRATIONS: readonly Migration[] = [
         updated_at INTEGER NOT NULL
       ) STRICT`,
       'CREATE INDEX idx_dsa_attempts_problem ON dsa_attempts(problem_id, created_at)',
+    ],
+  },
+  {
+    version: 17,
+    // The language tracks keep what the learner did, not what they read from:
+    // an answer per attempt and a mark per lesson. The lessons and the questions
+    // are code in `src/modules/languages`, so adding a track needs no migration.
+    statements: [
+      `CREATE TABLE lang_attempts (
+        id TEXT PRIMARY KEY,
+        track_id TEXT NOT NULL CHECK (track_id IN ('java', 'csharp', 'python')),
+        item_id TEXT NOT NULL,
+        choice TEXT NOT NULL,
+        correct INTEGER NOT NULL CHECK (correct IN (0, 1)),
+        created_at INTEGER NOT NULL
+      ) STRICT`,
+      `CREATE TABLE lang_lesson_reads (
+        track_id TEXT NOT NULL CHECK (track_id IN ('java', 'csharp', 'python')),
+        lesson_id TEXT NOT NULL,
+        read_at INTEGER NOT NULL,
+        PRIMARY KEY (track_id, lesson_id)
+      ) STRICT`,
+      'CREATE INDEX idx_lang_attempts_item ON lang_attempts(track_id, item_id, created_at)',
     ],
   },
 ]

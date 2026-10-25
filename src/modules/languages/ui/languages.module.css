@@ -1,0 +1,555 @@
+/* The language tracks read as a compact course: a picker of three cards, a
+   track index, a lesson with code blocks, and one drill per page. Every colour
+   comes from the theme tokens so both palettes hold without a second sheet. */
+
+.page {
+  max-width: var(--max-width);
+}
+
+.back {
+  margin-bottom: 0.75rem;
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.back a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.5rem;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.back a:hover {
+  color: var(--accent);
+}
+
+.empty {
+  color: var(--text-muted);
+  font-size: var(--type-md);
+  line-height: 1.6;
+}
+
+.summary {
+  max-width: 62ch;
+  margin-top: 1rem;
+  color: var(--text);
+  font-size: var(--type-md);
+  line-height: 1.6;
+}
+
+.footnote {
+  max-width: 70ch;
+  margin-top: 1.5rem;
+  color: var(--text-muted);
+  font-size: var(--type-sm);
+  line-height: 1.6;
+}
+
+/* Picker ------------------------------------------------------------------ */
+
+.tracks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(20rem, 100%), 1fr));
+  gap: 0.9rem;
+  margin: 1.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.trackCard {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+
+.trackCard:hover {
+  border-color: var(--border-strong);
+}
+
+.trackTop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.trackName {
+  font-size: var(--type-2xl);
+  line-height: 1.25;
+}
+
+.trackName a {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.trackName a:hover {
+  color: var(--accent);
+}
+
+.runtime {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.04em;
+}
+
+.trackBlurb {
+  color: var(--text-muted);
+  font-size: var(--type-sm);
+  line-height: 1.55;
+}
+
+.trackCounts {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+}
+
+.trackLink {
+  margin-top: auto;
+  font-family: var(--font-display);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.trackLink a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.75rem;
+}
+
+/* One track --------------------------------------------------------------- */
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.headerTop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.headerTop h1 {
+  font-size: var(--type-4xl);
+  letter-spacing: -0.01em;
+}
+
+.progressLine {
+  margin-top: 0.9rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+}
+
+.section {
+  margin-top: 1.75rem;
+}
+
+.heading {
+  margin-bottom: 0.7rem;
+  color: var(--text-muted);
+  font-family: var(--font-display);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.sectionNote {
+  max-width: 68ch;
+  margin-bottom: 0.85rem;
+  color: var(--text-muted);
+  font-size: var(--type-sm);
+  line-height: 1.55;
+}
+
+.goals {
+  display: grid;
+  gap: 0.45rem;
+  max-width: 70ch;
+  margin: 0;
+  padding-left: 1.1rem;
+  color: var(--text-muted);
+  font-size: var(--type-sm);
+  line-height: 1.6;
+}
+
+.rows {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+}
+
+.rowTop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.rowTitle {
+  font-size: var(--type-lg);
+  line-height: 1.35;
+}
+
+.rowTitle a {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.rowTitle a:hover {
+  color: var(--accent);
+}
+
+.rowMeta {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+}
+
+.rowSummary {
+  margin-top: 0.3rem;
+  color: var(--text-muted);
+  font-size: var(--type-sm);
+  line-height: 1.5;
+}
+
+.rowState {
+  margin-top: 0.45rem;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.rowState[data-state='done'] {
+  color: var(--success-text);
+}
+
+.rowState[data-state='tried'] {
+  color: var(--warning-text);
+}
+
+/* One lesson -------------------------------------------------------------- */
+
+.lesson {
+  margin-top: 1.5rem;
+}
+
+.lessonSection + .lessonSection {
+  margin-top: 1.6rem;
+  padding-top: 0.4rem;
+}
+
+.prose {
+  max-width: 68ch;
+  margin-bottom: 0.8rem;
+  color: var(--text);
+  font-size: var(--type-lg);
+  line-height: 1.65;
+}
+
+.codeFigure {
+  margin: 0.9rem 0 1rem;
+}
+
+.code {
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent-border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  line-height: 1.6;
+  tab-size: 2;
+}
+
+.caption {
+  margin-top: 0.35rem;
+  color: var(--text-faint);
+  font-size: var(--type-2xs);
+  line-height: 1.5;
+}
+
+.note {
+  max-width: 68ch;
+  margin: 1rem 0;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-sm);
+  background: var(--warning-soft);
+  color: var(--text);
+  font-size: var(--type-sm);
+  line-height: 1.55;
+}
+
+.takeaway {
+  max-width: 68ch;
+  margin-top: 1.75rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+}
+
+.takeaway p {
+  color: var(--text);
+  font-size: var(--type-md);
+  line-height: 1.6;
+}
+
+.takeawayLabel {
+  margin-bottom: 0.35rem;
+  color: var(--accent);
+  font-family: var(--font-display);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+.button {
+  padding: 0.45rem 0.8rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.button:hover:not(:disabled) {
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.button:disabled {
+  color: var(--text-faint);
+  cursor: not-allowed;
+}
+
+.helpLine {
+  color: var(--text-faint);
+  font-size: var(--type-2xs);
+  line-height: 1.5;
+}
+
+.lessonNav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+}
+
+.lessonNav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.75rem;
+}
+
+/* One drill --------------------------------------------------------------- */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.45rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  font-family: var(--font-display);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.doneChip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.45rem;
+  border: 1px solid var(--success-border);
+  border-radius: 999px;
+  background: var(--success-soft);
+  color: var(--success-text);
+  font-family: var(--font-display);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.question {
+  max-width: 68ch;
+  margin: 1.25rem 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.question legend {
+  margin-bottom: 0.6rem;
+  color: var(--text);
+  font-size: var(--type-md);
+  font-weight: 600;
+}
+
+.choices {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.choice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.55rem;
+  align-items: start;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  font-size: var(--type-sm);
+  line-height: 1.45;
+  cursor: pointer;
+}
+
+.choice:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.choice input {
+  margin-top: 0.15rem;
+  accent-color: var(--accent);
+}
+
+.choice[data-state='correct'] {
+  border-color: var(--success-border);
+  background: var(--success-soft);
+  color: var(--text);
+}
+
+.choice[data-state='wrong'] {
+  border-color: var(--danger-border);
+  background: var(--danger-soft);
+  color: var(--text);
+}
+
+.choiceMark {
+  grid-column: 2;
+  color: var(--text-muted);
+  font-size: var(--type-2xs);
+  line-height: 1.5;
+}
+
+.choice[data-state='correct'] .choiceMark {
+  color: var(--success-text);
+}
+
+.choice[data-state='wrong'] .choiceMark {
+  color: var(--danger-text);
+}
+
+.result {
+  max-width: 68ch;
+  margin-top: 1.4rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+
+.result[data-state='correct'] {
+  border-color: var(--success-border);
+}
+
+.result[data-state='wrong'] {
+  border-color: var(--warning-border);
+}
+
+.resultTitle {
+  font-size: var(--type-2xl);
+}
+
+.result[data-state='correct'] .resultTitle {
+  color: var(--success-text);
+}
+
+.result[data-state='wrong'] .resultTitle {
+  color: var(--warning-text);
+}
+
+.resultLine {
+  margin-top: 0.4rem;
+  color: var(--text);
+  font-size: var(--type-md);
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.resultNote {
+  margin-top: 0.4rem;
+  color: var(--text-muted);
+  font-size: var(--type-sm);
+  line-height: 1.6;
+}
+
+.resultHeading {
+  margin: 1rem 0 0.2rem;
+  color: var(--text-faint);
+  font-family: var(--font-display);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 32rem) {
+  .headerTop h1 {
+    font-size: var(--type-3xl);
+  }
+
+  .lessonNav {
+    flex-direction: column;
+  }
+}

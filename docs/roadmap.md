@@ -1,7 +1,7 @@
 # HelpDeskLab — Roadmap
 
 **Status:** M0–M8 built, M7 half done (its sign-off slot is still open) · R1 close-out still open
-**Last updated:** 2026-10-24
+**Last updated:** 2026-10-25
 **Companion:** [architecture-helpdesklab.md](architecture-helpdesklab.md)
 
 ## 1. Goal and audience
@@ -93,6 +93,16 @@ timers, authoring) — never both at once.
   to compare an algorithm answer against. Nothing typed into the editor is
   executed: the shipped policy has no `eval`, so the drill scores the decision
   and the bank's own tests run every printed solution.
+- **M5d — language tracks: done (2026-10-25).** Three short courses beside the
+drill at `/languages`: **Java** (JDK 21), **C#/.NET** (.NET 8) and **Python**
+(CPython 3.12), each four lessons and five decision drills written against the
+runtime — wrapper equality, deferred LINQ, mutable defaults, late-binding
+closures, disposal order. A lesson is marked read by the learner; a drill is
+solved once answered correctly, with every wrong option explaining the
+misconception it stands for. Self-contained in `src/modules/languages/`, two
+`lang_*` tables from one migration (schema v17), and outside XP and the
+simulator filter for the drill's reason: reading a lesson is not resolving a
+ticket. Nothing is compiled or executed, so the skill is reading the runtime.
 - **Next — R1 close-out:** fairness lint over every variant, three scoring
   fixtures per variant, the keyboard and resume audit, Leitner surfacing on
   Progress, and the sign-off pass with its evidence. Sign-off is what closes

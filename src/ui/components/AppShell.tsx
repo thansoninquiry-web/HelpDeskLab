@@ -18,6 +18,7 @@ const navigation = [
   { to: '/', label: 'Modules', end: true, icon: 'grid' },
   { to: '/practice', label: 'Practice', end: false, icon: 'ticket' },
   { to: '/dsa', label: 'DSA', end: false, icon: 'code' },
+  { to: '/languages', label: 'Languages', end: false, icon: 'book' },
   { to: '/intune', label: 'Intune', end: false, icon: 'device' },
   { to: '/azure', label: 'Azure', end: false, icon: 'cloud' },
   { to: '/targets', label: 'Job targets', end: false, icon: 'target' },
@@ -62,6 +63,14 @@ function Icon({ name }: { name: (typeof navigation)[number]['icon'] }) {
     return (
       <svg {...common}>
         <path d="M8 7 3 12l5 5M16 7l5 5-5 5M14 4l-4 16" />
+      </svg>
+    )
+  }
+  if (name === 'book') {
+    return (
+      <svg {...common}>
+        <path d="M4 4h6a2 2 0 0 1 2 2v14a2 2 0 0 0-2-2H4Z" />
+        <path d="M20 4h-6a2 2 0 0 0-2 2v14a2 2 0 0 1 2-2h6Z" />
       </svg>
     )
   }

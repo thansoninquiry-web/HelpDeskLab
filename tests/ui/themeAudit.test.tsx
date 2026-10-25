@@ -34,6 +34,7 @@ import workspaceStyles from '../../src/ui/routes/workspace.module.css'
 import azureStyles from '../../src/modules/azure/ui/azure.module.css'
 import intuneStyles from '../../src/modules/intune/ui/intune.module.css'
 import dsaStyles from '../../src/modules/dsa/ui/dsa.module.css'
+import languageStyles from '../../src/modules/languages/ui/languages.module.css'
 
 /**
  * The theme audit: every route, in both themes, plus the palette itself.
@@ -104,6 +105,7 @@ const MODULES = {
   'src/modules/azure/ui/azure.module.css': azureStyles,
   'src/modules/intune/ui/intune.module.css': intuneStyles,
   'src/modules/dsa/ui/dsa.module.css': dsaStyles,
+  'src/modules/languages/ui/languages.module.css': languageStyles,
 }
 
 interface RouteCase {
@@ -275,6 +277,20 @@ beforeAll(async () => {
     { name: 'dsa library', path: '/dsa', ready: 'Unsolved only' },
     { name: 'dsa pattern sheet', path: '/dsa/patterns', ready: 'The input is sorted' },
     { name: 'dsa problem', path: '/dsa/pair-sum-sorted', ready: 'What to notice first' },
+    // The language tracks: three tracks, a lesson, and a drill whose result
+    // panel is revealed by an answer, so the audit sees the quiet form first.
+    { name: 'language tracks', path: '/languages', ready: 'JDK 21, no framework' },
+    { name: 'language track', path: '/languages/java', ready: 'What this track leaves you able to do' },
+    {
+      name: 'language lesson',
+      path: '/languages/java/lessons/wrappers-and-equality',
+      ready: 'Remember this',
+    },
+    {
+      name: 'language drill',
+      path: '/languages/java/practice/boxing-comparison',
+      ready: 'Check answer',
+    },
     { name: 'not found', path: '/no-such-route' },
   ]
 }, 60_000)

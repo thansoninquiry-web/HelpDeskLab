@@ -10,15 +10,17 @@ the ticket workspace, the explaining scoring engine, the twenty-two-module cours
 with a lesson for every playable module, job targets with skills coverage and
 interview prep, the workspace theme and text scale, phone layouts for the
 workspace and both consoles, two administration consoles — device management
-at `/intune` and an Azure subscription at `/azure` — and an algorithm drill at
-`/dsa` are all in place. There is no hosted instance yet — it runs on your
+at `/intune` and an Azure subscription at `/azure` — an algorithm drill at
+`/dsa`, and three language tracks at `/languages` (Java, C#/.NET, Python) are all
+in place. There is no hosted instance yet — it runs on your
 machine. Release scope and the open questions are tracked in
 [docs/roadmap.md](docs/roadmap.md).
 
 See [docs/architecture-helpdesklab.md](docs/architecture-helpdesklab.md) for the module design,
 [docs/intune-module.md](docs/intune-module.md) for the device console,
 [docs/azure-module.md](docs/azure-module.md) for the Azure console and
-[docs/dsa-module.md](docs/dsa-module.md) for the algorithm drill.
+[docs/dsa-module.md](docs/dsa-module.md) for the algorithm drill, and
+[docs/languages-module.md](docs/languages-module.md) for the language tracks.
 
 ## Run it
 
@@ -111,6 +113,10 @@ Individual commands: `npm run typecheck`, `npm run lint`, `npm run test:run`.
   pattern sheet at `/dsa/patterns`, `dsa_*` tables for attempts and drafts, and
   three pages. Nothing it holds is executed; the practice is the decision and the
   hand-written solution.
+- `src/modules/languages/` — the Java, C#/.NET and Python tracks at `/languages`:
+  four lessons and five decision drills each, the `lang_*` tables that hold the
+  read marks and answers, and four pages. The content is code, so adding a
+  lesson or a drill needs no migration.
 - `src/ui/` — app shell, dashboard, ticket queue, ticket workspace, debrief,
   job targets, progress, and Settings (workspace theme, hint prices per family,
   and a live database panel).
@@ -526,6 +532,35 @@ library's counts and filters follow them. The bank is code, so adding a problem
 is a data change; its tests run every printed solution against the problem's own
 checks so the answer key cannot drift. [docs/dsa-module.md](docs/dsa-module.md)
 describes the model, the loop and how to add one.
+
+## The language tracks
+
+**Language practice** at `/languages` covers the three languages a service desk
+job actually asks about: **Java** (JDK 21), **C#/.NET** (.NET 8, nullable
+reference types on) and **Python** (CPython 3.12). Each track is four short
+lessons and five decision drills, written against the runtime rather than a
+tutorial:
+
+- **Java** — wrappers and `==`, string immutability and `StringBuilder`, the
+  collection interfaces and the iterator contract, try-with-resources and close
+  order.
+- **C#/.NET** — value and reference types, deferred LINQ and double enumeration,
+  `async` that does not block and deadlock, `using` and disposal order.
+- **Python** — names and mutability, the mutable default argument, comprehensions
+  and late-binding closures, dict mutation during iteration, exception context
+  and `with`.
+
+A drill shows one complete snippet — a loop that removes from a list, a query
+read after the source changed, a generator walked twice — and asks what the
+runtime does. Each option explains the misconception it stands for. Lessons are
+marked read by the learner, because a scroll position cannot tell a skim from a
+careful read; a drill counts as solved once it has been answered correctly.
+Nothing is compiled or executed: the shipped policy has no evaluator, so the
+skill being practised is reading the runtime, which is what a review asks for
+anyway. Progress lives in `lang_attempts` and `lang_lesson_reads`, and the
+content is code, so adding a drill needs no migration.
+[docs/languages-module.md](docs/languages-module.md) describes the model and how
+to add a lesson, a drill or a whole track.
 
 ## Job targets and listing text
 

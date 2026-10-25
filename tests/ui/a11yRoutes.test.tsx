@@ -160,6 +160,20 @@ beforeAll(async () => {
     { name: 'azure network', path: '/azure/network', ready: 'nsg-web-prod' },
     { name: 'azure access', path: '/azure/access', ready: 'Rowan Vale (contractor)' },
     { name: 'azure tickets', path: '/azure/tickets', ready: 'Choose a ticket to open it.' },
+    // The language tracks read their lessons from code and their marks from
+    // SQLite, so `ready` is text only a rendered page can show.
+    { name: 'language tracks', path: '/languages', ready: 'JDK 21, no framework' },
+    { name: 'language track', path: '/languages/java', ready: 'What this track leaves you able to do' },
+    {
+      name: 'language lesson',
+      path: '/languages/java/lessons/wrappers-and-equality',
+      ready: 'Remember this',
+    },
+    {
+      name: 'language drill',
+      path: '/languages/java/practice/boxing-comparison',
+      ready: 'Check answer',
+    },
     // The algorithm drill reads its bank from code and its progress from SQLite.
     { name: 'dsa library', path: '/dsa', ready: 'Unsolved only' },
     { name: 'dsa pattern sheet', path: '/dsa/patterns', ready: 'The input is sorted' },

@@ -213,6 +213,7 @@ describe('app shell', () => {
       'Modules',
       'Practice',
       'DSA',
+      'Languages',
       'Intune',
       'Azure',
       'Job targets',

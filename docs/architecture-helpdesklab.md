@@ -942,6 +942,10 @@ Practice → generate/select ticket → session active
 | `/dsa` | Algorithm drill: the problem bank, filters and solved state |
 | `/dsa/patterns` | The cue-to-technique pattern sheet, with links into the bank |
 | `/dsa/:problemId` | One problem: statement, approach and edge-case questions, draft editor and the reference answers |
+| `/languages` | Language tracks: Java, C#/.NET and Python, with lessons read and drills solved |
+| `/languages/:trackId` | One track: what it covers, its lessons in reading order, its drills with their state |
+| `/languages/:trackId/lessons/:lessonId` | One lesson, a read mark, and the neighbouring lessons |
+| `/languages/:trackId/practice/:itemId` | One drill: the snippet, the answer options, and the explained result |
 
 ### Workspace layout
 
@@ -1462,6 +1466,14 @@ answer has no diagnosis, documentation, resolution or safety to add to them, so
 forcing the drill into the same XP and weak-topic pipeline would put a
 non-comparable number beside the ticket ones. It also asks nothing of the app
 beyond its own store, so the dependency direction is unchanged.
+
+The **language tracks** at `/languages` are a fifth practice surface on the same
+terms: the lessons and drills are code in `src/modules/languages`, the read marks
+and answers are in `lang_lesson_reads` and `lang_attempts`, and the app reaches
+the module through one function. They are deliberately outside the curriculum
+tracker for the same reason as the drill — a lesson read is not a ticket resolved,
+and mixing the counts would make both numbers mean less — and outside it for one
+more: the track's own picker is the progress page that belongs to that content.
 
 Each playable module also has a **lesson**, in
 `src/domain/curriculum/lessons.ts`: a couple of paragraphs on the idea, one

@@ -21,7 +21,7 @@ describe('runMigrations', () => {
 
     const result = runMigrations(db)
 
-    expect(result).toEqual({ from: 0, to: SCHEMA_VERSION, applied: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16] })
+    expect(result).toEqual({ from: 0, to: SCHEMA_VERSION, applied: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17] })
     expect(db.getUserVersion()).toBe(SCHEMA_VERSION)
     expect(listTables(db)).toEqual(expect.arrayContaining([...REQUIRED_TABLES]))
 
@@ -41,7 +41,7 @@ describe('runMigrations', () => {
 
     const result = runMigrations(db)
 
-    expect(result).toEqual({ from: 1, to: SCHEMA_VERSION, applied: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16] })
+    expect(result).toEqual({ from: 1, to: SCHEMA_VERSION, applied: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17] })
     expect(db.exec("SELECT value FROM settings WHERE key = 'theme'")[0]?.value).toBe('"light"')
     expect(listTables(db)).toContain('job_targets')
 
@@ -70,7 +70,7 @@ describe('runMigrations', () => {
 
     const result = runMigrations(db)
 
-    expect(result).toEqual({ from: 2, to: SCHEMA_VERSION, applied: [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16] })
+    expect(result).toEqual({ from: 2, to: SCHEMA_VERSION, applied: [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17] })
     expect(db.exec('SELECT id, kind FROM actions')[0]).toMatchObject({ id: 1, kind: 'command' })
 
     // The rebuilt CHECK allows both recorded hints and recorded denials.
@@ -109,7 +109,7 @@ describe('runMigrations', () => {
 
     const result = runMigrations(db)
 
-    expect(result).toEqual({ from: 4, to: SCHEMA_VERSION, applied: [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16] })
+    expect(result).toEqual({ from: 4, to: SCHEMA_VERSION, applied: [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17] })
     // A session that predates the setting keeps its world and reads back as null.
     expect(db.exec('SELECT world_json, hint_policy_json FROM sessions')[0]).toMatchObject({
       world_json: '{"clock":1}',
@@ -138,7 +138,7 @@ describe('runMigrations', () => {
 
     const result = runMigrations(db)
 
-    expect(result).toEqual({ from: 5, to: SCHEMA_VERSION, applied: [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16] })
+    expect(result).toEqual({ from: 5, to: SCHEMA_VERSION, applied: [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17] })
     // An attempt that predates the draft reads back with nothing half-written.
     expect(db.exec('SELECT hint_policy_json, closure_draft_json FROM sessions')[0]).toMatchObject({
       hint_policy_json: '{"perHint":5,"cap":15,"budget":2}',
@@ -167,7 +167,7 @@ describe('runMigrations', () => {
 
     const result = runMigrations(db)
 
-    expect(result).toEqual({ from: 6, to: SCHEMA_VERSION, applied: [7, 8, 9, 10, 11, 12, 13, 14, 15, 16] })
+    expect(result).toEqual({ from: 6, to: SCHEMA_VERSION, applied: [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17] })
     // An attempt that predates the mode is a practice attempt, and it keeps the
     // close it was writing.
     expect(db.exec('SELECT exam_mode, closure_draft_json FROM sessions')[0]).toMatchObject({
@@ -197,7 +197,7 @@ describe('runMigrations', () => {
 
     const result = runMigrations(db)
 
-    expect(result).toEqual({ from: 8, to: SCHEMA_VERSION, applied: [9, 10, 11, 12, 13, 14, 15, 16] })
+    expect(result).toEqual({ from: 8, to: SCHEMA_VERSION, applied: [9, 10, 11, 12, 13, 14, 15, 16, 17] })
     // An attempt that predates the layout reopens on a clean terminal, and it
     // keeps the mode and the close it was sat with.
     expect(db.exec('SELECT exam_mode, closure_draft_json, workspace_layout_json FROM sessions')[0])
@@ -229,7 +229,7 @@ describe('runMigrations', () => {
 
     const result = runMigrations(db)
 
-    expect(result).toEqual({ from: 12, to: SCHEMA_VERSION, applied: [13, 14, 15, 16] })
+    expect(result).toEqual({ from: 12, to: SCHEMA_VERSION, applied: [13, 14, 15, 16, 17] })
     // An attempt written before the focus existed reopens its console on the
     // list, and the workspace it was left in is still there beside it.
     expect(db.exec('SELECT console_focus_json, workspace_layout_json FROM sessions')[0])
@@ -264,7 +264,7 @@ describe('runMigrations', () => {
 
     const result = runMigrations(db)
 
-    expect(result).toEqual({ from: 9, to: SCHEMA_VERSION, applied: [10, 11, 12, 13, 14, 15, 16] })
+    expect(result).toEqual({ from: 9, to: SCHEMA_VERSION, applied: [10, 11, 12, 13, 14, 15, 16, 17] })
     // The evaluation is untouched, and the attempt starts with no repair of its own.
     expect(db.exec('SELECT total, rubric_json, hint_repair_json FROM scores')[0]).toMatchObject({
       total: 80,
@@ -297,7 +297,7 @@ describe('runMigrations', () => {
 
     const result = runMigrations(db)
 
-    expect(result).toEqual({ from: 10, to: SCHEMA_VERSION, applied: [11, 12, 13, 14, 15, 16] })
+    expect(result).toEqual({ from: 10, to: SCHEMA_VERSION, applied: [11, 12, 13, 14, 15, 16, 17] })
     // The step was taken before wall time was kept, so it reads as unknown
     // rather than as a time somebody guessed.
     expect(db.exec('SELECT id, at_ms, wall_ms FROM actions')[0]).toMatchObject({
@@ -338,7 +338,7 @@ describe('runMigrations', () => {
 
     const result = runMigrations(db)
 
-    expect(result).toEqual({ from: 11, to: SCHEMA_VERSION, applied: [12, 13, 14, 15, 16] })
+    expect(result).toEqual({ from: 11, to: SCHEMA_VERSION, applied: [12, 13, 14, 15, 16, 17] })
     expect(db.exec('SELECT kind, wall_ms FROM actions')[0]).toMatchObject({
       kind: 'command',
       wall_ms: 1760000000000,

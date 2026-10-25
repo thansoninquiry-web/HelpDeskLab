@@ -22,6 +22,10 @@ import { IntuneTicketsPage } from '../../modules/intune/ui/TicketsPage'
 import { DsaPatternsPage } from '../../modules/dsa/ui/PatternsPage'
 import { DsaProblemPage } from '../../modules/dsa/ui/ProblemPage'
 import { DsaProblemsPage } from '../../modules/dsa/ui/ProblemsPage'
+import { LanguageTracksPage } from '../../modules/languages/ui/IndexPage'
+import { LanguageTrackPage } from '../../modules/languages/ui/TrackPage'
+import { LanguageLessonPage } from '../../modules/languages/ui/LessonPage'
+import { LanguagePracticePage } from '../../modules/languages/ui/PracticePage'
 
 export function AppRoutes() {
   return (
@@ -49,6 +53,11 @@ export function AppRoutes() {
         <Route path="dsa" element={<DsaProblemsPage />} />
         <Route path="dsa/patterns" element={<DsaPatternsPage />} />
         <Route path="dsa/:problemId" element={<DsaProblemPage />} />
+        {/* The language tracks: a picker, one track, its lessons and its drills. */}
+        <Route path="languages" element={<LanguageTracksPage />} />
+        <Route path="languages/:trackId" element={<LanguageTrackPage />} />
+        <Route path="languages/:trackId/lessons/:lessonId" element={<LanguageLessonPage />} />
+        <Route path="languages/:trackId/practice/:itemId" element={<LanguagePracticePage />} />
         <Route path="progress" element={<ProgressPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="*" element={<NotFoundPage />} />

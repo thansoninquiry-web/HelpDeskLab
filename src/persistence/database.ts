@@ -12,6 +12,7 @@ import type {
 import { AzureStore } from '../modules/azure/persistence/store'
 import { DsaStore } from '../modules/dsa/persistence/store'
 import { IntuneStore } from '../modules/intune/persistence/store'
+import { LanguageStore } from '../modules/languages/persistence/store'
 import { ImportError, PersistenceError } from './errors'
 import { runMigrations } from './migrations'
 import { createRepositories } from './repositories'
@@ -47,6 +48,12 @@ export interface Persistence {
    * itself is code, so the module owns its data without owning a schema.
    */
   dsa: DsaStore
+  /**
+   * The language tracks' two tables: one answer per practice attempt and one
+   * mark per lesson read. The lessons and questions are code, so a new track is
+   * a content change rather than a schema change.
+   */
+  languages: LanguageStore
   schemaVersion(): number
   exportDatabase(): Promise<Uint8Array>
   importDatabase(bytes: Uint8Array): Promise<void>
@@ -93,6 +100,7 @@ export class SqlitePersistence implements Persistence, BackupStore {
   readonly intune: IntuneStore
   readonly azure: AzureStore
   readonly dsa: DsaStore
+  readonly languages: LanguageStore
 
   constructor(db: SqliteDriver, snapshotStore: SnapshotStore, wasmBinary?: ArrayBuffer) {
     this.db = db
@@ -114,6 +122,7 @@ export class SqlitePersistence implements Persistence, BackupStore {
     this.intune = new IntuneStore(context)
     this.azure = new AzureStore(context)
     this.dsa = new DsaStore(context)
+    this.languages = new LanguageStore(context)
   }
 
   schemaVersion(): number {

@@ -99,6 +99,7 @@ describe('the header while the page is scrolled', () => {
       'Modules',
       'Practice',
       'DSA',
+      'Languages',
       'Intune',
       'Azure',
       'Job targets',
