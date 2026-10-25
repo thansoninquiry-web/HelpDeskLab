@@ -939,6 +939,9 @@ Practice → generate/select ticket → session active
 | `/settings` | Workspace theme and terminal surface, hint price (default and per scenario family), exam mode, backup/export/import, reset data |
 | `/intune` | Device-management console: devices, compliance policies, apps and its practice tickets |
 | `/azure` | Azure console: resources, network rules, access and its practice tickets |
+| `/dsa` | Algorithm drill: the problem bank, filters and solved state |
+| `/dsa/patterns` | The cue-to-technique pattern sheet, with links into the bank |
+| `/dsa/:problemId` | One problem: statement, approach and edge-case questions, draft editor and the reference answers |
 
 ### Workspace layout
 
@@ -1451,6 +1454,14 @@ console's modules name their tickets in `intuneTemplates`, the Azure console's i
 consoles publish their own scored attempts through an app reader, so the same
 evidence object carries ticket work, session behaviour, device decisions and
 subscription decisions without either module reaching into the other.
+
+The algorithm drill is a fourth practice surface and deliberately not part of
+this tracker: its attempts are kept in `dsa_attempts` and read only by its own
+module. The rubric's categories are the desk's four-way split, and an algorithm
+answer has no diagnosis, documentation, resolution or safety to add to them, so
+forcing the drill into the same XP and weak-topic pipeline would put a
+non-comparable number beside the ticket ones. It also asks nothing of the app
+beyond its own store, so the dependency direction is unchanged.
 
 Each playable module also has a **lesson**, in
 `src/domain/curriculum/lessons.ts`: a couple of paragraphs on the idea, one

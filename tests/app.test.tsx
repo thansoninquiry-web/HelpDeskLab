@@ -209,7 +209,16 @@ describe('app shell', () => {
       within(nav)
         .getAllByRole('link')
         .map((link) => link.textContent?.trim()),
-    ).toEqual(['Modules', 'Practice', 'Intune', 'Azure', 'Job targets', 'Progress', 'Settings'])
+    ).toEqual([
+      'Modules',
+      'Practice',
+      'DSA',
+      'Intune',
+      'Azure',
+      'Job targets',
+      'Progress',
+      'Settings',
+    ])
   })
 
   it('renders the not-found page for unknown routes', () => {

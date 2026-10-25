@@ -10,6 +10,7 @@ import type {
   TicketRepository,
 } from '../domain/ports'
 import { AzureStore } from '../modules/azure/persistence/store'
+import { DsaStore } from '../modules/dsa/persistence/store'
 import { IntuneStore } from '../modules/intune/persistence/store'
 import { ImportError, PersistenceError } from './errors'
 import { runMigrations } from './migrations'
@@ -41,6 +42,11 @@ export interface Persistence {
    * transaction queue and the snapshot save.
    */
   azure: AzureStore
+  /**
+   * The DSA drill's own two tables. It keeps only attempts and drafts; the bank
+   * itself is code, so the module owns its data without owning a schema.
+   */
+  dsa: DsaStore
   schemaVersion(): number
   exportDatabase(): Promise<Uint8Array>
   importDatabase(bytes: Uint8Array): Promise<void>
@@ -86,6 +92,7 @@ export class SqlitePersistence implements Persistence, BackupStore {
   readonly targets: JobTargetRepository
   readonly intune: IntuneStore
   readonly azure: AzureStore
+  readonly dsa: DsaStore
 
   constructor(db: SqliteDriver, snapshotStore: SnapshotStore, wasmBinary?: ArrayBuffer) {
     this.db = db
@@ -106,6 +113,7 @@ export class SqlitePersistence implements Persistence, BackupStore {
     this.targets = repositories.targets
     this.intune = new IntuneStore(context)
     this.azure = new AzureStore(context)
+    this.dsa = new DsaStore(context)
   }
 
   schemaVersion(): number {

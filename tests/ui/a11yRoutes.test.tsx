@@ -24,6 +24,7 @@ import targetsStyles from '../../src/ui/routes/targets.module.css'
 import workspaceStyles from '../../src/ui/routes/workspace.module.css'
 import azureStyles from '../../src/modules/azure/ui/azure.module.css'
 import intuneStyles from '../../src/modules/intune/ui/intune.module.css'
+import dsaStyles from '../../src/modules/dsa/ui/dsa.module.css'
 
 /**
  * The rendered half of the accessibility audit: the labels a screen reader
@@ -87,6 +88,7 @@ const MODULES = {
   'src/ui/routes/workspace.module.css': workspaceStyles,
   'src/modules/azure/ui/azure.module.css': azureStyles,
   'src/modules/intune/ui/intune.module.css': intuneStyles,
+  'src/modules/dsa/ui/dsa.module.css': dsaStyles,
 }
 
 interface RouteCase {
@@ -158,6 +160,10 @@ beforeAll(async () => {
     { name: 'azure network', path: '/azure/network', ready: 'nsg-web-prod' },
     { name: 'azure access', path: '/azure/access', ready: 'Rowan Vale (contractor)' },
     { name: 'azure tickets', path: '/azure/tickets', ready: 'Choose a ticket to open it.' },
+    // The algorithm drill reads its bank from code and its progress from SQLite.
+    { name: 'dsa library', path: '/dsa', ready: 'Unsolved only' },
+    { name: 'dsa pattern sheet', path: '/dsa/patterns', ready: 'The input is sorted' },
+    { name: 'dsa problem', path: '/dsa/pair-sum-sorted', ready: 'What to notice first' },
     { name: 'not found', path: '/no-such-route' },
   ]
 }, 60_000)

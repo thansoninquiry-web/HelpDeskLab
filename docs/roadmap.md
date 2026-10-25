@@ -81,6 +81,18 @@ timers, authoring) — never both at once.
   attempts. Attempts use the same 10/55/20/15 split as every other score and join
   XP, weak topics and the simulator filter on Progress. The console sits beside
   the device console rather than replacing any part of it.
+- **M5c — algorithm drill: done (2026-10-24).** A fourth practice surface at
+  `/dsa`: seventeen original problems, each answered by choosing the approach
+  and its cost and the edge case it must survive, with the solution written out
+  by hand and checked against two reference answers. The cue-to-technique
+  pattern sheet at `/dsa/patterns` is the same material read the other way — the
+  input shape first, then the techniques and their costs, with the caveats kept —
+  and every problem is linked from it. Self-contained in `src/modules/dsa/`, two
+  `dsa_*` tables from one migration (schema v16), and no change to XP, weak
+  topics or the simulator filter — the rubric's four desk categories have nothing
+  to compare an algorithm answer against. Nothing typed into the editor is
+  executed: the shipped policy has no `eval`, so the drill scores the decision
+  and the bank's own tests run every printed solution.
 - **Next — R1 close-out:** fairness lint over every variant, three scoring
   fixtures per variant, the keyboard and resume audit, Leitner surfacing on
   Progress, and the sign-off pass with its evidence. Sign-off is what closes
@@ -90,8 +102,8 @@ timers, authoring) — never both at once.
 after M4 had shipped, and the work since reused two of its labels: M5 went to the
 device console and M8 to the service-console and course pass, both committed
 under those names. The Azure console built on 2026-10-24 is recorded as **M5b**
-for the same reason — it is console work of the same kind, not a new release
-line. So read §9.3's M5 row as *R1 close-out* — the work is unchanged,
+and the algorithm drill as **M5c** for the same reason — both are practice
+surfaces beside the desk, not a new release line. So read §9.3's M5 row as *R1 close-out* — the work is unchanged,
 the number is not — and its M8 *field notes* row as unbuilt: the lesson written for
 each module covers part of that ground, but a per-family primer does not exist yet.
 M9's rank and streak shipped inside M8 and are in the header today, though the

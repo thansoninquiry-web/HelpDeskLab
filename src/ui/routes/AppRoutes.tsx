@@ -19,6 +19,9 @@ import { IntuneDevicePage } from '../../modules/intune/ui/DevicePage'
 import { IntuneDevicesPage } from '../../modules/intune/ui/DevicesPage'
 import { IntunePoliciesPage } from '../../modules/intune/ui/PoliciesPage'
 import { IntuneTicketsPage } from '../../modules/intune/ui/TicketsPage'
+import { DsaPatternsPage } from '../../modules/dsa/ui/PatternsPage'
+import { DsaProblemPage } from '../../modules/dsa/ui/ProblemPage'
+import { DsaProblemsPage } from '../../modules/dsa/ui/ProblemsPage'
 
 export function AppRoutes() {
   return (
@@ -42,6 +45,10 @@ export function AppRoutes() {
         <Route path="azure/network" element={<AzureNetworkPage />} />
         <Route path="azure/access" element={<AzureAccessPage />} />
         <Route path="azure/tickets" element={<AzureTicketsPage />} />
+        {/* The algorithm drill: a problem library and one problem's workspace. */}
+        <Route path="dsa" element={<DsaProblemsPage />} />
+        <Route path="dsa/patterns" element={<DsaPatternsPage />} />
+        <Route path="dsa/:problemId" element={<DsaProblemPage />} />
         <Route path="progress" element={<ProgressPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="*" element={<NotFoundPage />} />

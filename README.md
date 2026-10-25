@@ -9,14 +9,16 @@ environment and its consoles, the seeded ticket generator across ten families,
 the ticket workspace, the explaining scoring engine, the twenty-two-module course
 with a lesson for every playable module, job targets with skills coverage and
 interview prep, the workspace theme and text scale, phone layouts for the
-workspace and both consoles, and two administration consoles — device management
-at `/intune` and an Azure subscription at `/azure` — are all in place. There is no
-hosted instance yet — it runs on your machine. Release scope and the open
-questions are tracked in [docs/roadmap.md](docs/roadmap.md).
+workspace and both consoles, two administration consoles — device management
+at `/intune` and an Azure subscription at `/azure` — and an algorithm drill at
+`/dsa` are all in place. There is no hosted instance yet — it runs on your
+machine. Release scope and the open questions are tracked in
+[docs/roadmap.md](docs/roadmap.md).
 
 See [docs/architecture-helpdesklab.md](docs/architecture-helpdesklab.md) for the module design,
-[docs/intune-module.md](docs/intune-module.md) for the device console and
-[docs/azure-module.md](docs/azure-module.md) for the Azure console.
+[docs/intune-module.md](docs/intune-module.md) for the device console,
+[docs/azure-module.md](docs/azure-module.md) for the Azure console and
+[docs/dsa-module.md](docs/dsa-module.md) for the algorithm drill.
 
 ## Run it
 
@@ -104,6 +106,11 @@ Individual commands: `npm run typecheck`, `npm run lint`, `npm run test:run`.
   subscription, diagnostics and action engines, nine practice tickets, scoring,
   `azure_*` tables and pages. It imports the app only for the scoring thresholds,
   and the app reaches it through two functions.
+- `src/modules/dsa/` — the algorithm drill at `/dsa`: seventeen original problems
+  with pattern and edge-case choices, two reference answers each, the cue-to-cost
+  pattern sheet at `/dsa/patterns`, `dsa_*` tables for attempts and drafts, and
+  three pages. Nothing it holds is executed; the practice is the decision and the
+  hand-written solution.
 - `src/ui/` — app shell, dashboard, ticket queue, ticket workspace, debrief,
   job targets, progress, and Settings (workspace theme, hint prices per family,
   and a live database panel).
@@ -492,6 +499,33 @@ read before the first change, 55 for the expected actions, 20 for the end state,
 join weak topics and the Progress breakdown, tagged `azure`, and attempts earn XP
 by the same formula. [docs/azure-module.md](docs/azure-module.md) has the data
 model, the tickets and how to add a template.
+
+## The algorithm drill
+
+**Algorithm practice** at `/dsa` is the interview surface beside the help desk
+one: seventeen original problems across arrays, two pointers, sliding windows,
+binary search, stacks, sorting, heaps, trees, search trees, linked lists, grids,
+graphs, backtracking, deferred work and dynamic programming. Each one is
+answered as a decision rather than a submission — *which approach fits, and at
+what cost*, then *which case that approach has to get right* — followed by the
+solution written out by hand and checked against two written-up reference
+answers.
+
+**The pattern sheet** at `/dsa/patterns` is the cue list the drill is built
+from: "the input is sorted", "the input is a binary tree", "you need the kth
+largest", "it must be solved in place" — each cue followed by the techniques it
+licenses, their costs with the caveats intact (quickselect and quicksort are only
+linear or n log n on average), and a link into the problem that practises it.
+Every problem in the bank is reachable from the sheet.
+
+Nothing typed into the editor is executed: the shipped policy has no `eval` (and
+no `unsafe-eval`), so a judge would need its own sandbox. What is scored is the
+decision: both answers must match the problem's key for the problem to read
+**solved**, attempts and drafts are kept in the two `dsa_*` tables, and the
+library's counts and filters follow them. The bank is code, so adding a problem
+is a data change; its tests run every printed solution against the problem's own
+checks so the answer key cannot drift. [docs/dsa-module.md](docs/dsa-module.md)
+describes the model, the loop and how to add one.
 
 ## Job targets and listing text
 

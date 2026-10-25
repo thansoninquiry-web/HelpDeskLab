@@ -3,7 +3,7 @@ export interface Migration {
   statements: readonly string[]
 }
 
-export const SCHEMA_VERSION = 15
+export const SCHEMA_VERSION = 16
 
 export const REQUIRED_TABLES: readonly string[] = [
   'actions',
@@ -13,6 +13,8 @@ export const REQUIRED_TABLES: readonly string[] = [
   'azure_resource_groups',
   'azure_resources',
   'azure_role_assignments',
+  'dsa_attempts',
+  'dsa_drafts',
   'intune_apps',
   'intune_attempts',
   'intune_device_apps',
@@ -404,6 +406,30 @@ export const MIGRATIONS: readonly Migration[] = [
       ) STRICT`,
       'CREATE INDEX idx_azure_events_resource ON azure_events(resource_id, at_ms)',
       'CREATE INDEX idx_azure_attempts_template ON azure_attempts(template_id)',
+    ],
+  },
+  {
+    version: 16,
+    // The DSA drill keeps only what the learner did: the answers they submitted
+    // and the code they wrote out by hand. The problems themselves stay in
+    // `src/modules/dsa`, so editing the bank is a code change with no migration.
+    statements: [
+      `CREATE TABLE dsa_attempts (
+        id TEXT PRIMARY KEY,
+        problem_id TEXT NOT NULL,
+        pattern_choice TEXT NOT NULL,
+        edge_choice TEXT NOT NULL,
+        solved INTEGER NOT NULL CHECK (solved IN (0, 1)),
+        hints_used INTEGER NOT NULL CHECK (hints_used >= 0),
+        code TEXT,
+        created_at INTEGER NOT NULL
+      ) STRICT`,
+      `CREATE TABLE dsa_drafts (
+        problem_id TEXT PRIMARY KEY,
+        code TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      ) STRICT`,
+      'CREATE INDEX idx_dsa_attempts_problem ON dsa_attempts(problem_id, created_at)',
     ],
   },
 ]

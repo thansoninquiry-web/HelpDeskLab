@@ -17,6 +17,7 @@ const RESTORE_BELOW_PX = 40
 const navigation = [
   { to: '/', label: 'Modules', end: true, icon: 'grid' },
   { to: '/practice', label: 'Practice', end: false, icon: 'ticket' },
+  { to: '/dsa', label: 'DSA', end: false, icon: 'code' },
   { to: '/intune', label: 'Intune', end: false, icon: 'device' },
   { to: '/azure', label: 'Azure', end: false, icon: 'cloud' },
   { to: '/targets', label: 'Job targets', end: false, icon: 'target' },
@@ -53,6 +54,14 @@ function Icon({ name }: { name: (typeof navigation)[number]['icon'] }) {
       <svg {...common}>
         <path d="M4 7h16v3a2 2 0 0 0 0 4v3H4v-3a2 2 0 0 0 0-4V7Z" />
         <path d="M12 7v10" strokeDasharray="1.6 2.4" />
+      </svg>
+    )
+  }
+  if (name === 'code') {
+    // Chevrons and a slash: the DSA section is about the code interview.
+    return (
+      <svg {...common}>
+        <path d="M8 7 3 12l5 5M16 7l5 5-5 5M14 4l-4 16" />
       </svg>
     )
   }
