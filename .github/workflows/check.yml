@@ -14,7 +14,11 @@ concurrency:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    # Pinned instead of `ubuntu-latest`, which GitHub is moving from 24.04 to
+    # 26.04: an alias that can change image overnight adds a per-run migration
+    # notice and a way for this check to fail for reasons the change did not
+    # cause. Bump this line deliberately, when there is time to watch a run.
+    runs-on: ubuntu-24.04
     permissions:
       # Reading the repository is all this job needs.
       contents: read
