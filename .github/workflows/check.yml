@@ -20,9 +20,11 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v4
+      # Both actions declare the node24 runtime from these majors on; the v4
+      # pins were being forced onto node24 with a deprecation warning per run.
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           # package.json asks for >=20.19.0; 22 is the current LTS.
           node-version: 22
