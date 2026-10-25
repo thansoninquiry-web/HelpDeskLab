@@ -1,5 +1,10 @@
 import { Link, useParams } from 'react-router'
-import { lessonEntries, practiceEntries } from '../logic/progress'
+import {
+  lessonEntries,
+  nextLesson,
+  nextPracticeItem,
+  practiceEntries,
+} from '../logic/progress'
 import type { PracticeLevel } from '../types'
 import { formatDay, useLanguageTrack } from './useLanguages'
 import styles from './languages.module.css'
@@ -45,6 +50,20 @@ export function LanguageTrackPage() {
   const { track, progress, reads, attempts } = view
   const lessons = lessonEntries(track, reads)
   const practice = practiceEntries(track, attempts)
+  const readingTarget = nextLesson(track, reads)
+  const practiceTarget = nextPracticeItem(track, attempts)
+  const readingLabel =
+    progress.lessonsRead === 0
+      ? 'Start reading'
+      : progress.lessonsRead === progress.lessonsTotal
+        ? 'Read it again'
+        : 'Continue reading'
+  const practiceLabel =
+    progress.practiceSolved === 0
+      ? 'Start practicing'
+      : progress.practiceSolved === progress.practiceTotal
+        ? 'Practice again'
+        : 'Continue practicing'
 
   return (
     <div className={styles.page}>
@@ -68,6 +87,21 @@ export function LanguageTrackPage() {
         {progress.lessonsRead}/{progress.lessonsTotal} lessons read ·{' '}
         {progress.practiceSolved}/{progress.practiceTotal} drills solved
       </p>
+
+      <div className={styles.startActions}>
+        <Link
+          className={styles.primaryButton}
+          to={`/languages/${track.id}/lessons/${readingTarget.id}`}
+        >
+          {readingLabel}
+        </Link>
+        <Link
+          className={styles.primaryButton}
+          to={`/languages/${track.id}/practice/${practiceTarget.id}`}
+        >
+          {practiceLabel}
+        </Link>
+      </div>
 
       <section className={styles.section} aria-labelledby="track-goals">
         <h2 id="track-goals" className={styles.heading}>

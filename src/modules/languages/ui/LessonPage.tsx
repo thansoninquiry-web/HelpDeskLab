@@ -1,5 +1,6 @@
 import { Link, useParams } from 'react-router'
 import { findLesson } from '../data/tracks'
+import { nextPracticeItem } from '../logic/progress'
 import { formatDay, useLanguageTrack } from './useLanguages'
 import styles from './languages.module.css'
 
@@ -43,6 +44,7 @@ export function LanguageLessonPage() {
   const previous = index > 0 ? view.track.lessons[index - 1] : null
   const next = index >= 0 ? (view.track.lessons[index + 1] ?? null) : null
   const read = view.reads.find((entry) => entry.lessonId === lesson.id) ?? null
+  const drill = nextPracticeItem(view.track, view.attempts)
 
   return (
     <div className={styles.page}>
@@ -112,6 +114,12 @@ export function LanguageLessonPage() {
         >
           {read ? 'Marked read — undo' : 'Mark as read'}
         </button>
+        <Link
+          className={styles.primaryButton}
+          to={`/languages/${view.track.id}/practice/${drill.id}`}
+        >
+          Practice this language →
+        </Link>
       </div>
 
       <nav className={styles.lessonNav} aria-label="Lessons in this track">

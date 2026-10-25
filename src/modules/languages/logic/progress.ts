@@ -1,10 +1,12 @@
 import type {
   LanguageAttempt,
+  LanguageLesson,
   LanguageOverview,
   LanguageTrack,
   LessonEntry,
   LessonRead,
   PracticeEntry,
+  PracticeItem,
   TrackProgress,
   TrackSummary,
   TrackView,
@@ -43,6 +45,32 @@ function attemptsOf(
   attempts: readonly LanguageAttempt[],
 ): LanguageAttempt[] {
   return attempts.filter((attempt) => attempt.trackId === track.id)
+}
+
+/**
+ * Where the reading button goes: the first lesson not marked read, or the first
+ * lesson again once the track is finished. A track always has a lesson, so the
+ * fallback is the content itself rather than a missing page.
+ */
+export function nextLesson(
+  track: LanguageTrack,
+  reads: readonly LessonRead[],
+): LanguageLesson {
+  const read = new Set(reads.map((entry) => entry.lessonId))
+  return track.lessons.find((lesson) => !read.has(lesson.id)) ?? track.lessons[0]!
+}
+
+/** The same for practice: the first drill not yet solved, else the first one. */
+export function nextPracticeItem(
+  track: LanguageTrack,
+  attempts: readonly LanguageAttempt[],
+): PracticeItem {
+  const solved = new Set(
+    attempts
+      .filter((attempt) => attempt.trackId === track.id && attempt.correct)
+      .map((attempt) => attempt.itemId),
+  )
+  return track.practice.find((item) => !solved.has(item.id)) ?? track.practice[0]!
 }
 
 export function lessonEntries(

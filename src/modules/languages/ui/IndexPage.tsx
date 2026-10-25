@@ -1,5 +1,6 @@
 import { Link } from 'react-router'
 import { PageHeader } from '../../../ui/components/PageHeader'
+import { nextLesson, nextPracticeItem } from '../logic/progress'
 import { useLanguageOverview } from './useLanguages'
 import styles from './languages.module.css'
 
@@ -58,9 +59,20 @@ export function LanguageTracksPage() {
                     : ''}
                 </p>
 
-                <p className={styles.trackLink}>
-                  <Link to={`/languages/${track.id}`}>Open the {track.name} track →</Link>
-                </p>
+                <div className={styles.cardActions}>
+                  <Link
+                    className={styles.primaryButton}
+                    to={`/languages/${track.id}/lessons/${nextLesson(track, []).id}`}
+                  >
+                    Read the track
+                  </Link>
+                  <Link
+                    className={styles.primaryButton}
+                    to={`/languages/${track.id}/practice/${nextPracticeItem(track, []).id}`}
+                  >
+                    Practice
+                  </Link>
+                </div>
               </li>
             ))}
           </ul>

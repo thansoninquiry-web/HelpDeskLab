@@ -52,7 +52,14 @@ const java = findTrack('java')!
 const lesson = java.lessons[0]!
 const item = java.practice[0]!
 const secondLesson = java.lessons[1]!
+const secondItem = java.practice[1]!
 const firstChoice = item.choices[0]!
+const csharp = findTrack('csharp')!
+const python = findTrack('python')!
+const csharpFirstLesson = csharp.lessons[0]!.id
+const pythonFirstLesson = python.lessons[0]!.id
+const csharpFirstItem = csharp.practice[0]!.id
+const pythonFirstItem = python.practice[0]!.id
 
 beforeEach(async () => {
   await service.reset()
@@ -83,6 +90,23 @@ describe('the track picker', () => {
     expect(screen.getByText(/of 15 drills solved/)).toBeInTheDocument()
     expect(screen.getByText(/JDK 21/)).toBeInTheDocument()
   })
+
+  it('gives every track a button to read it and a button to practice it', async () => {
+    renderAt('/languages')
+
+    const read = await screen.findAllByRole('link', { name: 'Read the track' })
+    const practice = screen.getAllByRole('link', { name: 'Practice' })
+    expect(read.map((link) => link.getAttribute('href'))).toEqual([
+      `/languages/java/lessons/${lesson.id}`,
+      `/languages/csharp/lessons/${csharpFirstLesson}`,
+      `/languages/python/lessons/${pythonFirstLesson}`,
+    ])
+    expect(practice.map((link) => link.getAttribute('href'))).toEqual([
+      `/languages/java/practice/${item.id}`,
+      `/languages/csharp/practice/${csharpFirstItem}`,
+      `/languages/python/practice/${pythonFirstItem}`,
+    ])
+  })
 })
 
 describe('one track', () => {
@@ -97,6 +121,31 @@ describe('one track', () => {
     expect(screen.getAllByText('Not read yet')).toHaveLength(java.lessons.length)
     expect(screen.getByRole('link', { name: item.title })).toBeInTheDocument()
     expect(screen.getAllByText('Not tried yet')).toHaveLength(java.practice.length)
+  })
+
+  it('offers a button that starts the reading and one that starts the drills', async () => {
+    renderAt('/languages/java')
+
+    const reading = await screen.findByRole('link', { name: 'Start reading' })
+    const practicing = screen.getByRole('link', { name: 'Start practicing' })
+    expect(reading).toHaveAttribute('href', `/languages/java/lessons/${lesson.id}`)
+    expect(practicing).toHaveAttribute('href', `/languages/java/practice/${item.id}`)
+  })
+
+  it('moves both buttons on to the next unfinished step', async () => {
+    await service.setLessonRead('java', lesson.id, true)
+    const answer = item.choices.find((choice) => choice.correct)!
+    await service.submit({ trackId: 'java', itemId: item.id, choice: answer.id })
+
+    renderAt('/languages/java')
+
+    expect(
+      await screen.findByRole('link', { name: 'Continue reading' }),
+    ).toHaveAttribute('href', `/languages/java/lessons/${secondLesson.id}`)
+    expect(screen.getByRole('link', { name: 'Continue practicing' })).toHaveAttribute(
+      'href',
+      `/languages/java/practice/${secondItem.id}`,
+    )
   })
 
   it('says a drill was tried when it was, without claiming it solved', async () => {
@@ -125,6 +174,14 @@ describe('one lesson', () => {
     expect(screen.getByText(lesson.takeaway)).toBeInTheDocument()
     expect(screen.getByText(/Lesson 1 of 4/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Mark as read' })).toBeInTheDocument()
+  })
+
+  it('puts a button under the lesson that opens the practice', async () => {
+    renderAt(`/languages/java/lessons/${lesson.id}`)
+
+    expect(
+      await screen.findByRole('link', { name: 'Practice this language →' }),
+    ).toHaveAttribute('href', `/languages/java/practice/${item.id}`)
   })
 
   it('marks the lesson read, shows the date, and undoes it', async () => {

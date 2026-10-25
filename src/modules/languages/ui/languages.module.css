@@ -114,18 +114,51 @@
   font-size: var(--type-2xs);
 }
 
-.trackLink {
+/*
+ * The one filled control on these pages: a real button to start reading and to
+ * start practicing. It is an anchor rather than a <button> because it navigates,
+ * and it keeps a 44px target on a phone.
+ */
+.cardActions,
+.startActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   margin-top: auto;
+  padding-top: 0.4rem;
+}
+
+.startActions {
+  margin-top: 1.1rem;
+  padding-top: 0;
+}
+
+.primaryButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  padding: 0.6rem 1.05rem;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--accent-contrast);
   font-family: var(--font-display);
   font-size: var(--type-2xs);
-  letter-spacing: 0.06em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-decoration: none;
   text-transform: uppercase;
 }
 
-.trackLink a {
-  display: inline-flex;
-  align-items: center;
-  min-height: 1.75rem;
+.primaryButton:hover {
+  border-color: var(--accent-strong);
+  background: var(--accent-strong);
+}
+
+.primaryButton:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* One track --------------------------------------------------------------- */
