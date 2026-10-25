@@ -177,7 +177,7 @@ describe('JobTargetsPage', () => {
     renderPage()
 
     expect(await screen.findByRole('region', { name: 'Skills coverage' })).toBeInTheDocument()
-    expect(screen.getByText('2 requested · 1 practised here')).toBeInTheDocument()
+    expect(screen.getByText('2 requested · 1 practiced here')).toBeInTheDocument()
     expect(screen.getByText('Not covered yet')).toBeInTheDocument()
     const focusLinks = screen.getAllByRole('link', { name: /PWD-01/ })
     expect(focusLinks.length).toBeGreaterThan(0)

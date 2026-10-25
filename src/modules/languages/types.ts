@@ -5,7 +5,7 @@
  * runtime actually behaves, and practice asks a question about a snippet whose
  * answer is a fact about that runtime rather than a matter of taste. Nothing is
  * compiled or executed — the shipped policy forbids an evaluator, and every
- * snippet here is small enough that reading it is the skill being practised.
+ * snippet here is small enough that reading it is the skill being practiced.
  */
 
 export type TrackId = 'java' | 'csharp' | 'python'

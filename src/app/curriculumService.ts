@@ -34,7 +34,7 @@ export interface ModuleView {
   /** XP earned on the families this module covers. Zero when it has no scope. */
   xp: number
   /**
-   * How the module is practised: a ticket from its lesson's first family, a
+   * How the module is practiced: a ticket from its lesson's first family, a
    * ticket in the Intune or Azure console, the Job targets page, or nowhere
    * because the module is not playable.
    */
@@ -47,7 +47,7 @@ export interface ModuleView {
 
 export interface CurriculumView {
   modules: readonly ModuleView[]
-  /** Modules that can be practised today. */
+  /** Modules that can be practiced today. */
   playable: number
   complete: number
   /** Total requirements met across every built module. */

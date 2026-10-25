@@ -53,7 +53,7 @@ demo fixture, never as people.
 
 A commercial browser-based training simulator for first-line IT support. The
 marketing claim is "the flight simulator for helpdesk" and the proposition is
-practising a ticket queue, calls, and the consoles of a small Windows/Microsoft
+practicing a ticket queue, calls, and the consoles of a small Windows/Microsoft
 365 estate before working a real desk.
 
 Publicly visible product claims (marketing copy, not independently verified):

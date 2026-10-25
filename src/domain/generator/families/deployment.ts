@@ -6,7 +6,7 @@ const FAILED_MACHINE = 'SHELF-DT-0302'
 const HELD_MACHINE = 'SHELF-LT-0204'
 /**
  * The variant whose run failed and can be finished. The curriculum pins it for
- * Computer Deployment's Practise entry point, because the held-machine variant
+ * Computer Deployment's Practice entry point, because the held-machine variant
  * deliberately has no run to complete.
  */
 export const FAILED_RUN_VARIANT = 'imaging-run-failed'

@@ -68,6 +68,11 @@ describe('an Intune attempt on the console page', () => {
     )
     await screen.findByRole('link', { name: 'LT-2207' }, { timeout: 10_000 })
 
+    // The console points back at the course module that teaches this ticket,
+    // so a learner who starts in the console can find the lesson.
+    const lesson = screen.getByRole('link', { name: 'Intune: Device Compliance' })
+    expect(lesson).toHaveAttribute('href', '/modules/intune-compliance')
+
     // The read step comes first, the way the ticket's hints ask for it: the
     // console answers with the reasons the record holds.
     fireEvent.click(screen.getByRole('button', { name: 'Read the device record' }))

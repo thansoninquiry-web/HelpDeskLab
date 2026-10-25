@@ -60,7 +60,7 @@ function localDayKey(ms: number): string {
 /**
  * Counts consecutive local days with a scored attempt. A streak survives until
  * the end of the day after the last attempt, so it is not lost at midnight
- * before the learner has had a chance to practise.
+ * before the learner has had a chance to practice.
  */
 export function streakFromTimestamps(timestamps: readonly number[], now: number): number {
   if (timestamps.length === 0) {

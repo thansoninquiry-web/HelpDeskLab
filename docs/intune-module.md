@@ -214,5 +214,5 @@ list, so a new destructive action is priced without touching the scorer.
 
 ## Reset
 
-Practising changes the estate for good. The devices page has a two-step reset that
+Practicing changes the estate for good. The devices page has a two-step reset that
 deletes the module's rows and reseeds them; practice attempts go with it.

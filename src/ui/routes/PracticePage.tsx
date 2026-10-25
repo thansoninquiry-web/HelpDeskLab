@@ -248,7 +248,7 @@ export function PracticePage() {
           {visible.length === 0 ? (
             <li className={styles.empty}>
               {focusTitle
-                ? `No ${focusTitle.toLowerCase()} tickets in the queue. Generate three to practise this family.`
+                ? `No ${focusTitle.toLowerCase()} tickets in the queue. Generate three to practice this family.`
                 : 'The queue is empty. Generate a few tickets to begin.'}
             </li>
           ) : null}

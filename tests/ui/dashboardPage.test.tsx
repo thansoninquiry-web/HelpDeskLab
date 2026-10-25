@@ -127,13 +127,13 @@ describe('Dashboard modules', () => {
       'href',
       '/modules/first-shift',
     )
-    expect(screen.getByRole('button', { name: 'Practise' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Practice' })).toBeInTheDocument()
   })
 
   it('starts the module\'s own ticket instead of the whole queue', async () => {
     renderPage()
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Practise' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Practice' }))
 
     const practice = await import('../../src/app/practiceService')
     expect(practice.startModulePractice).toHaveBeenCalledWith('first-shift')
@@ -163,7 +163,7 @@ describe('Dashboard modules', () => {
     expect(screen.getByText('Close a ticket that arrived as a voicemail')).toBeInTheDocument()
     expect(screen.getByText('Ring the caller back from the message')).toBeInTheDocument()
     expect(screen.queryByText(/Not in this build/i)).not.toBeInTheDocument()
-    // A playable module carries a way in: the lesson, and the Practise button.
+    // A playable module carries a way in: the lesson, and the Practice button.
     const lessonLinks = screen
       .getAllByRole('link', { name: 'Lesson' })
       .map((link) => link.getAttribute('href'))

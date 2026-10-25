@@ -15,6 +15,7 @@ import {
   resourceGroupName,
 } from '../logic/diagnostics'
 import { KIND_LABELS } from './labels'
+import { lessonForConsoleTicket } from '../../../domain/curriculum/ticketLessons'
 import styles from './azure.module.css'
 
 /**
@@ -44,6 +45,9 @@ export function AzureTicketsPage() {
   const [readSummary, setReadSummary] = useState<string | null>(null)
 
   const selected = templates.find((template) => template.id === selectedId) ?? null
+  // Every console ticket is taught by one course module; the link back to it
+  // travels with the ticket so the console is not a dead end for a learner.
+  const lesson = selected ? lessonForConsoleTicket('azure', selected.id) : null
   const resource = selected
     ? state?.resources.find((entry) => entry.id === selected.resourceId && !entry.deleted)
     : undefined
@@ -115,6 +119,13 @@ export function AzureTicketsPage() {
           <div className={styles.stack}>
             <h2>{selected.subject}</h2>
             <p className={styles.ticketBody}>{selected.body}</p>
+            {lesson ? (
+              <p className={styles.lessonLink}>
+                Course module {lesson.number}:{' '}
+                <Link to={lesson.href}>{lesson.title}</Link> — the idea, a worked example,
+                and the order to do this in.
+              </p>
+            ) : null}
 
             {resource ? (
               <>

@@ -225,7 +225,7 @@ describe('practice service', () => {
     expect(await persistence.tickets.listRecent(60)).toHaveLength(2)
   })
 
-  it('refuses a module that is practised from job targets', async () => {
+  it('refuses a module that is practiced from job targets', async () => {
     await expect(startModulePractice('mock-interview')).rejects.toThrow(
       /Job targets page/,
     )

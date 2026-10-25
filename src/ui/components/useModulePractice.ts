@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router'
 import { startModulePractice } from '../../app/practiceService'
 
 /**
- * Starts the ticket a module's Practise entry point opens and sends the learner
- * to it. The dashboard and the lesson page both use this, so “practise this
+ * Starts the ticket a module's Practice entry point opens and sends the learner
+ * to it. The dashboard and the lesson page both use this, so “practice this
  * module” means the same ticket — and the same pinned variant — wherever it is
  * pressed. The module's lesson supplies the choice; this hook only runs it.
  */

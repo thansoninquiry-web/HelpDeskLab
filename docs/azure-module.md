@@ -140,7 +140,7 @@ judged from the attempts' stored score JSON, not from opening the console.
 
 The capstone counts **distinct security templates** passed, not attempts: four
 exposure tickets teach the decisions, and three of them is the module. A lesson's
-*Practise this module* links to `/azure/tickets?template=…`, and the queue opens
+*Practice this module* links to `/azure/tickets?template=…`, and the queue opens
 with that ticket selected and a fresh attempt.
 
 ## Adding a ticket template

@@ -66,6 +66,10 @@ describe('an Azure attempt on the console page', () => {
     expect(await screen.findByText(/Scanner: 3389 open to the world/)).toBeTruthy()
     await screen.findByRole('link', { name: 'nsg-jump-prod' }, { timeout: 10_000 })
 
+    // The console points back at the course module that teaches this ticket.
+    const lesson = screen.getByRole('link', { name: 'Azure: Network Exposure' })
+    expect(lesson).toHaveAttribute('href', '/modules/azure-network')
+
     // The read step comes first, the way the ticket's hints ask for it.
     fireEvent.click(screen.getByRole('button', { name: 'Read the resource record' }))
     expect(await screen.findByText(/Management port 3389 is open to the internet/)).toBeTruthy()

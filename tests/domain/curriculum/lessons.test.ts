@@ -9,7 +9,7 @@ const playable = CURRICULUM.filter((module) => module.status === 'playable')
 const planned = CURRICULUM.filter((module) => module.status === 'planned')
 
 describe('module lessons', () => {
-  it('teaches every module the app can practise', () => {
+  it('teaches every module the app can practice', () => {
     const missing = playable.filter((module) => lessonFor(module.id) === null)
     expect(missing.map((module) => module.id)).toEqual([])
   })
@@ -119,7 +119,7 @@ describe('module lessons', () => {
       }
 
       pinned.push(module.id)
-      // The first family is the one Practise starts; the pin has to belong to it.
+      // The first family is the one Practice starts; the pin has to belong to it.
       const variants = listVariants(practice.families[0] ?? '').map((entry) => entry.id)
       expect(variants, `${module.id} → ${practice.variantId}`).toContain(practice.variantId)
     }

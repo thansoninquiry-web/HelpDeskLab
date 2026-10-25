@@ -169,13 +169,13 @@ the first cut.
 ## Phase 6 — Original differentiators (4–5 days)
 
 These are the parts the reference product does not publicly document, and the
-reason to build this rather than practise there.
+reason to build this rather than practice there.
 
 **Build**
 
 - Job targets: paste a listing (company, title, URL, date, status, raw text),
   local-only storage, deterministic keyword extraction to families and skills.
-- Coverage view: skills requested with counts, practised vs not yet covered.
+- Coverage view: skills requested with counts, practiced vs not yet covered.
 - Queue weighting by listing demand × personal weakness, with a visible "why".
 - Interview prep per listing: template-bank questions tied to extracted skills,
   each with a short "what this tests" note.
@@ -185,7 +185,7 @@ reason to build this rather than practise there.
 
 - The same listing always extracts the same skills; paraphrases that miss a
   keyword are documented as a known limitation.
-- Requested-skill counts, practised/not-covered split and weighted queue order
+- Requested-skill counts, practiced/not-covered split and weighted queue order
   are covered by unit tests.
 - A share export contains no raw text field, and a test asserts it.
 - `data/job-listings/` is ignored and the README warns against committing real
@@ -243,7 +243,7 @@ reason to build this rather than practise there.
 | **R1 — Core desk** | 0–2 | Work 10+ ticket types with Directory, Server Room, Remote Desktop |
 | **R2 — Knowledge and judgement** | 3, 5 | Confirm in chat, use the KB, handle mail and escalation |
 | **R3 — Hardware** | 4 | Onboard, build, ship and reclaim equipment |
-| **R4 — Personal practice** | 6 | Practise toward real job listings, with interview prep |
+| **R4 — Personal practice** | 6 | Practice toward real job listings, with interview prep |
 | **R5 — Calls and polish** | 7–8 | Take typed calls, track progress, ship |
 
 R1 is the approval checkpoint: if the core loop is not fun and legible, later

@@ -29,7 +29,7 @@ export function DsaPatternsPage() {
         A cue often licenses more than one technique, and the sheet is honest about that: a
         sorted array makes binary search the cheaper exact lookup and two pointers the
         cheaper full scan. Pick by what the question needs, not by which name you saw first.
-        Entries marked <em>Practise</em> open a problem that uses them.
+        Entries marked <em>Practice</em> open a problem that uses them.
       </p>
 
       {DSA_PATTERN_GROUPS.map((group) => (
@@ -55,7 +55,7 @@ export function DsaPatternsPage() {
                         <p>{tool.note}</p>
                         {problem ? (
                           <Link className={styles.toolLink} to={`/dsa/${problem.id}`}>
-                            Practise: {problem.title}
+                            Practice: {problem.title}
                           </Link>
                         ) : null}
                       </li>

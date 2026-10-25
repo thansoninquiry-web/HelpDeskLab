@@ -265,7 +265,7 @@ export function ModuleLessonPage() {
 
       <section className={styles.section} aria-labelledby="lesson-practice-heading">
         <div className={styles.sectionHeading}>
-          <h2 id="lesson-practice-heading">Practise it</h2>
+          <h2 id="lesson-practice-heading">Practice it</h2>
           <span className={styles.count}>
             {practice.kind === 'tickets'
               ? 'Matching tickets'
@@ -292,7 +292,7 @@ export function ModuleLessonPage() {
                   onClick={() => void start(module.id)}
                   disabled={busyId !== null}
                 >
-                  {busyId === module.id ? 'Starting…' : 'Practise this module'}
+                  {busyId === module.id ? 'Starting…' : 'Practice this module'}
                 </button>
                 {practice.families.map((family) => (
                   <Link
@@ -326,7 +326,7 @@ export function ModuleLessonPage() {
                   className={styles.primaryButton}
                   to={`/intune/tickets?template=${practice.templateId}`}
                 >
-                  Practise this module
+                  Practice this module
                 </Link>
                 <Link className={styles.practiceLink} to="/intune/tickets">
                   All Intune tickets
@@ -349,7 +349,7 @@ export function ModuleLessonPage() {
                   className={styles.primaryButton}
                   to={`/azure/tickets?template=${practice.templateId}`}
                 >
-                  Practise this module
+                  Practice this module
                 </Link>
                 <Link className={styles.practiceLink} to="/azure/tickets">
                   All Azure tickets

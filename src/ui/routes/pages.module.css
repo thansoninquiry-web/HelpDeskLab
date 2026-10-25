@@ -365,7 +365,7 @@
   text-decoration: underline;
 }
 
-/* A lesson link and a Practise button sit in the same row, so the button keeps
+/* A lesson link and a Practice button sit in the same row, so the button keeps
    the link's type and drops only the browser's button chrome. */
 .moduleActionButton {
   padding: 0;

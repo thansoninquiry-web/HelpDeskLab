@@ -154,10 +154,10 @@ const weakView: ProgressView = {
         percent: 20,
       },
       recommendation:
-        'You lose the most marks on notes and handoff. Practise a FS-01 ticket and work on that before retrying.',
+        'You lose the most marks on notes and handoff. Practice a FS-01 ticket and work on that before retrying.',
       simulator: 'service-desk',
       href: '/practice?family=FS-01',
-      actionLabel: 'Practise FS-01',
+      actionLabel: 'Practice FS-01',
     },
   ],
 }
@@ -224,7 +224,7 @@ describe('ProgressPage weak topics', () => {
     // Scoped to the section the recommendation lives in: the rewind section
     // below offers the same way into practice for the families it names.
     const focus = await screen.findByRole('region', { name: 'Focus next' })
-    expect(within(focus).getByRole('link', { name: 'Practise FS-01' })).toHaveAttribute(
+    expect(within(focus).getByRole('link', { name: 'Practice FS-01' })).toHaveAttribute(
       'href',
       '/practice?family=FS-01',
     )
@@ -332,12 +332,12 @@ describe('ProgressPage weak topics', () => {
 
     const focus = await screen.findByRole('region', { name: 'Focus next' })
     expect(within(focus).getByText(/No weak spots yet/)).toBeInTheDocument()
-    expect(within(focus).queryByRole('link', { name: /Practise/ })).not.toBeInTheDocument()
+    expect(within(focus).queryByRole('link', { name: /Practice/ })).not.toBeInTheDocument()
   })
 })
 
 describe('ProgressPage simulator tags', () => {
-  it('says which simulator each family is practised in', async () => {
+  it('says which simulator each family is practiced in', async () => {
     renderPage()
 
     const focus = await screen.findByRole('region', { name: 'Focus next' })
@@ -561,7 +561,7 @@ describe('ProgressPage rewinds', () => {
     const section = await screen.findByRole('region', { name: 'Rewinds' })
     expect(section).toHaveTextContent('2 families')
     expect(section).toHaveTextContent(/Across 4 cuts on 3 attempts you have un-run 8 steps/)
-    expect(within(section).getByRole('link', { name: 'Practise PWD-01' })).toHaveAttribute(
+    expect(within(section).getByRole('link', { name: 'Practice PWD-01' })).toHaveAttribute(
       'href',
       '/practice?family=PWD-01',
     )

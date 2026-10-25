@@ -209,7 +209,7 @@ export function AzureInventoryPage() {
           <section className={styles.section} aria-label="Reset the simulator">
             <div className={styles.stack}>
               <p className={styles.note}>
-                Practising changes the subscription for good: a deleted resource stays
+                Practicing changes the subscription for good: a deleted resource stays
                 deleted. Resetting puts every resource, rule and assignment back to the
                 seed.
               </p>

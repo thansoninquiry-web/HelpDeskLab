@@ -385,6 +385,19 @@
   background: var(--accent-soft);
 }
 
+/* The way from a ticket back to the course module that teaches it: a quiet
+   line, because the ticket is the work and the lesson is the reading. */
+.lessonLink {
+  max-width: 68ch;
+  margin-top: 0.6rem;
+  padding: 0.45rem 0.6rem;
+  border-left: 2px solid var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--text-muted);
+  font-size: var(--type-sm);
+  line-height: 1.55;
+}
+
 .ticketBody {
   max-width: 68ch;
   margin-top: 0.5rem;

@@ -96,7 +96,7 @@ function ModuleRow({
                       onClick={() => void start(module.id)}
                       disabled={busyId !== null}
                     >
-                      {busyId === module.id ? 'Starting…' : 'Practise'}
+                      {busyId === module.id ? 'Starting…' : 'Practice'}
                     </button>
                   ) : module.practice === 'intune' ? (
                     <Link className={styles.moduleAction} to="/intune/tickets">

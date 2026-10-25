@@ -293,7 +293,7 @@ It is deliberately a property of the seed rather than of a second random stream.
 A draw from the world's stream would change what every seed generates, and every
 ticket already in someone's queue would become a different ticket; drawing from
 the seed means a reload, a retry and a replay all read the same message. It also
-means a caller that needs a voicemail ticket — module 5's Practise button — can
+means a caller that needs a voicemail ticket — module 5's Practice button — can
 step the seed until the draw is one, instead of fighting the draw afterwards.
 
 ### Fairness lint (`scripts/lint-content.ts`)
@@ -1452,7 +1452,7 @@ three exit requirements, each naming a counter (`moduleProgress` reads them from
 an evidence object). Copy, scope and targets are written for this app; nothing
 is carried over from a reference product.
 
-Six modules are practised in a console rather than the ticket queue: the Intune
+Six modules are practiced in a console rather than the ticket queue: the Intune
 console's modules name their tickets in `intuneTemplates`, the Azure console's in
 `azureTemplates`, and those ids are also what their XP is folded from. Both
 consoles publish their own scored attempts through an app reader, so the same
@@ -1478,7 +1478,7 @@ more: the track's own picker is the progress page that belongs to that content.
 Each playable module also has a **lesson**, in
 `src/domain/curriculum/lessons.ts`: a couple of paragraphs on the idea, one
 worked example the learner can repeat in the simulator, and where the module is
-practised. The example never names a generated ticket — the queue draws a new
+practiced. The example never names a generated ticket — the queue draws a new
 variant each time — so it shows the shape of the work and the reason behind each
 step instead of a walkthrough of one attempt. The lesson is data, not markup: it
 is read and tested without a browser, and `loadModuleLesson` pairs it with the
@@ -1486,7 +1486,7 @@ module's live progress, so the page can show the exit criteria beside the
 concept. `practice` is either a list of families or the job targets for the one
 module judged on saved listings; routes are built in the interface, never stored
 in the domain. The family list is ordered: `startModulePractice` in
-`app/practiceService.ts` starts the first one, so **Practise** and the lesson
+`app/practiceService.ts` starts the first one, so **Practice** and the lesson
 agree on where a module begins. A lesson can pin `variantId` where a random draw
 could miss the requirement (Asset Management's held shelf, Computer Deployment's
 failed run); the entry point then reuses an available ticket of that exact
@@ -1548,7 +1548,7 @@ with the requirement list, the module note and its scope XP; the next unfinished
 module opens by default. XP per module is the sum of attempt XP on the families
 in its scope, so a ticket can feed more than one module — the section says so in
 plain text instead of implying the numbers add up to lifetime XP. A playable,
-unfinished, ticket-based module also carries **Practise**, which starts its
+unfinished, ticket-based module also carries **Practice**, which starts its
 lesson's ticket on demand and navigates straight to the workspace; the job-target
 module links to `/targets` instead. The lesson page exposes the same entry point
 through one shared hook, so the two cannot drift.

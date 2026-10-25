@@ -181,7 +181,7 @@ the time it was left, how long it ran, and the line it asks to be rung back on.
 Ring it back from **Verify the caller** — the mobile on file, or the desk line
 when the handset is out of action — work the ticket from the machine's evidence
 rather than from the recording, and write the message down before it goes.
-**Practise** on this module draws a ticket that actually arrived that way, and
+**Practice** on this module draws a ticket that actually arrived that way, and
 the lesson walks the three things it asks for: a passing close, a callback, and a
 note.
 
@@ -207,7 +207,7 @@ only a shipment the carrier collected can be dispatched and later delivered.
 Every playable module has a lesson behind it: open **Lesson** on a module to read
 the idea in two short paragraphs, follow one worked example through the
 simulator, and use the entry points at the bottom to get into the tickets the
-module is judged on. **Practise this module** opens a ticket the module can
+module is judged on. **Practice this module** opens a ticket the module can
 actually exercise — the lesson names the starting family, and modules judged on a
 single variant (the held shelf, a failed run) start that variant rather than
 leaving it to the queue's draw, and the Voicemails module starts a ticket whose
@@ -228,7 +228,7 @@ requirement reapplies to past work.
 
 ## The practice loop
 
-Open **Practice** to pull a generated ticket from the queue, or press **Practise**
+Open **Practice** to pull a generated ticket from the queue, or press **Practice**
 on a module in the dashboard to start the ticket that module is built around, investigate the
 simulated machine in the terminal, record troubleshooting and customer notes,
 verify the caller — with a live code read back, or by ringing a line on file when
@@ -521,7 +521,7 @@ answers.
 from: "the input is sorted", "the input is a binary tree", "you need the kth
 largest", "it must be solved in place" — each cue followed by the techniques it
 licenses, their costs with the caveats intact (quickselect and quicksort are only
-linear or n log n on average), and a link into the problem that practises it.
+linear or n log n on average), and a link into the problem that practices it.
 Every problem in the bank is reachable from the sheet.
 
 Nothing typed into the editor is executed: the shipped policy has no `eval` (and
@@ -556,7 +556,7 @@ runtime does. Each option explains the misconception it stands for. Lessons are
 marked read by the learner, because a scroll position cannot tell a skim from a
 careful read; a drill counts as solved once it has been answered correctly.
 Nothing is compiled or executed: the shipped policy has no evaluator, so the
-skill being practised is reading the runtime, which is what a review asks for
+skill being practiced is reading the runtime, which is what a review asks for
 anyway. Progress lives in `lang_attempts` and `lang_lesson_reads`, and the
 content is code, so adding a drill needs no migration.
 [docs/languages-module.md](docs/languages-module.md) describes the model and how
@@ -588,5 +588,5 @@ MIT — see [LICENSE](LICENSE).
 The app, its wording and both consoles are original: no vendor interface or
 screenshot is reproduced. Everything inside the simulators — tenants, people,
 devices, tickets — is invented. Real product names appear only to say what is
-being practised; they belong to their owners, and this project is not
+being practiced; they belong to their owners, and this project is not
 affiliated with or endorsed by them.

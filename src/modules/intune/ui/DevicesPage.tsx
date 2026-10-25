@@ -169,7 +169,7 @@ export function IntuneDevicesPage() {
           <section className={styles.section} aria-label="Reset the simulator">
             <div className={styles.stack}>
               <p className={styles.note}>
-                Practising changes the estate for good: a retired phone stays retired.
+                Practicing changes the estate for good: a retired phone stays retired.
                 Resetting puts every device, app and assignment back to the seed.
               </p>
               {confirmReset ? (

@@ -10,7 +10,7 @@ HelpDeskLab exists so someone preparing for a Tier 1 service desk role can sit
 down, take a realistic ticket, investigate it with realistic tools, fix it, and
 get honest feedback — as many times as they want, offline, on their own machine.
 
-Primary audience: career changers and new help desk hires practising between
+Primary audience: career changers and new help desk hires practicing between
 shifts. Secondary audience: instructors who want a repeatable lab without
 standing up real infrastructure.
 
@@ -131,12 +131,12 @@ lint and fixtures land with R1 close-out.
 
 ## 2. Release 1 — "First Shift"
 
-**Theme:** a learner can practise the most common Tier 1 tickets indefinitely,
+**Theme:** a learner can practice the most common Tier 1 tickets indefinitely,
 and their history survives restarts.
 
 ### In scope
 
-| Family | Variants | What the learner practises |
+| Family | Variants | What the learner practices |
 |--------|----------|----------------------------|
 | **PWD-01** Password reset | account lockout · expired password · disabled account · reset requested for someone else · urgent caller pushing for a fix · reset relayed in chat by a colleague | Verify the caller, distinguish lockout from expiry or disablement, reset safely, refuse a relayed request, read the mailbox behind an internal ask, and hold the diagnostic order when a caller demands a fix first |
 | **NET-01** No internet | bad static DNS · stale DHCP lease | Read `ipconfig /all`, separate link/DNS/DHCP faults, apply the correct fix, avoid shotgun changes |
@@ -502,7 +502,7 @@ the same number and remains open.
 |-------|-----------|
 | Job listings | Paste company, title, URL, date applied, status, and the listing text. Stored in a new `job_targets` table (schema v2) and therefore included in the local `.sqlite` backup, export, and import. Edit status in place; delete with confirmation. |
 | Skill extraction | A fixed table of twelve A+-style skill areas maps lowercase keyword phrases to the six scenario families and their simulated tools. Matching is case-insensitive phrase matching with word boundaries; each phrase counts at most once per listing, so repetition in an advert cannot inflate coverage. |
-| Coverage view | Every known skill appears, requested or not, with the number of listings that asked for it and the families that practise it. Skills whose family list is empty — VPN and hardware today — read "Not covered yet". |
+| Coverage view | Every known skill appears, requested or not, with the number of listings that asked for it and the families that practice it. Skills whose family list is empty — VPN and hardware today — read "Not covered yet". |
 | Weighted practice | Family demand (phrase mentions across listings) multiplied by room to improve (`100 − average score`, or 50 for a family never played). Surfaced on Job targets, on Progress ("From your job targets"), and as a strip on the practice queue, each linking to `/practice?family=…`. |
 | Interview prep | Per-listing disclosure with two original questions per matched skill (top three skills, six prompts) and a short "what this tests" note. Templates are static content; nothing is generated at runtime. |
 | Share-safe export | A JSON download containing company, title, URL, date, status, derived skills, and families — with `rawDescription` deliberately absent. The full database backup still contains the text because it is a local backup. |

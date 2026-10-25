@@ -9,6 +9,7 @@ import { isIntuneTicketComplete } from '../tickets/registry'
 import { INTUNE_CATEGORIES, INTUNE_CATEGORY_LABELS, type IntuneScore } from '../tickets/scoring'
 import type { IntuneTicketTemplate } from '../tickets/templates'
 import { appName } from '../logic/compliance'
+import { lessonForConsoleTicket } from '../../../domain/curriculum/ticketLessons'
 import styles from './intune.module.css'
 
 /**
@@ -40,6 +41,9 @@ export function IntuneTicketsPage() {
   const [readSummary, setReadSummary] = useState<string | null>(null)
 
   const selected = templates.find((template) => template.id === selectedId) ?? null
+  // Every console ticket is taught by one course module; the link back to it
+  // travels with the ticket so the console is not a dead end for a learner.
+  const lesson = selected ? lessonForConsoleTicket('intune', selected.id) : null
   const device = selected ? state?.devices.find((entry) => entry.id === selected.deviceId) : undefined
 
   const check = async () => {
@@ -107,6 +111,13 @@ export function IntuneTicketsPage() {
           <div className={styles.stack}>
             <h2>{selected.subject}</h2>
             <p className={styles.ticketBody}>{selected.body}</p>
+            {lesson ? (
+              <p className={styles.lessonLink}>
+                Course module {lesson.number}:{' '}
+                <Link to={lesson.href}>{lesson.title}</Link> — the idea, a worked example,
+                and the order to do this in.
+              </p>
+            ) : null}
 
             {device ? (
               <>

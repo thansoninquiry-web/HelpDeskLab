@@ -241,7 +241,7 @@ export function JobTargetsPage() {
           <div className={styles.sectionHeader}>
             <h2>Skills coverage</h2>
             <span className={styles.count}>
-              {requested.length} requested · {covered.length} practised here
+              {requested.length} requested · {covered.length} practiced here
             </span>
           </div>
 
@@ -265,7 +265,7 @@ export function JobTargetsPage() {
               <tr>
                 <th scope="col">Skill</th>
                 <th scope="col">Listings</th>
-                <th scope="col">Practised in</th>
+                <th scope="col">Practiced in</th>
               </tr>
             </thead>
             <tbody>
@@ -285,7 +285,7 @@ export function JobTargetsPage() {
             </tbody>
           </table>
           <p className={styles.mutedSmall}>
-            A skill counts as practised when a scenario family exercises its tools or its documentation
+            A skill counts as practiced when a scenario family exercises its tools or its documentation
             and communication steps.
           </p>
         </section>
@@ -325,7 +325,7 @@ export function JobTargetsPage() {
         {targets.length === 0 ? (
           <p className={styles.muted}>
             No listings yet. Paste one above to see which skills it asks for and which families to
-            practise next.
+            practice next.
           </p>
         ) : visible.length === 0 ? (
           <p className={styles.muted}>No listings with that status.</p>
@@ -394,7 +394,7 @@ export function JobTargetsPage() {
 
                 {target.families.length > 0 ? (
                   <div className={styles.familyRow}>
-                    <span className={styles.familyLabel}>Practise:</span>
+                    <span className={styles.familyLabel}>Practice:</span>
                     {target.families.map((family) => (
                       <Link
                         key={family.scenarioId}

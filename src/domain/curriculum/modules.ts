@@ -179,7 +179,7 @@ function requirement(
 
 /*
  * Every module in the course is built. `status: 'planned'` stays in the model
- * for a module that has to be listed before it can be practised — a gap in the
+ * for a module that has to be listed before it can be practiced — a gap in the
  * course is better shown than hidden — but nothing in the catalog uses it.
  */
 export const CURRICULUM: readonly CurriculumModule[] = [

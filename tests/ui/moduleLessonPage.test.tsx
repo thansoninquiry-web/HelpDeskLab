@@ -104,7 +104,7 @@ describe('module lesson page', () => {
     expect(steps[0]).not.toHaveTextContent('`')
 
     // The way in: this module's own ticket, the family it starts on, and the queue.
-    expect(screen.getByRole('button', { name: 'Practise this module' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Practice this module' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Accounts tickets' })).toHaveAttribute(
       'href',
       '/practice?family=PWD-01',
@@ -161,7 +161,7 @@ describe('module lesson page', () => {
       </MemoryRouter>,
     )
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Practise this module' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Practice this module' }))
 
     const practice = await import('../../src/app/practiceService')
     expect(practice.startModulePractice).toHaveBeenCalledWith('first-shift')
@@ -197,7 +197,7 @@ describe('module lesson page', () => {
     expect(screen.getByText('Intune console', { selector: 'span' })).toBeInTheDocument()
 
     // The way in is a link with the ticket in the query, not a started session.
-    expect(screen.getByRole('link', { name: 'Practise this module' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Practice this module' })).toHaveAttribute(
       'href',
       '/intune/tickets?template=tpl-bitlocker-off',
     )

@@ -552,7 +552,7 @@ export function ProgressPage() {
                       className={styles.rowAction}
                       to={`/practice?family=${encodeURIComponent(row.scenarioId)}`}
                     >
-                      Practise {row.scenarioId}
+                      Practice {row.scenarioId}
                     </Link>
                   </div>
                 </li>
@@ -590,7 +590,7 @@ export function ProgressPage() {
                   className={styles.rowAction}
                   to={`/practice?family=${encodeURIComponent(recommendation.scenarioId)}`}
                 >
-                  Practise {recommendation.scenarioId}
+                  Practice {recommendation.scenarioId}
                 </Link>
               </li>
             ))}

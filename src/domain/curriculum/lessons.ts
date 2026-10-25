@@ -39,19 +39,19 @@ export type LessonPractice =
   | {
       kind: 'tickets'
       /**
-       * Families listed as ways in. The Practise entry point starts the first
+       * Families listed as ways in. The Practice entry point starts the first
        * one, so it is the family the lesson means a learner to meet first.
        */
       families: readonly ScenarioId[]
       /**
-       * Pins the variant the Practise entry point starts. Only set where a
+       * Pins the variant the Practice entry point starts. Only set where a
        * random draw could miss the module's requirement — a held shelf for
        * Asset Management, a failed run for Computer Deployment — or the entry
        * point would open a ticket that cannot exercise it.
        */
       variantId?: string
       /**
-       * Asks the Practise entry point for a ticket that arrived as a message.
+       * Asks the Practice entry point for a ticket that arrived as a message.
        * The arrival is drawn from the seed, so the ticket is still generated
        * from a seed the queue stores and rebuilds the same way.
        */
@@ -67,7 +67,7 @@ export type LessonPractice =
     }
   | {
       kind: 'azure'
-      /** The Azure console ticket the Practise button opens. */
+      /** The Azure console ticket the Practice button opens. */
       templateId: string
     }
   | { kind: 'targets' }

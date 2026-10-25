@@ -713,7 +713,7 @@ export interface ProgressRow {
   scenarioTitle: string
   /** Which simulator the attempts were made in. */
   simulator: SimulatorId
-  /** Where "practise this again" should go, when it is not the ticket queue. */
+  /** Where "practice this again" should go, when it is not the ticket queue. */
   href?: string
   attempts: number
   passes: number
@@ -737,9 +737,9 @@ export interface WeakTopic {
     percent: number
   } | null
   recommendation: string
-  /** Which simulator this family is practised in. */
+  /** Which simulator this family is practiced in. */
   simulator: SimulatorId
-  /** Where this family is practised: the queue, or the Intune console. */
+  /** Where this family is practiced: the queue, or the Intune console. */
   href: string
   /** The action beside the row, named for the surface it opens. */
   actionLabel: string
@@ -1009,17 +1009,17 @@ export async function createTickets(
 export async function startModulePractice(moduleId: string): Promise<WorkspaceView> {
   const module = CURRICULUM.find((candidate) => candidate.id === moduleId)
   if (!module || module.status !== 'playable') {
-    throw new Error('That module is not available to practise.')
+    throw new Error('That module is not available to practice.')
   }
 
   const practice = lessonFor(moduleId)?.practice
   if (!practice || practice.kind !== 'tickets') {
-    throw new Error('That module is practised from the Job targets page, not a ticket.')
+    throw new Error('That module is practiced from the Job targets page, not a ticket.')
   }
 
   const familyId = practice.families[0]
   if (!familyId) {
-    throw new Error('That module has no ticket family to practise.')
+    throw new Error('That module has no ticket family to practice.')
   }
   // A module about voicemails opens on one: reusing a live ticket from the
   // queue would send the learner to a ticket the module is not about.
@@ -4150,9 +4150,9 @@ const MAX_WEAK_TOPICS = 2
 export interface WeakTopicOptions {
   /** Scenario id to title, for families whose title is not the app's own. */
   titles?: Record<string, string>
-  /** Scenarios practised in the Intune console rather than the ticket queue. */
+  /** Scenarios practiced in the Intune console rather than the ticket queue. */
   intuneScenarioIds?: ReadonlySet<string>
-  /** Scenarios practised in the Azure console rather than the ticket queue. */
+  /** Scenarios practiced in the Azure console rather than the ticket queue. */
   azureScenarioIds?: ReadonlySet<string>
 }
 
@@ -4236,7 +4236,7 @@ export function computeWeakTopics(
       weakestCategory && weakestCategory.percent < 100
         ? console
           ? `You lose the most marks on ${weakestCategory.label}. Work this console ticket again with that in mind before retrying.`
-          : `You lose the most marks on ${weakestCategory.label}. Practise a ${scenarioId} ticket and work on that before retrying.`
+          : `You lose the most marks on ${weakestCategory.label}. Practice a ${scenarioId} ticket and work on that before retrying.`
         : console
           ? `Your average is ${averageScore}. Work this console ticket again to keep the pattern fresh.`
           : `Your average is ${averageScore}. Retry a ${scenarioId} ticket to keep the pattern fresh.`
@@ -4256,7 +4256,7 @@ export function computeWeakTopics(
           : console === 'azure'
             ? '/azure/tickets'
             : `/practice?family=${encodeURIComponent(scenarioId)}`,
-      actionLabel: console ? 'Open the console' : `Practise ${scenarioId}`,
+      actionLabel: console ? 'Open the console' : `Practice ${scenarioId}`,
     })
   }
 
@@ -4306,7 +4306,7 @@ export async function loadProgress(): Promise<ProgressView> {
   const verificationSummary = summarizeVerificationChecks(verificationChecks)
 
   const rows: ProgressRow[] = mergedStats.map((entry) => {
-    // Ticket families are practised from the queue; a console scenario only
+    // Ticket families are practiced from the queue; a console scenario only
     // exists in its console, so its row links there and says so.
     const console: SimulatorId | null =
       intune.titles[entry.scenarioId] !== undefined

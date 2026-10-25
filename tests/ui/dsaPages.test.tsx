@@ -195,10 +195,10 @@ describe('one problem', () => {
     expect(screen.getByText('The input is a binary search tree')).toBeTruthy()
     // Every cue's technique carries its cost, including the caveats.
     expect(screen.getByText('O(n) average, O(n squared) worst')).toBeTruthy()
-    const practise = screen.getByRole('link', {
-      name: 'Practise: Two entries that meet the target',
+    const practice = screen.getByRole('link', {
+      name: 'Practice: Two entries that meet the target',
     })
-    expect(practise.getAttribute('href')).toBe('/dsa/pair-sum-sorted')
+    expect(practice.getAttribute('href')).toBe('/dsa/pair-sum-sorted')
   })
 
   it('answers a slug that is not in the bank with a way back', async () => {
