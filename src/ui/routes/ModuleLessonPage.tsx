@@ -271,7 +271,9 @@ export function ModuleLessonPage() {
               ? 'Matching tickets'
               : practice.kind === 'intune'
                 ? 'Intune console'
-                : 'Job targets'}
+                : practice.kind === 'azure'
+                  ? 'Azure console'
+                  : 'Job targets'}
           </span>
         </div>
 
@@ -330,6 +332,29 @@ export function ModuleLessonPage() {
                   All Intune tickets
                 </Link>
                 <Link className={styles.practiceWhole} to="/intune">
+                  Open the console
+                </Link>
+              </div>
+            </>
+          ) : practice.kind === 'azure' ? (
+            <>
+              <p className={styles.sectionText}>
+                This module is worked in the Azure console rather than the ticket queue. The
+                button opens the console ticket this lesson follows; the inventory it acts on is
+                the next link. A ticket counts once the subscription agrees it is finished, not
+                when the last action has been pressed.
+              </p>
+              <div className={styles.practiceRow}>
+                <Link
+                  className={styles.primaryButton}
+                  to={`/azure/tickets?template=${practice.templateId}`}
+                >
+                  Practise this module
+                </Link>
+                <Link className={styles.practiceLink} to="/azure/tickets">
+                  All Azure tickets
+                </Link>
+                <Link className={styles.practiceWhole} to="/azure">
                   Open the console
                 </Link>
               </div>

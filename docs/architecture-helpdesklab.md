@@ -80,7 +80,7 @@ HelpDeskLab/
       scoring/                  # rubric types, spec evaluator, bands, feedback
       session/                  # ticket lifecycle, caller dialogue, resolution
       progress/                 # XP, streaks, Leitner scheduling, mastery stats
-      curriculum/               # the nineteen-module course, exit criteria, evidence folding
+      curriculum/               # the twenty-two-module course, exit criteria, evidence folding
       appearance/               # the workspace theme preference (pure, no DOM)
       targets/                  # job listings → skills, coverage, recommendations,
                                 #   interview templates, share-safe export shape
@@ -930,13 +930,15 @@ Practice → generate/select ticket → session active
 
 | Route | Purpose |
 |-------|---------|
-| `/` | Dashboard: the nineteen-module course, module progress, next step in the course |
+| `/` | Dashboard: the twenty-two-module course, module progress, next step in the course |
 | `/modules/:moduleId` | Lesson for a playable module: the idea, one worked example, and the way into the tickets it is judged on |
 | `/practice` | Scenario family picker + difficulty; "surprise me" |
 | `/ticket/:sessionId` | Workspace: ticket + caller chat, terminal, quick actions, resolve flow |
 | `/debrief/:sessionId` | Score breakdown, timeline, expert path, retry actions |
 | `/progress` | Mastery per family, attempt history, Leitner due list, hint habits, how you verify callers, and where you un-run |
 | `/settings` | Workspace theme and terminal surface, hint price (default and per scenario family), exam mode, backup/export/import, reset data |
+| `/intune` | Device-management console: devices, compliance policies, apps and its practice tickets |
+| `/azure` | Azure console: resources, network rules, access and its practice tickets |
 
 ### Workspace layout
 
@@ -1436,12 +1438,19 @@ kit) so the terminal aesthetic stays bespoke and the bundle stays small.
 
 ### Curriculum tracker
 
-The dashboard is organised around a nineteen-module course rather than around
+The dashboard is organised around a twenty-two-module course rather than around
 features. The catalog lives in `src/domain/curriculum/modules.ts`: one entry per
 module with its position in the course, a scope of scenario families, and two or
 three exit requirements, each naming a counter (`moduleProgress` reads them from
 an evidence object). Copy, scope and targets are written for this app; nothing
 is carried over from a reference product.
+
+Six modules are practised in a console rather than the ticket queue: the Intune
+console's modules name their tickets in `intuneTemplates`, the Azure console's in
+`azureTemplates`, and those ids are also what their XP is folded from. Both
+consoles publish their own scored attempts through an app reader, so the same
+evidence object carries ticket work, session behaviour, device decisions and
+subscription decisions without either module reaching into the other.
 
 Each playable module also has a **lesson**, in
 `src/domain/curriculum/lessons.ts`: a couple of paragraphs on the idea, one

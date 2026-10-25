@@ -22,6 +22,7 @@ import pagesStyles from '../../src/ui/routes/pages.module.css'
 import practiceStyles from '../../src/ui/routes/practice.module.css'
 import targetsStyles from '../../src/ui/routes/targets.module.css'
 import workspaceStyles from '../../src/ui/routes/workspace.module.css'
+import azureStyles from '../../src/modules/azure/ui/azure.module.css'
 import intuneStyles from '../../src/modules/intune/ui/intune.module.css'
 
 /**
@@ -84,6 +85,7 @@ const MODULES = {
   'src/ui/routes/practice.module.css': practiceStyles,
   'src/ui/routes/targets.module.css': targetsStyles,
   'src/ui/routes/workspace.module.css': workspaceStyles,
+  'src/modules/azure/ui/azure.module.css': azureStyles,
   'src/modules/intune/ui/intune.module.css': intuneStyles,
 }
 
@@ -150,6 +152,12 @@ beforeAll(async () => {
     { name: 'intune policies', path: '/intune/policies', ready: 'Windows baseline' },
     { name: 'intune apps', path: '/intune/apps', ready: 'Northgate Portal' },
     { name: 'intune tickets', path: '/intune/tickets', ready: 'Choose a ticket to open it.' },
+    // The Azure console seeds its own subscription, on the same terms.
+    { name: 'azure inventory', path: '/azure', ready: '13 of 13 resources' },
+    { name: 'azure resource', path: '/azure/resources/res-nsg-jump', ready: 'Findings' },
+    { name: 'azure network', path: '/azure/network', ready: 'nsg-web-prod' },
+    { name: 'azure access', path: '/azure/access', ready: 'Rowan Vale (contractor)' },
+    { name: 'azure tickets', path: '/azure/tickets', ready: 'Choose a ticket to open it.' },
     { name: 'not found', path: '/no-such-route' },
   ]
 }, 60_000)

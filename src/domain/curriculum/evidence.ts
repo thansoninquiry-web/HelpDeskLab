@@ -68,6 +68,23 @@ const INTUNE_TEMPLATE = {
   owner: 'tpl-wrong-owner',
 } as const
 
+/**
+ * The Azure ticket behind each requirement that names one decision, on the same
+ * terms: stable ids, and a renamed template stops counting until this table is
+ * updated, which is why the module tests read the same ids.
+ */
+const AZURE_TEMPLATE = {
+  start: 'tpl-vm-stopped',
+  idle: 'tpl-vm-idle-cost',
+  scale: 'tpl-app-throttled',
+  publicBlob: 'tpl-storage-public',
+  softDelete: 'tpl-storage-soft-delete',
+  tls: 'tpl-storage-tls',
+  role: 'tpl-rbac-owner',
+  https: 'tpl-nsg-blocks-https',
+  rdp: 'tpl-nsg-open-rdp',
+} as const
+
 function commandLine(action: SessionAction): string {
   const command = action.input.command
   return typeof command === 'string' ? command.trim() : ''
@@ -258,6 +275,22 @@ export function evidenceFrom(input: {
     /** Passes split by template, for a requirement that names one ticket. */
     passesByTemplate?: Readonly<Record<string, number>>
   }
+  /**
+   * Subscription work from the Azure console, passed in for the same reason: an
+   * Azure attempt keeps no action log and no world for this reader to fold.
+   */
+  azure?: {
+    resolved: number
+    passed: number
+    readBeforeFix?: number
+    perfectDiagnosis?: number
+    perfectSafety?: number
+    /** Distinct security decisions passed: anonymous reads, retention, TLS, role. */
+    securityDecisions?: number
+    /** Passes on the two networking tickets, counted rather than distinct. */
+    networkPasses?: number
+    passesByTemplate?: Readonly<Record<string, number>>
+  }
 }): ModuleEvidence {
   const evidence = emptyEvidence()
   const { history, sessions, actions, listings } = input
@@ -279,6 +312,27 @@ export function evidenceFrom(input: {
   evidence.intuneWipePasses = passes[INTUNE_TEMPLATE.wipe] ?? 0
   evidence.intuneStaleCleared = passes[INTUNE_TEMPLATE.stale] ?? 0
   evidence.intuneOwnershipPasses = passes[INTUNE_TEMPLATE.owner] ?? 0
+
+  const azure = input.azure
+  evidence.azureTicketsResolved = azure?.resolved ?? 0
+  evidence.azurePasses = azure?.passed ?? 0
+  evidence.azureReadBeforeFix = azure?.readBeforeFix ?? 0
+  evidence.azurePerfectDiagnosis = azure?.perfectDiagnosis ?? 0
+  evidence.azurePerfectSafety = azure?.perfectSafety ?? 0
+  evidence.azureSecurityDecisions = azure?.securityDecisions ?? 0
+  evidence.azureNetworkPasses = azure?.networkPasses ?? 0
+  // One template per requirement, for the same reason as the device console: a
+  // closed cost ticket does not demonstrate closing a public blob account.
+  const azurePasses = azure?.passesByTemplate ?? {}
+  evidence.azureVmsStarted = azurePasses[AZURE_TEMPLATE.start] ?? 0
+  evidence.azureVmsDeallocated = azurePasses[AZURE_TEMPLATE.idle] ?? 0
+  evidence.azureSitesScaled = azurePasses[AZURE_TEMPLATE.scale] ?? 0
+  evidence.azurePublicBlobClosed = azurePasses[AZURE_TEMPLATE.publicBlob] ?? 0
+  evidence.azureSoftDeleteEnabled = azurePasses[AZURE_TEMPLATE.softDelete] ?? 0
+  evidence.azureTlsEnforced = azurePasses[AZURE_TEMPLATE.tls] ?? 0
+  evidence.azureRoleCorrected = azurePasses[AZURE_TEMPLATE.role] ?? 0
+  evidence.azureHttpsOpened = azurePasses[AZURE_TEMPLATE.https] ?? 0
+  evidence.azureRdpClosed = azurePasses[AZURE_TEMPLATE.rdp] ?? 0
 
   /*
    * A voicemail is a property of the attempt, not of the family: any ticket can

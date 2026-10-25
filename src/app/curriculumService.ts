@@ -9,6 +9,7 @@ import {
 } from '../domain/curriculum/modules'
 import { evidenceFrom } from '../domain/curriculum/evidence'
 import { lessonFor, type ModuleLesson } from '../domain/curriculum/lessons'
+import { loadAzureProgress } from './azureProgress'
 import { loadIntuneProgress } from './intuneProgress'
 import { getLocalDatabase } from './persistenceService'
 
@@ -34,10 +35,10 @@ export interface ModuleView {
   xp: number
   /**
    * How the module is practised: a ticket from its lesson's first family, a
-   * ticket in the Intune console, the Job targets page, or nowhere because the
-   * module is not playable.
+   * ticket in the Intune or Azure console, the Job targets page, or nowhere
+   * because the module is not playable.
    */
-  practice: 'tickets' | 'targets' | 'intune' | null
+  practice: 'tickets' | 'targets' | 'intune' | 'azure' | null
   /** The one requirement to work on next, if the module is not finished. */
   nextRequirement: ModuleRequirementView | null
   requirements: readonly ModuleRequirementView[]
@@ -117,19 +118,27 @@ export async function loadModuleLesson(moduleId: string): Promise<ModuleLessonVi
  */
 export async function loadCurriculum(): Promise<CurriculumView> {
   const db = await getLocalDatabase()
-  const [ticketHistory, sessions, actions, listings, intune] = await Promise.all([
+  const [ticketHistory, sessions, actions, listings, intune, azure] = await Promise.all([
     db.scores.listHistory(),
     db.sessions.listRecent(HISTORY_SCAN),
     db.actions.listRecent(HISTORY_SCAN),
     db.targets.list(),
     loadIntuneProgress(),
+    loadAzureProgress(),
   ])
 
-  // Intune attempts count as scored attempts — they are real work, judged and
+  // Console attempts count as scored attempts — they are real work, judged and
   // dated — and their own numbers come in beside the ticket history because
   // there is no session for this reader to fold them from.
-  const history = [...ticketHistory, ...intune.history]
-  const evidence = evidenceFrom({ history, sessions, actions, listings, intune: intune.evidence })
+  const history = [...ticketHistory, ...intune.history, ...azure.history]
+  const evidence = evidenceFrom({
+    history,
+    sessions,
+    actions,
+    listings,
+    intune: intune.evidence,
+    azure: azure.evidence,
+  })
 
   const xpByFamily = new Map<string, number>()
   for (const entry of history) {
@@ -140,12 +149,13 @@ export async function loadCurriculum(): Promise<CurriculumView> {
   const modules: ModuleView[] = CURRICULUM.map((module) => {
     const progress = moduleProgress(module, evidence)
     progressById[module.id] = progress
-    // The console's tickets earn XP under their template id, so both kinds of
-    // scope are folded the same way.
-    const xp = [...module.scope, ...(module.intuneTemplates ?? [])].reduce(
-      (total, family) => total + (xpByFamily.get(family) ?? 0),
-      0,
-    )
+    // Each console's tickets earn XP under their template id, so every kind of
+    // scope is folded the same way.
+    const xp = [
+      ...module.scope,
+      ...(module.intuneTemplates ?? []),
+      ...(module.azureTemplates ?? []),
+    ].reduce((total, family) => total + (xpByFamily.get(family) ?? 0), 0)
     return toView(module, progress, xp)
   })
 

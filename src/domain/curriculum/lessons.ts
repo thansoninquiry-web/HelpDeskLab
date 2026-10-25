@@ -65,6 +65,11 @@ export type LessonPractice =
        */
       templateId: string
     }
+  | {
+      kind: 'azure'
+      /** The Azure console ticket the Practise button opens. */
+      templateId: string
+    }
   | { kind: 'targets' }
 
 /**
@@ -798,6 +803,129 @@ export const MODULE_LESSONS: Readonly<Record<string, ModuleLesson>> = {
         'A retire on a leaver is worth the full safety mark; the same ticket closed with a wipe is the mistake the module is built to catch.',
     },
     practice: { kind: 'intune', templateId: 'tpl-leaver-retire' },
+  },
+
+  'azure-compute': {
+    concept: [
+      'A cloud machine has more than two states, and the difference between them is money. A machine that is running bills for compute. A machine that has been shut down inside the guest is still allocated, so it still bills. A machine that has been deallocated has released the compute and keeps only its disks. The console shows one column, and reading it properly is most of the work.',
+      'That makes two tickets look opposite and be the same question. A machine nobody can reach is often deallocated rather than broken, and starting it is a whole fix. A machine that costs too much is often running when its own tag says it should be off, and deallocating it is a whole fix. Neither one is repaired by deleting and rebuilding, which is slower, loses whatever was only on that disk, and turns a two-minute change into an outage.',
+      'The same reading applies to a plan rather than a machine. An App Service on a free plan has a daily CPU quota; when the quota runs out the site is throttled, not broken, so the application log stays clean while the gateway times out in front of it. The record says which plan it is on, and no amount of restarting changes a quota.',
+    ],
+    example: {
+      title: 'A finance box that is switched off rather than broken',
+      scenario:
+        'The finance reporting machine has been unreachable since the weekend, month-end is tomorrow, and the console still lists it. Nobody deleted anything.',
+      steps: [
+        step(
+          'Open the machine and read the record before acting',
+          'The power state and the schedule tag are the two facts that decide the fix. A deallocated machine is a switch, not a repair.',
+        ),
+        step(
+          'Start the machine rather than rebuilding it',
+          'Starting keeps the disks, the network settings and the machine name. A delete-and-rebuild takes the local state with it and takes longer.',
+        ),
+        step(
+          'Re-read the record and confirm the power state changed',
+          'The estate is the evidence. A confirmation toast is not the machine running.',
+        ),
+        step(
+          'Check my work and read the category split',
+          'The read before the change is diagnosis; the start and the new state are resolution. A read afterwards does not earn the first one.',
+        ),
+      ],
+      result:
+        'One read before the change, the machine running, and nothing deleted is a clean 100 on both the diagnosis and the safety mark.',
+    },
+    flow: {
+      title: 'Work it in order',
+      intro:
+        'The console is a state machine, so the order is the evidence. Check these off as you go: the boxes are for this visit and are not scored, while the read and the actions behind them are.',
+      steps: [
+        {
+          action: 'Open the Azure ticket the module starts on',
+          evidence: 'The ticket names one resource, its group, and the state the request starts from.',
+        },
+        {
+          action: 'Press Read the resource record before any action',
+          evidence: 'A read event on the resource timeline, before the first change.',
+        },
+        {
+          action: 'Name the setting behind the symptom and take the smallest action that changes it',
+          evidence: 'An applied action whose confirmation names what it did to this resource.',
+        },
+        {
+          action: 'Re-read the resource page, then press Check my work',
+          evidence: 'The findings changed on the estate, and the score shows diagnosis and resolution both paid.',
+        },
+      ],
+      finish:
+        'Before you close: the record was read first, the action matches the setting that was wrong, and the resource page — not the toast — shows the new state.',
+    },
+    practice: { kind: 'azure', templateId: 'tpl-vm-stopped' },
+  },
+
+  'azure-network': {
+    concept: [
+      'A network security group is a list of rules read from the lowest priority number down, and it ends in an implicit deny. That last part is the one people forget: a port with no allow rule is closed even though nothing on the list mentions it. A site that suddenly stops answering on 443 after a group was tidied is usually a missing rule, not a new deny.',
+      'The opposite fault looks similar on a ticket and is worse in practice: a rule that allows a management port from the internet. RDP and SSH are the two that matter, because a password is the only thing between a stranger and an administrator session. The people who need them already have a way in — here, the VPN — so the rule is a leftover with a standing invitation attached.',
+      'Both fixes are small and both are local to the group. Add only the rule that is missing; remove only the rule that is wrong. Replacing the group with a permissive one, or adding a broad allow to be safe, closes the ticket and creates the next one, and the safety mark is there to notice.',
+    ],
+    example: {
+      title: 'HTTPS dropped by a group that was tightened',
+      scenario:
+        'The portal loads over plain HTTP and times out on HTTPS. The app is healthy, the certificate is fine, and the only change was to the security group in front of it.',
+      steps: [
+        step(
+          'Read the group’s inbound rules, lowest priority first',
+          'The list says what is allowed. The absence of a 443 rule says why HTTPS is dropped, because the default deny takes whatever is not listed.',
+        ),
+        step(
+          'Add an allow rule for 443 from the internet and leave the rest alone',
+          'One rule restores the path. Widening the existing 80 rule, or adding an allow-any, would also make the site load and would reopen what the group was tightened to close.',
+        ),
+        step(
+          'Re-read the rules and confirm 443 is allowed and 80 is unchanged',
+          'The group is the evidence, and the second read is what proves the change was narrow.',
+        ),
+      ],
+      result:
+        'Adding the one missing rule, with the read before it, passes the ticket without losing the safety mark.',
+    },
+    practice: { kind: 'azure', templateId: 'tpl-nsg-blocks-https' },
+  },
+
+  'azure-access': {
+    concept: [
+      'Exposure in a subscription is mostly settings that look reasonable on their own. Public blob access makes a container reachable without a signed request. Soft delete off means a bad job overwrites the only copy. A minimum TLS version of 1.0 keeps an obsolete protocol negotiable. None of them produce an error, which is why each one becomes a ticket rather than an outage.',
+      'Each also has a fix that is smaller than it first looks, and a tempting fix that is larger. Turning public access off closes anonymous reads without rotating a key or deleting the account. Turning soft delete on protects the next write, not the file already lost, and saying so is part of closing the ticket honestly. Raising TLS refuses old clients rather than quietly downgrading them, so it is the one change worth checking against the client list first.',
+      'Access is the same shape at a different layer. A role is granted over a scope, and Contributor can deploy while Owner can also grant access and delete anything. A contractor who needs to deploy does not need Owner, and removing their access entirely would stop the work the ticket says must continue. Shrinking the role is the answer that keeps both facts true.',
+    ],
+    example: {
+      title: 'A contractor with more access than the job',
+      scenario:
+        'An access review finds a contractor holding Owner on the production resource group. They deploy the portal every week and their engagement runs another month.',
+      steps: [
+        step(
+          'Read a resource in the group and see the role that is wider than the job',
+          'The finding names the principal and the scope. Owner can grant access and delete the group; neither is part of deploying.',
+        ),
+        step(
+          'Change the assignment to Contributor on the same scope',
+          'Contributor keeps the deployments working and takes away the two powers the ticket objects to. The scope does not change.',
+        ),
+        step(
+          'Re-read the access page and confirm the role, not just the toast',
+          'The assignment list is the evidence. A refusal in the confirmation is not a changed role.',
+        ),
+        step(
+          'Check my work and read the explanation',
+          'The debrief names why removing access was the wrong read of the same ticket.',
+        ),
+      ],
+      result:
+        'Shrinking the role rather than deleting it keeps the work and clears the review, which is the whole decision.',
+    },
+    practice: { kind: 'azure', templateId: 'tpl-rbac-owner' },
   },
 }
 

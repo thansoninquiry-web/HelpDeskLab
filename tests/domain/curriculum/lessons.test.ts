@@ -3,6 +3,7 @@ import { CURRICULUM } from '../../../src/domain/curriculum/modules'
 import { lessonFor, MODULE_LESSONS } from '../../../src/domain/curriculum/lessons'
 import { listVariants } from '../../../src/domain/generator'
 import { INTUNE_TICKET_TEMPLATES } from '../../../src/modules/intune/tickets/templates'
+import { AZURE_TICKET_TEMPLATES } from '../../../src/modules/azure/tickets/templates'
 
 const playable = CURRICULUM.filter((module) => module.status === 'playable')
 const planned = CURRICULUM.filter((module) => module.status === 'planned')
@@ -93,6 +94,15 @@ describe('module lessons', () => {
         continue
       }
 
+      if (lesson.practice.kind === 'azure') {
+        // The Azure console keeps the same bargain: its templates are named
+        // separately from the generator's families.
+        expect(module.azureTemplates, `${module.id} templates`).toContain(
+          lesson.practice.templateId,
+        )
+        continue
+      }
+
       expect(lesson.practice.families.length, `${module.id} families`).toBeGreaterThan(0)
       for (const family of lesson.practice.families) {
         expect(module.scope, `${module.id} → ${family}`).toContain(family)
@@ -171,6 +181,30 @@ describe('module lessons', () => {
       'intune-apps',
       'intune-lifecycle',
     ])
+
+    const azureModules = playable.filter(
+      (module) => lessonFor(module.id)?.practice.kind === 'azure',
+    )
+    expect(azureModules.map((module) => module.id)).toEqual([
+      'azure-compute',
+      'azure-network',
+      'azure-access',
+    ])
+
+    const azureTemplateIds = new Set(AZURE_TICKET_TEMPLATES.map((template) => template.id))
+    for (const module of azureModules) {
+      const practice = lessonFor(module.id)?.practice
+      if (practice?.kind !== 'azure') {
+        continue
+      }
+      expect(azureTemplateIds, `${module.id} → ${practice.templateId}`).toContain(
+        practice.templateId,
+      )
+      expect(module.azureTemplates, `${module.id} XP templates`).toContain(
+        practice.templateId,
+      )
+      expect(module.scope, `${module.id} families`).toEqual([])
+    }
 
     const templateIds = new Set(INTUNE_TICKET_TEMPLATES.map((template) => template.id))
     for (const module of consoleModules) {

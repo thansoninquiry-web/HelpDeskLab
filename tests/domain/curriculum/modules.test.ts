@@ -30,6 +30,9 @@ const COURSE_TITLES = [
   'Intune: Device Compliance',
   'Intune: App Deployment',
   'Intune: Device Lifecycle',
+  'Azure: Compute and Cost',
+  'Azure: Network Exposure',
+  'Azure: Storage and Access',
 ]
 
 const FAMILIES = SCENARIO_FAMILIES.map((family) => family.id)
@@ -47,11 +50,11 @@ function moduleByNumber(number: number): CurriculumModule {
 }
 
 describe('curriculum catalog', () => {
-  it('lists the nineteen course modules in order', () => {
-    expect(CURRICULUM).toHaveLength(19)
+  it('lists the twenty-two course modules in order', () => {
+    expect(CURRICULUM).toHaveLength(22)
     expect(CURRICULUM.map((module) => module.title)).toEqual(COURSE_TITLES)
     expect(CURRICULUM.map((module) => module.number)).toEqual(
-      Array.from({ length: 19 }, (_, index) => index + 1),
+      Array.from({ length: 22 }, (_, index) => index + 1),
     )
   })
 
@@ -92,7 +95,7 @@ describe('curriculum catalog', () => {
   })
 
   it('builds every module in the course', () => {
-    expect(CURRICULUM.filter((module) => module.status === 'playable')).toHaveLength(19)
+    expect(CURRICULUM.filter((module) => module.status === 'playable')).toHaveLength(22)
     expect(CURRICULUM.filter((module) => module.status === 'planned')).toHaveLength(0)
   })
 
@@ -225,6 +228,47 @@ describe('curriculum catalog', () => {
       expect(module.scope).toEqual([])
       expect(module.intuneTemplates?.length ?? 0).toBeGreaterThan(0)
     }
+
+    // The Azure console keeps its tickets in its own field, for the same reason.
+    const azureModules = CURRICULUM.filter((module) => module.azureTemplates !== undefined)
+    expect(azureModules.map((module) => module.number)).toEqual([20, 21, 22])
+    for (const module of azureModules) {
+      expect(module.scope).toEqual([])
+      expect(module.intuneTemplates).toBeUndefined()
+      expect(module.azureTemplates?.length ?? 0).toBeGreaterThan(0)
+    }
+  })
+
+  it('judges the Azure modules on the work the console stores', () => {
+    const compute = moduleByNumber(20)
+    expect(compute.requirements.map((entry) => entry.measure)).toEqual([
+      'azureReadBeforeFix',
+      'azureVmsStarted',
+      'azureVmsDeallocated',
+      'azureSitesScaled',
+      'azurePerfectSafety',
+    ])
+
+    const network = moduleByNumber(21)
+    expect(network.requirements.map((entry) => entry.measure)).toEqual([
+      'azureHttpsOpened',
+      'azureRdpClosed',
+      'azureNetworkPasses',
+    ])
+    // Both tickets, not one worked twice.
+    expect(network.requirements.at(-1)?.target).toBe(2)
+
+    const access = moduleByNumber(22)
+    expect(access.requirements.map((entry) => entry.measure)).toEqual([
+      'azurePublicBlobClosed',
+      'azureSoftDeleteEnabled',
+      'azureTlsEnforced',
+      'azureRoleCorrected',
+      'azureSecurityDecisions',
+    ])
+    // Four exposure tickets, three decisions: one may be left undone.
+    expect(access.requirements.at(-1)?.target).toBe(3)
+    expect(access.azureTemplates).toHaveLength(4)
   })
 })
 

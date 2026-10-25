@@ -2,10 +2,10 @@ import { SCENARIO_FAMILIES } from '../generator'
 import type { ScenarioId } from '../tickets/types'
 
 /**
- * The course the app is organised around: nineteen modules, sixteen on the
- * service desk and three in the device console. Each has its own scope and exit
- * criteria. Copy, scope and targets are our own; nothing here is borrowed from
- * the reference product.
+ * The course the app is organised around: twenty-two modules, sixteen on the
+ * service desk, three in the device console and three in the Azure console. Each
+ * has its own scope and exit criteria. Copy, scope and targets are our own;
+ * nothing here is borrowed from the reference product.
  */
 
 export type ModuleStatus = 'playable' | 'planned'
@@ -82,6 +82,25 @@ export const MODULE_MEASURES = {
   intuneOwnershipPasses: 0,
   /** Distinct lifecycle decisions passed, for the module's capstone. */
   intuneLifecycleDecisions: 0,
+  /** Subscription work done in the Azure console, which never opens a session. */
+  azureTicketsResolved: 0,
+  azurePasses: 0,
+  azureReadBeforeFix: 0,
+  azurePerfectDiagnosis: 0,
+  azurePerfectSafety: 0,
+  /** One template each, named for the decision it teaches. */
+  azureVmsStarted: 0,
+  azureVmsDeallocated: 0,
+  azureSitesScaled: 0,
+  azureHttpsOpened: 0,
+  azureRdpClosed: 0,
+  azureNetworkPasses: 0,
+  azurePublicBlobClosed: 0,
+  azureSoftDeleteEnabled: 0,
+  azureTlsEnforced: 0,
+  azureRoleCorrected: 0,
+  /** Distinct security decisions passed, for the module's capstone. */
+  azureSecurityDecisions: 0,
 } as const
 
 export type ModuleMeasure = keyof typeof MODULE_MEASURES
@@ -119,6 +138,12 @@ export interface CurriculumModule {
    * in `scope`, which is the service-desk generator's families.
    */
   intuneTemplates?: readonly string[]
+  /**
+   * Azure templates whose attempts earn XP for this module, on the same terms as
+   * the device console: a separate simulator with its own tickets, named here
+   * rather than in `scope`.
+   */
+  azureTemplates?: readonly string[]
   status: ModuleStatus
   requirements: readonly ModuleRequirement[]
   /** Only set while a module has no lessons. */
@@ -798,6 +823,135 @@ export const CURRICULUM: readonly CurriculumModule[] = [
         'Finish three different lifecycle decisions',
         'Retire, wipe and stale are three answers to three questions. Each one is passed on its own ticket, and the capstone asks for all three rather than one repeated.',
         'intuneLifecycleDecisions',
+        3,
+      ),
+    ],
+  },
+  {
+    id: 'azure-compute',
+    number: 20,
+    title: 'Azure: Compute and Cost',
+    summary: 'Machines that are off for the wrong reason, and the ones that bill while idle.',
+    scope: [],
+    azureTemplates: ['tpl-vm-stopped', 'tpl-vm-idle-cost', 'tpl-app-throttled'],
+    status: 'playable',
+    requirements: [
+      requirement(
+        'read-record',
+        'Read the resource record before changing anything',
+        'A portal row says a machine is down or costly; the record says why. The console records the read, so diagnosis is scored from what you looked at before the first change.',
+        'azureReadBeforeFix',
+        1,
+      ),
+      requirement(
+        'start-stopped',
+        'Bring a deallocated machine back up',
+        'A deallocated machine is not broken, and its disks are still there. Starting it is the whole fix; deleting and rebuilding is slower and takes the local state with it.',
+        'azureVmsStarted',
+        1,
+      ),
+      requirement(
+        'stop-idle',
+        'Stop paying for a machine nobody is using',
+        'A shutdown inside the guest still bills, because the allocation is still held. Deallocating releases the compute and keeps the disks, so the machine survives the saving.',
+        'azureVmsDeallocated',
+        1,
+      ),
+      requirement(
+        'right-size-a-site',
+        'Get a throttled site off the free quota',
+        'A clean application log beside a gateway timeout points at the plan, not the code. Moving to a paid plan removes the daily CPU quota; restarting only resets the symptoms.',
+        'azureSitesScaled',
+        1,
+      ),
+      requirement(
+        'no-collateral',
+        'Save money without deleting anything',
+        'No cost ticket is closed by deleting a machine or a resource group. The safety mark is lost as soon as one is tried, and the data goes with it.',
+        'azurePerfectSafety',
+        1,
+      ),
+    ],
+  },
+  {
+    id: 'azure-network',
+    number: 21,
+    title: 'Azure: Network Exposure',
+    summary: 'The implicit deny, the port nobody meant to leave open, and the rule that closes it.',
+    scope: [],
+    azureTemplates: ['tpl-nsg-blocks-https', 'tpl-nsg-open-rdp'],
+    status: 'playable',
+    requirements: [
+      requirement(
+        'open-https',
+        'Restore HTTPS the security group is dropping',
+        'A network security group ends with an implicit deny, so a missing rule closes a port as surely as a deny does. Read the rules, find what is not there, and add only that.',
+        'azureHttpsOpened',
+        1,
+      ),
+      requirement(
+        'close-rdp',
+        'Close a management port that is open to the internet',
+        'RDP from the internet is a standing invitation, and the VPN already covers the people who need it. Removing the rule puts the default deny back without touching the rest of the group.',
+        'azureRdpClosed',
+        1,
+      ),
+      requirement(
+        'pass-both-network-tickets',
+        'Pass both networking tickets',
+        'One ticket is closed by adding a rule and the other by removing one. A learner who only ever adds rules, or only ever removes them, has not read the group.',
+        'azureNetworkPasses',
+        2,
+      ),
+    ],
+  },
+  {
+    id: 'azure-access',
+    number: 22,
+    title: 'Azure: Storage and Access',
+    summary: 'Anonymous blobs, retention, old protocols, and a role wider than the job.',
+    scope: [],
+    azureTemplates: [
+      'tpl-storage-public',
+      'tpl-storage-soft-delete',
+      'tpl-storage-tls',
+      'tpl-rbac-owner',
+    ],
+    status: 'playable',
+    requirements: [
+      requirement(
+        'close-public-blobs',
+        'Turn off anonymous blob access',
+        'Public blob access is a switch on the account, and turning it off is the fix. Rotating keys closes nothing, because no key was used to read the blob.',
+        'azurePublicBlobClosed',
+        1,
+      ),
+      requirement(
+        'enable-retention',
+        'Make the next deleted blob recoverable',
+        'Soft delete belongs to the account, not to the job that broke it. It protects the next write; the file already lost stays lost, and the note should say so.',
+        'azureSoftDeleteEnabled',
+        1,
+      ),
+      requirement(
+        'raise-tls',
+        'Refuse a protocol the scan calls obsolete',
+        'The minimum TLS version is one setting, and raising it refuses old clients rather than negotiating down. Check the client list before making a change that can lock one out.',
+        'azureTlsEnforced',
+        1,
+      ),
+      requirement(
+        'shrink-a-role',
+        'Give a contractor the access the job needs, and no more',
+        'Contributor can deploy and manage; Owner can also grant access and delete anything. The ticket keeps the work, so the role shrinks rather than disappearing.',
+        'azureRoleCorrected',
+        1,
+      ),
+      requirement(
+        'three-decisions',
+        'Finish three different exposure decisions',
+        'Anonymous reads, retention, protocol and role are four answers to four questions. The capstone asks for three of them, each passed on its own ticket rather than one repeated.',
+        'azureSecurityDecisions',
         3,
       ),
     ],

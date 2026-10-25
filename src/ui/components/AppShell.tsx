@@ -18,6 +18,7 @@ const navigation = [
   { to: '/', label: 'Modules', end: true, icon: 'grid' },
   { to: '/practice', label: 'Practice', end: false, icon: 'ticket' },
   { to: '/intune', label: 'Intune', end: false, icon: 'device' },
+  { to: '/azure', label: 'Azure', end: false, icon: 'cloud' },
   { to: '/targets', label: 'Job targets', end: false, icon: 'target' },
   { to: '/progress', label: 'Progress', end: false, icon: 'chart' },
   { to: '/settings', label: 'Settings', end: false, icon: 'gear' },
@@ -70,6 +71,14 @@ function Icon({ name }: { name: (typeof navigation)[number]['icon'] }) {
       <svg {...common}>
         <rect x="3" y="5" width="18" height="11" rx="1.5" />
         <path d="M2 19h20" />
+      </svg>
+    )
+  }
+  if (name === 'cloud') {
+    // A cloud outline: the Azure section is about the subscription behind the desk.
+    return (
+      <svg {...common}>
+        <path d="M7 18h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6 11a3.5 3.5 0 0 0 1 7Z" />
       </svg>
     )
   }

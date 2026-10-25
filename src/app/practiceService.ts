@@ -121,6 +121,7 @@ import {
 } from '../domain/progress/hints'
 import { foldScenarioStats } from '../domain/progress/leitner'
 import { summarizeHistory, type ProgressSummary, type RankProgress } from '../domain/progress/rank'
+import { loadAzureProgress } from './azureProgress'
 import { loadIntuneProgress } from './intuneProgress'
 import {
   familyRewinds,
@@ -705,7 +706,7 @@ export interface ReferenceStepView {
   detail?: string
 }
 
-export type SimulatorId = 'service-desk' | 'intune'
+export type SimulatorId = 'service-desk' | 'intune' | 'azure'
 
 export interface ProgressRow {
   scenarioId: string
@@ -4151,6 +4152,8 @@ export interface WeakTopicOptions {
   titles?: Record<string, string>
   /** Scenarios practised in the Intune console rather than the ticket queue. */
   intuneScenarioIds?: ReadonlySet<string>
+  /** Scenarios practised in the Azure console rather than the ticket queue. */
+  azureScenarioIds?: ReadonlySet<string>
 }
 
 /**
@@ -4167,6 +4170,7 @@ export function computeWeakTopics(
 ): WeakTopic[] {
   const titles = options.titles ?? SCENARIO_TITLES
   const intune = options.intuneScenarioIds ?? new Set<string>()
+  const azure = options.azureScenarioIds ?? new Set<string>()
   const byScenario = new Map<string, ScoreHistoryEntry[]>()
   for (const entry of history) {
     const existing = byScenario.get(entry.scenarioId)
@@ -4223,7 +4227,11 @@ export function computeWeakTopics(
       }
     }
 
-    const console = intune.has(scenarioId)
+    const console: SimulatorId | null = intune.has(scenarioId)
+      ? 'intune'
+      : azure.has(scenarioId)
+        ? 'azure'
+        : null
     const recommendation =
       weakestCategory && weakestCategory.percent < 100
         ? console
@@ -4241,10 +4249,13 @@ export function computeWeakTopics(
       passRate,
       weakestCategory,
       recommendation,
-      simulator: console ? 'intune' : 'service-desk',
-      href: console
-        ? '/intune/tickets'
-        : `/practice?family=${encodeURIComponent(scenarioId)}`,
+      simulator: console ?? 'service-desk',
+      href:
+        console === 'intune'
+          ? '/intune/tickets'
+          : console === 'azure'
+            ? '/azure/tickets'
+            : `/practice?family=${encodeURIComponent(scenarioId)}`,
       actionLabel: console ? 'Open the console' : `Practise ${scenarioId}`,
     })
   }
@@ -4286,23 +4297,32 @@ export async function loadProgress(): Promise<ProgressView> {
   // The Intune console scores its own attempts without opening a ticket session,
   // so its finished work joins the ticket history here rather than in another
   // table: XP, rank, streaks and the scenario list then read one history.
-  const intune = await loadIntuneProgress()
-  const mergedHistory = [...history, ...intune.history]
-  const mergedStats = [...stats, ...intune.stats]
-  const titles = { ...SCENARIO_TITLES, ...intune.titles }
+  const [intune, azure] = await Promise.all([loadIntuneProgress(), loadAzureProgress()])
+  const mergedHistory = [...history, ...intune.history, ...azure.history]
+  const mergedStats = [...stats, ...intune.stats, ...azure.stats]
+  const titles = { ...SCENARIO_TITLES, ...intune.titles, ...azure.titles }
 
   const summary = summarizeHistory(mergedHistory, Date.now())
   const verificationSummary = summarizeVerificationChecks(verificationChecks)
 
   const rows: ProgressRow[] = mergedStats.map((entry) => {
-    // Ticket families are practised from the queue; an Intune scenario only
+    // Ticket families are practised from the queue; a console scenario only
     // exists in its console, so its row links there and says so.
-    const console = intune.titles[entry.scenarioId] !== undefined
+    const console: SimulatorId | null =
+      intune.titles[entry.scenarioId] !== undefined
+        ? 'intune'
+        : azure.titles[entry.scenarioId] !== undefined
+          ? 'azure'
+          : null
     return {
       scenarioId: entry.scenarioId,
       scenarioTitle: titleFor(entry.scenarioId, titles),
-      simulator: console ? 'intune' : 'service-desk',
-      ...(console ? { href: '/intune/tickets' } : {}),
+      simulator: console ?? 'service-desk',
+      ...(console === 'intune'
+        ? { href: '/intune/tickets' }
+        : console === 'azure'
+          ? { href: '/azure/tickets' }
+          : {}),
       attempts: entry.attempts,
       passes: entry.passes,
       bestScore: entry.bestScore,
@@ -4333,6 +4353,7 @@ export async function loadProgress(): Promise<ProgressView> {
     weakTopics: computeWeakTopics(mergedHistory, {
       titles,
       intuneScenarioIds: new Set(Object.keys(intune.titles)),
+      azureScenarioIds: new Set(Object.keys(azure.titles)),
     }),
     hintHabits: hintHabits(scoredSteps, takenHints),
     hintHabitSummary: summarizeHintHabits(scoredSteps, takenHints, scoredHintCounts),
@@ -4363,8 +4384,12 @@ function rewindRows(
 /** Header-sized view: XP, rank, and streak without the recommendation work. */
 export async function loadProgressSummary(): Promise<ProgressSummary> {
   const db = await database()
-  const [history, intune] = await Promise.all([db.scores.listHistory(), loadIntuneProgress()])
-  return summarizeHistory([...history, ...intune.history], Date.now())
+  const [history, intune, azure] = await Promise.all([
+    db.scores.listHistory(),
+    loadIntuneProgress(),
+    loadAzureProgress(),
+  ])
+  return summarizeHistory([...history, ...intune.history, ...azure.history], Date.now())
 }
 
 /** Used by the queue to point at families the target listings ask for. */

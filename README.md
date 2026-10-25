@@ -6,15 +6,17 @@ a simulated IT environment, and explained scoring — all on your machine.
 **Status:** the practice lab is built end to end. Local SQLite persistence (sql.js
 with IndexedDB snapshots, migrations, export/import/reset), the simulated IT
 environment and its consoles, the seeded ticket generator across ten families,
-the ticket workspace, the explaining scoring engine, the nineteen-module course
+the ticket workspace, the explaining scoring engine, the twenty-two-module course
 with a lesson for every playable module, job targets with skills coverage and
 interview prep, the workspace theme and text scale, phone layouts for the
-workspace and both consoles, and the device-management console at `/intune` are
-all in place. There is no hosted instance yet — it runs on your machine. Release
-scope and the open questions are tracked in [docs/roadmap.md](docs/roadmap.md).
+workspace and both consoles, and two administration consoles — device management
+at `/intune` and an Azure subscription at `/azure` — are all in place. There is no
+hosted instance yet — it runs on your machine. Release scope and the open
+questions are tracked in [docs/roadmap.md](docs/roadmap.md).
 
-See [docs/architecture-helpdesklab.md](docs/architecture-helpdesklab.md) for the module design and
-[docs/intune-module.md](docs/intune-module.md) for the device console.
+See [docs/architecture-helpdesklab.md](docs/architecture-helpdesklab.md) for the module design,
+[docs/intune-module.md](docs/intune-module.md) for the device console and
+[docs/azure-module.md](docs/azure-module.md) for the Azure console.
 
 ## Run it
 
@@ -79,7 +81,7 @@ Individual commands: `npm run typecheck`, `npm run lint`, `npm run test:run`.
 - `src/domain/generator/` — seeded ticket generation and ten scenario families
   (PWD-01, NET-01, DHCP-01, M365-01, FS-01, PRN-01, MAIL-01, MAILSEC-01, RDP-01,
   DEP-01) with rubrics and reference paths.
-- `src/domain/curriculum/` — the nineteen-module course, its exit criteria, the
+- `src/domain/curriculum/` — the twenty-two-module course, its exit criteria, the
   lesson written for each playable module, and the evidence folding that turns
   stored history into requirement progress.
 - `src/domain/appearance/` — the workspace theme preference, the dawn-to-dusk
@@ -91,13 +93,17 @@ Individual commands: `npm run typecheck`, `npm run lint`, `npm run test:run`.
   evaluator that explains every deduction.
 - `src/persistence/` — SQLite driver, schema, migrations, IndexedDB snapshots,
   repositories, and backup/import/reset.
-- `src/app/` — database, backup, practice, settings and Intune services (queue,
-  workspace actions, scoring, progress, hint prices, the console's published
-  history).
+- `src/app/` — database, backup, practice, settings, and the Intune and Azure
+  services (queue, workspace actions, scoring, progress, hint prices, each
+  console's published history).
 - `src/modules/intune/` — the device-management console at `/intune`: its own
   types, seeded estate, compliance and action engines, eight practice tickets,
   scoring, `intune_*` tables and pages. It imports the app only for the scoring
   thresholds, and the app reaches it through two functions.
+- `src/modules/azure/` — the Azure console at `/azure`: its own types, seeded
+  subscription, diagnostics and action engines, nine practice tickets, scoring,
+  `azure_*` tables and pages. It imports the app only for the scoring thresholds,
+  and the app reaches it through two functions.
 - `src/ui/` — app shell, dashboard, ticket queue, ticket workspace, debrief,
   job targets, progress, and Settings (workspace theme, hint prices per family,
   and a live database panel).
@@ -145,15 +151,16 @@ are in the middle of a ticket.
 
 ## The course
 
-The dashboard lists the nineteen modules the app is built around, in course order.
-Each one names two to five requirements — pass a ticket in two families, write
-three troubleshooting notes, verify before your first command, hand off an
+The dashboard lists the twenty-two modules the app is built around, in course
+order. Each one names two to five requirements — pass a ticket in two families,
+write three troubleshooting notes, verify before your first command, hand off an
 outage — and shows how much of that your history already covers. Modules 17–19
-are worked in the Intune console rather than the ticket queue: compliance,
-app deployment, and device lifecycle, each judged on the decisions taken and the
-state they leave a device in. All nineteen modules are playable; the catalog
-keeps the `planned` status for a module that has to be listed before it can be
-worked, and a note says what is missing.
+are worked in the Intune console rather than the ticket queue: compliance, app
+deployment, and device lifecycle, each judged on the decisions taken and the
+state they leave a device in. Modules 20–22 are worked in the Azure console:
+compute and cost, network exposure, and storage and access. All twenty-two
+modules are playable; the catalog keeps the `planned` status for a module that
+has to be listed before it can be worked, and a note says what is missing.
 
 Module 5 is the voicemail. One ticket in three arrives as a message rather than a
 conversation: the queue marks it before you open it, and the ticket card shows
@@ -457,6 +464,34 @@ The console is deliberately liftable: its own `intune_*` tables from one
 migration, its own routes and pages, and two functions as the only seam into the
 rest of the app. [docs/intune-module.md](docs/intune-module.md) describes the
 data model, the actions and how to add a ticket template.
+
+## The Azure console
+
+**Azure practice** is the third simulator, at `/azure`: the subscription the
+devices live in rather than the devices themselves. Four resource groups and
+thirteen resources are seeded on first run — virtual machines, storage accounts,
+two network security groups and two App Services — and every action changes
+them. Cost is derived from state, so a deallocated machine stops billing while
+keeping its disks, and the inventory's monthly total follows.
+
+Exposure is computed from each record rather than stored as a verdict. A storage
+account with anonymous blob reads, a group with RDP open to the internet, a free
+App Service plan, a network group with no rule for 443 at all, or a contractor
+holding Owner over production all read as findings, worst first, and **Read the
+resource record** writes the sentence the learner would have seen. The actions
+cover the fixes and the mistakes: start, deallocate, restart, open and close a
+port, turn off public blobs, enable soft delete, require TLS 1.2, scale a plan,
+change a role, and — charged by the scorer — delete a machine or a whole
+resource group. Deleting leaves a tombstone rather than erasing the row, so the
+log and the score still make sense afterwards.
+
+Nine practice tickets each name one seeded resource and the state that resolves
+it. They score out of 100 on the same split as every other attempt: 10 for the
+read before the first change, 55 for the expected actions, 20 for the end state,
+15 for not destroying anything the ticket did not ask for. The rubric categories
+join weak topics and the Progress breakdown, tagged `azure`, and attempts earn XP
+by the same formula. [docs/azure-module.md](docs/azure-module.md) has the data
+model, the tickets and how to add a template.
 
 ## Job targets and listing text
 

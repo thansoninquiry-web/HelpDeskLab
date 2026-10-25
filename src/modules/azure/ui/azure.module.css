@@ -1,0 +1,493 @@
+/* The Azure console reads as its own product inside the lab: denser rows, a
+   quiet header, and the same tokens as everywhere else so both themes hold. */
+
+.page {
+  max-width: var(--max-width);
+}
+
+.nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin: 1.25rem 0 1.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.navLink {
+  padding: 0.4rem 0.7rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-family: var(--font-display);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.08em;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.navLink:hover {
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.navLinkActive {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.section {
+  margin-top: 1.75rem;
+}
+
+.sectionHeading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.sectionHeading h2 {
+  font-size: var(--type-sm);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.count {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+  text-transform: uppercase;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: end;
+  margin-bottom: 1rem;
+}
+
+.field {
+  display: flex;
+  flex: 0 1 11rem;
+  flex-direction: column;
+  /* The field may shrink below its preferred width; a phone is narrower than
+     four fields and must not be widened by them. */
+  min-width: 0;
+  gap: 0.3rem;
+  margin-top: 0.5rem;
+  font-size: var(--type-2xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.field input,
+.field select {
+  width: 100%;
+  min-width: 0;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--type-sm);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.field input:focus-visible,
+.field select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.tableWrap {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--type-sm);
+}
+
+.table th,
+.table td {
+  padding: 0.55rem 0.7rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.table th {
+  color: var(--text-muted);
+  font-family: var(--font-display);
+  font-size: var(--type-2xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.table tbody tr:hover {
+  background: var(--hover);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.12rem 0.45rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-family: var(--font-display);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.badge[data-tone='low'] {
+  border-color: var(--success-border);
+  background: var(--success-soft);
+  color: var(--success-text);
+}
+
+.badge[data-tone='high'] {
+  border-color: var(--danger-border);
+  background: var(--danger-soft);
+  color: var(--danger-text);
+}
+
+.badge[data-tone='medium'] {
+  border-color: var(--severity-high-border);
+  background: var(--severity-high-soft);
+  color: var(--severity-high);
+}
+
+.badge[data-tone='not-evaluated'] {
+  border-color: var(--border-strong);
+  color: var(--text-faint);
+}
+
+.link {
+  /* Padded so the link's own box, not just its text, is a 24px target. */
+  display: inline-block;
+  padding: 0.25rem 0;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
+.button,
+.buttonQuiet {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--panel-strong);
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.07em;
+  text-align: center;
+  text-decoration: none;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.button:hover:not(:disabled),
+.buttonQuiet:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.buttonQuiet {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.danger {
+  border-color: var(--danger-border);
+  color: var(--danger-text);
+}
+
+.danger:hover:not(:disabled) {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+  color: var(--danger-text);
+}
+
+.actionBar {
+  margin-top: 1.25rem;
+}
+
+.actionButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.dialog {
+  margin-top: 1rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+}
+
+.dialogTitle {
+  margin-bottom: 0.4rem;
+  font-size: var(--type-lg);
+}
+
+.dialogBody {
+  max-width: 60ch;
+  color: var(--text-muted);
+  font-size: var(--type-sm);
+  line-height: 1.55;
+}
+
+.dialogButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.9rem;
+}
+
+.note {
+  margin-top: 0.75rem;
+  color: var(--text-muted);
+  font-size: var(--type-xs);
+  min-height: 1.2em;
+}
+
+.cards {
+  display: grid;
+  gap: 1rem;
+  /* `min()` keeps the floor off the viewport: two cards cannot fit a phone, and
+     a 16rem minimum would widen the page instead of stacking. */
+  grid-template-columns: repeat(auto-fit, minmax(min(16rem, 100%), 1fr));
+  margin-top: 1.25rem;
+}
+
+.card {
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+
+.card h2,
+.card h3 {
+  margin-bottom: 0.6rem;
+  color: var(--text-muted);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.meta {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.25rem 1rem;
+  font-size: var(--type-sm);
+}
+
+/* A wrapped pair keeps the grid rows coming from the parent list. */
+.metaRow {
+  display: contents;
+}
+
+.meta dt {
+  color: var(--text-faint);
+}
+
+.meta dd {
+  color: var(--text);
+}
+
+/* The score's rubric split, kept off the heading by the same gap as the items. */
+.categories {
+  margin-top: 0.4rem;
+}
+
+.reasons {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--text-muted);
+  font-size: var(--type-sm);
+  line-height: 1.6;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.ticketList {
+  display: grid;
+  gap: 0.4rem;
+  margin: 1rem 0;
+}
+
+.ticketRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--text);
+  font-size: var(--type-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.ticketRow:hover {
+  border-color: var(--accent-border);
+}
+
+.ticketRow[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.ticketBody {
+  max-width: 68ch;
+  margin-top: 0.5rem;
+  color: var(--text-muted);
+  font-size: var(--type-sm);
+  line-height: 1.6;
+  white-space: pre-line;
+}
+
+.score {
+  margin-top: 1.25rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+
+.scoreTotal {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  font-family: var(--font-display);
+}
+
+.scoreTotal strong {
+  font-size: var(--type-2xl);
+}
+
+.items {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0.8rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.items li {
+  display: grid;
+  grid-template-columns: 1.4rem 1fr auto;
+  gap: 0.6rem;
+  font-size: var(--type-sm);
+  color: var(--text-muted);
+}
+
+.items li[data-passed='true'] .mark {
+  color: var(--success-text);
+}
+
+.items li[data-passed='false'] .mark {
+  color: var(--danger-text);
+}
+
+.explain {
+  margin-top: 0.9rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: var(--type-sm);
+  line-height: 1.65;
+}
+
+.empty {
+  padding: 1.5rem;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: var(--type-sm);
+  text-align: center;
+}
+
+.deviceHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.backLink {
+  display: inline-block;
+  padding: 0.25rem 0;
+  margin-bottom: 0.6rem;
+  color: var(--text-muted);
+  font-size: var(--type-xs);
+  text-decoration: none;
+}
+
+.backLink:hover {
+  color: var(--accent);
+}
+
+/*
+ * A phone: one filter per row rather than a field squeezed to its label, and
+ * tighter cells so the six-column inventory table spends its width on values
+ * instead of padding. The table still scrolls inside its own wrap, which is why
+ * the page itself never moves sideways.
+ */
+@media (max-width: 480px) {
+  .field {
+    flex: 1 1 100%;
+  }
+
+  .table th,
+  .table td {
+    padding: 0.5rem 0.55rem;
+  }
+}

@@ -3,10 +3,16 @@ export interface Migration {
   statements: readonly string[]
 }
 
-export const SCHEMA_VERSION = 14
+export const SCHEMA_VERSION = 15
 
 export const REQUIRED_TABLES: readonly string[] = [
   'actions',
+  'azure_attempts',
+  'azure_events',
+  'azure_nsg_rules',
+  'azure_resource_groups',
+  'azure_resources',
+  'azure_role_assignments',
   'intune_apps',
   'intune_attempts',
   'intune_device_apps',
@@ -334,6 +340,70 @@ export const MIGRATIONS: readonly Migration[] = [
       ) STRICT`,
       'CREATE INDEX idx_intune_events_device ON intune_events(device_id, at_ms)',
       'CREATE INDEX idx_intune_attempts_template ON intune_attempts(template_id)',
+    ],
+  },
+  {
+    version: 15,
+    // The Azure console is the second simulator and keeps the same bargain as
+    // the first: its estate lives in its own `azure_` tables, seeded from
+    // `src/modules/azure`, so the folder can be lifted out without a migration
+    // elsewhere. Events and attempts carry no foreign key on purpose: deleting a
+    // machine or a whole resource group is an action the console offers, and the
+    // audit trail has to survive the resource it describes.
+    statements: [
+      `CREATE TABLE azure_resource_groups (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        region TEXT NOT NULL CHECK (region IN ('uksouth', 'ukwest', 'westeurope')),
+        owner_team TEXT NOT NULL
+      ) STRICT`,
+      `CREATE TABLE azure_resources (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        resource_group_id TEXT NOT NULL REFERENCES azure_resource_groups(id) ON DELETE CASCADE,
+        region TEXT NOT NULL CHECK (region IN ('uksouth', 'ukwest', 'westeurope')),
+        kind TEXT NOT NULL CHECK (kind IN ('vm', 'storage', 'nsg', 'webapp')),
+        properties_json TEXT NOT NULL,
+        deleted INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1))
+      ) STRICT`,
+      `CREATE TABLE azure_nsg_rules (
+        id TEXT PRIMARY KEY,
+        nsg_id TEXT NOT NULL REFERENCES azure_resources(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        priority INTEGER NOT NULL,
+        direction TEXT NOT NULL CHECK (direction IN ('inbound', 'outbound')),
+        access TEXT NOT NULL CHECK (access IN ('allow', 'deny')),
+        protocol TEXT NOT NULL CHECK (protocol IN ('TCP', 'UDP', 'Any')),
+        port INTEGER,
+        source TEXT NOT NULL
+      ) STRICT`,
+      `CREATE TABLE azure_role_assignments (
+        id TEXT PRIMARY KEY,
+        principal TEXT NOT NULL,
+        principal_label TEXT NOT NULL,
+        scope TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('Reader', 'Contributor', 'Owner'))
+      ) STRICT`,
+      `CREATE TABLE azure_events (
+        id INTEGER PRIMARY KEY,
+        resource_id TEXT NOT NULL,
+        action TEXT NOT NULL,
+        at_ms INTEGER NOT NULL,
+        outcome TEXT NOT NULL CHECK (outcome IN ('applied', 'refused', 'failed')),
+        summary TEXT NOT NULL,
+        notes_json TEXT NOT NULL
+      ) STRICT`,
+      `CREATE TABLE azure_attempts (
+        id TEXT PRIMARY KEY,
+        template_id TEXT NOT NULL,
+        resource_id TEXT NOT NULL,
+        started_at INTEGER NOT NULL,
+        finished_at INTEGER,
+        score INTEGER CHECK (score IS NULL OR score BETWEEN 0 AND 100),
+        score_json TEXT
+      ) STRICT`,
+      'CREATE INDEX idx_azure_events_resource ON azure_events(resource_id, at_ms)',
+      'CREATE INDEX idx_azure_attempts_template ON azure_attempts(template_id)',
     ],
   },
 ]

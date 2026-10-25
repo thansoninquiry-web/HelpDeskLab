@@ -32,12 +32,14 @@ const REWIND_LABELS: Record<RewindBand, string> = {
 const SIMULATOR_LABELS: Record<SimulatorId, string> = {
   'service-desk': 'Service desk',
   intune: 'Intune',
+  azure: 'Azure',
 }
 
 const SIMULATOR_FILTERS: ReadonlyArray<{ value: SimulatorId | 'all'; label: string }> = [
   { value: 'all', label: 'All' },
   { value: 'service-desk', label: SIMULATOR_LABELS['service-desk'] },
   { value: 'intune', label: SIMULATOR_LABELS.intune },
+  { value: 'azure', label: SIMULATOR_LABELS.azure },
 ]
 
 /**

@@ -9,6 +9,7 @@ import type {
   SnapshotStore,
   TicketRepository,
 } from '../domain/ports'
+import { AzureStore } from '../modules/azure/persistence/store'
 import { IntuneStore } from '../modules/intune/persistence/store'
 import { ImportError, PersistenceError } from './errors'
 import { runMigrations } from './migrations'
@@ -34,6 +35,12 @@ export interface Persistence {
    * up the snapshot save, but its SQL and its model stay inside the module.
    */
   intune: IntuneStore
+  /**
+   * The Azure simulator's tables, on the same terms as the Intune console: the
+   * module's SQL and model stay inside its folder, but its writes share the one
+   * transaction queue and the snapshot save.
+   */
+  azure: AzureStore
   schemaVersion(): number
   exportDatabase(): Promise<Uint8Array>
   importDatabase(bytes: Uint8Array): Promise<void>
@@ -78,6 +85,7 @@ export class SqlitePersistence implements Persistence, BackupStore {
   readonly settings: SettingsRepository
   readonly targets: JobTargetRepository
   readonly intune: IntuneStore
+  readonly azure: AzureStore
 
   constructor(db: SqliteDriver, snapshotStore: SnapshotStore, wasmBinary?: ArrayBuffer) {
     this.db = db
@@ -97,6 +105,7 @@ export class SqlitePersistence implements Persistence, BackupStore {
     this.settings = repositories.settings
     this.targets = repositories.targets
     this.intune = new IntuneStore(context)
+    this.azure = new AzureStore(context)
   }
 
   schemaVersion(): number {

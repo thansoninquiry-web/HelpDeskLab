@@ -9,6 +9,11 @@ import { PracticePage } from './PracticePage'
 import { ProgressPage } from './ProgressPage'
 import { SettingsPage } from './SettingsPage'
 import { TicketWorkspacePage } from './TicketWorkspacePage'
+import { AzureAccessPage } from '../../modules/azure/ui/AccessPage'
+import { AzureInventoryPage } from '../../modules/azure/ui/InventoryPage'
+import { AzureNetworkPage } from '../../modules/azure/ui/NetworkPage'
+import { AzureResourcePage } from '../../modules/azure/ui/ResourcePage'
+import { AzureTicketsPage } from '../../modules/azure/ui/TicketsPage'
 import { IntuneAppsPage } from '../../modules/intune/ui/AppsPage'
 import { IntuneDevicePage } from '../../modules/intune/ui/DevicePage'
 import { IntuneDevicesPage } from '../../modules/intune/ui/DevicesPage'
@@ -31,6 +36,12 @@ export function AppRoutes() {
         <Route path="intune/policies" element={<IntunePoliciesPage />} />
         <Route path="intune/apps" element={<IntuneAppsPage />} />
         <Route path="intune/tickets" element={<IntuneTicketsPage />} />
+        {/* The Azure simulator: its own console, its own estate, its own path. */}
+        <Route path="azure" element={<AzureInventoryPage />} />
+        <Route path="azure/resources/:resourceId" element={<AzureResourcePage />} />
+        <Route path="azure/network" element={<AzureNetworkPage />} />
+        <Route path="azure/access" element={<AzureAccessPage />} />
+        <Route path="azure/tickets" element={<AzureTicketsPage />} />
         <Route path="progress" element={<ProgressPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="*" element={<NotFoundPage />} />

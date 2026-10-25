@@ -102,6 +102,10 @@ function ModuleRow({
                     <Link className={styles.moduleAction} to="/intune/tickets">
                       Intune console
                     </Link>
+                  ) : module.practice === 'azure' ? (
+                    <Link className={styles.moduleAction} to="/azure/tickets">
+                      Azure console
+                    </Link>
                   ) : module.practice === 'targets' ? (
                     <Link className={styles.moduleAction} to="/targets">
                       Job targets
@@ -203,7 +207,7 @@ export function DashboardPage() {
       <PageHeader
         eyebrow="Curriculum"
         title="Dashboard"
-        description="Nineteen modules, all of them playable today. Pull a ticket, investigate the simulated machine, document your evidence, and see which parts of the course your work has covered."
+        description="Twenty-two modules, all of them playable today. Pull a ticket, investigate the simulated machine or console, document your evidence, and see which parts of the course your work has covered."
       />
 
       <div className={styles.ctaRow}>

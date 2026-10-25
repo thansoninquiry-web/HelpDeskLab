@@ -72,6 +72,15 @@ timers, authoring) — never both at once.
   reads, guarded so it cannot drift back. The workspace dividers and remembered
   layout, the phone layouts for the workspace and both consoles, and the text
   size control landed with it.
+- **M5b — Azure console: done (2026-10-24).** A third simulator at `/azure`,
+  self-contained in `src/modules/azure/`: four resource groups and thirteen
+  resources seeded on first run, six `azure_*` tables from one migration, findings
+  computed from each record rather than stored, twelve console actions whose
+  refusals are logged too, nine practice tickets verified against the
+  subscription, and three further course modules (20–22) judged from stored
+  attempts. Attempts use the same 10/55/20/15 split as every other score and join
+  XP, weak topics and the simulator filter on Progress. The console sits beside
+  the device console rather than replacing any part of it.
 - **Next — R1 close-out:** fairness lint over every variant, three scoring
   fixtures per variant, the keyboard and resume audit, Leitner surfacing on
   Progress, and the sign-off pass with its evidence. Sign-off is what closes
@@ -80,7 +89,9 @@ timers, authoring) — never both at once.
 **On the numbering.** The plan in §9.3 was written on 2026-10-17, before anything
 after M4 had shipped, and the work since reused two of its labels: M5 went to the
 device console and M8 to the service-console and course pass, both committed
-under those names. So read §9.3's M5 row as *R1 close-out* — the work is unchanged,
+under those names. The Azure console built on 2026-10-24 is recorded as **M5b**
+for the same reason — it is console work of the same kind, not a new release
+line. So read §9.3's M5 row as *R1 close-out* — the work is unchanged,
 the number is not — and its M8 *field notes* row as unbuilt: the lesson written for
 each module covers part of that ground, but a per-family primer does not exist yet.
 M9's rank and streak shipped inside M8 and are in the header today, though the
