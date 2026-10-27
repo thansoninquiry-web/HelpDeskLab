@@ -1,7 +1,7 @@
 # HelpDeskLab — Roadmap
 
-**Status:** M0–M8, M10 and M11 built, M7 half done (its sign-off slot is still open) · R1 close-out still open
-**Last updated:** 2026-10-26
+**Status:** M0–M8 and M10–M12 built, M7 half done (its sign-off slot is still open) · R1 close-out still open
+**Last updated:** 2026-10-27
 **Companion:** [architecture-helpdesklab.md](architecture-helpdesklab.md)
 
 ## 1. Goal and audience
@@ -21,7 +21,7 @@ ticket, real SQLite persistence, real scoring, real debrief. Each later release
 adds either breadth (more families, more variants) or depth (composite faults,
 timers, authoring) — never both at once.
 
-### Current status (2026-10-24)
+### Current status (2026-10-27)
 
 - **M0 — scaffold: done.** Strict Vite/React/TypeScript shell, routing, CSS
   tokens, Vitest + Testing Library, layered ESLint import rules, offline
@@ -149,6 +149,26 @@ ticket. Nothing is compiled or executed, so the skill is reading the runtime.
   contained in `src/modules/desktop/`, one `desktop_attempts` table from one
   migration (schema v19), scored 25/20/40/15, and joined to XP and weak topics.
   See [desktop-module.md](desktop-module.md).
+- **M12 — Education IT scenario pack: done (2026-10-27).** A seventh surface at
+  `/academy`, and the first that runs on a clock rather than a command count.
+  Larkspur Academy is an invented K–12 school — 410 pupils, 46 staff, one
+  technician, twelve classrooms, a 28-machine lab and a 16-laptop cart — with
+  twenty-five scenarios in five groups: classroom projectors and panels, a
+  lockout before the bell, the lab's failed image and testing-day Wi-Fi, the
+  front office's fuser jam, scan-to-email, blocked grade book and mapped drive,
+  an access point denied power, an exhausted DHCP scope, a VLAN mix-up, and the
+  asset work of a move, a register, a loan out, a damaged return and a cart that
+  never charged. Every visit carries a bell (reads and changes cost minutes), a
+  two-step caller conversation scored for plain language, and, in five of them,
+  a walk-up at the door that has to be triaged. Eight callers are Spanish-first,
+  with a gloss on the reference answers and a sixteen-card phrasebook plus a
+  glossary. The onsite checklist is scored: pack the kit, check the room, write
+  the visit note, book the follow-up. Two gates cannot be out-scored — a harmful
+  change (disabling the filter, sharing an admin password, a student-VLAN
+  shortcut) and a change made with no isolating read before it. Self-contained
+  in `src/modules/academy/`, one `academy_attempts` table from one migration
+  (schema v20), scored 20/20/48/12, joined to XP, weak topics and the simulator
+  filter. See [academy-module.md](academy-module.md).
 - **Next — R1 close-out:** fairness lint over every variant, three scoring
   fixtures per variant, the keyboard and resume audit, Leitner surfacing on
   Progress, and the sign-off pass with its evidence. Sign-off is what closes
@@ -164,9 +184,10 @@ the number is not — and its M8 *field notes* row as unbuilt: the lesson writte
 each module covers part of that ground, but a per-family primer does not exist yet.
 M9's rank and streak shipped inside M8 and are in the header today, though the
 tier ladder itself is only written down in `src/domain/progress/rank.ts`. M10's
-label went to the networking lab and M11's to the desktop bench, so neither the
-text call mode nor the interview drill the plan lists under those numbers has
-been built.
+label went to the networking lab, M11's to the desktop bench and M12's to the
+school pack, so neither the text call mode nor the interview drill the plan
+lists under those numbers has been built — though the school pack's caller
+conversation now covers part of the text-call ground on a different surface.
 
 The Release 1 checklist and acceptance criteria below are still outstanding; the
 items above cover the build milestones but not yet the fairness-lint acceptance

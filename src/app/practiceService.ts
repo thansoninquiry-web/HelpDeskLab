@@ -123,6 +123,7 @@ import { foldScenarioStats } from '../domain/progress/leitner'
 import { summarizeHistory, type ProgressSummary, type RankProgress } from '../domain/progress/rank'
 import { loadAzureProgress } from './azureProgress'
 import { loadIntuneProgress } from './intuneProgress'
+import { loadAcademyProgress } from './academyProgress'
 import { loadDesktopProgress } from './desktopProgress'
 import { loadNetlabProgress } from './netlabProgress'
 import {
@@ -708,7 +709,7 @@ export interface ReferenceStepView {
   detail?: string
 }
 
-export type SimulatorId = 'service-desk' | 'intune' | 'azure' | 'netlab' | 'desktop'
+export type SimulatorId = 'service-desk' | 'intune' | 'azure' | 'netlab' | 'desktop' | 'academy'
 
 export interface ProgressRow {
   scenarioId: string
@@ -4160,6 +4161,8 @@ export interface WeakTopicOptions {
   netlabScenarioIds?: ReadonlySet<string>
   /** Cases practiced on the Desktop bench rather than the ticket queue. */
   desktopScenarioIds?: ReadonlySet<string>
+  /** Visits practiced at the Larkspur Academy desk rather than the ticket queue. */
+  academyScenarioIds?: ReadonlySet<string>
 }
 
 /**
@@ -4179,6 +4182,7 @@ export function computeWeakTopics(
   const azure = options.azureScenarioIds ?? new Set<string>()
   const netlab = options.netlabScenarioIds ?? new Set<string>()
   const desktop = options.desktopScenarioIds ?? new Set<string>()
+  const academy = options.academyScenarioIds ?? new Set<string>()
   const byScenario = new Map<string, ScoreHistoryEntry[]>()
   for (const entry of history) {
     const existing = byScenario.get(entry.scenarioId)
@@ -4243,7 +4247,9 @@ export function computeWeakTopics(
           ? 'netlab'
           : desktop.has(scenarioId)
             ? 'desktop'
-            : null
+            : academy.has(scenarioId)
+              ? 'academy'
+              : null
     const surface =
       console === 'intune' || console === 'azure'
         ? 'console ticket'
@@ -4251,7 +4257,9 @@ export function computeWeakTopics(
           ? 'incident'
           : console === 'desktop'
             ? 'case'
-            : null
+            : console === 'academy'
+              ? 'school visit'
+              : null
     const recommendation =
       weakestCategory && weakestCategory.percent < 100
         ? surface
@@ -4279,13 +4287,17 @@ export function computeWeakTopics(
               ? `/networking/incidents/${encodeURIComponent(scenarioId)}`
               : console === 'desktop'
                 ? `/desktop/cases/${encodeURIComponent(scenarioId)}`
-                : `/practice?family=${encodeURIComponent(scenarioId)}`,
+                : console === 'academy'
+                  ? `/academy/cases/${encodeURIComponent(scenarioId)}`
+                  : `/practice?family=${encodeURIComponent(scenarioId)}`,
       actionLabel:
         console === 'netlab'
           ? 'Open the incident'
           : console === 'desktop'
             ? 'Open the case'
-            : console
+            : console === 'academy'
+              ? 'Open the visit'
+              : console
               ? 'Open the console'
               : `Practice ${scenarioId}`,
     })
@@ -4328,11 +4340,12 @@ export async function loadProgress(): Promise<ProgressView> {
   // The Intune console scores its own attempts without opening a ticket session,
   // so its finished work joins the ticket history here rather than in another
   // table: XP, rank, streaks and the scenario list then read one history.
-  const [intune, azure, netlab, desktop] = await Promise.all([
+  const [intune, azure, netlab, desktop, academy] = await Promise.all([
     loadIntuneProgress(),
     loadAzureProgress(),
     loadNetlabProgress(),
     loadDesktopProgress(),
+    loadAcademyProgress(),
   ])
   const mergedHistory = [
     ...history,
@@ -4340,14 +4353,23 @@ export async function loadProgress(): Promise<ProgressView> {
     ...azure.history,
     ...netlab.history,
     ...desktop.history,
+    ...academy.history,
   ]
-  const mergedStats = [...stats, ...intune.stats, ...azure.stats, ...netlab.stats, ...desktop.stats]
+  const mergedStats = [
+    ...stats,
+    ...intune.stats,
+    ...azure.stats,
+    ...netlab.stats,
+    ...desktop.stats,
+    ...academy.stats,
+  ]
   const titles = {
     ...SCENARIO_TITLES,
     ...intune.titles,
     ...azure.titles,
     ...netlab.titles,
     ...desktop.titles,
+    ...academy.titles,
   }
 
   const summary = summarizeHistory(mergedHistory, Date.now())
@@ -4365,7 +4387,9 @@ export async function loadProgress(): Promise<ProgressView> {
             ? 'netlab'
             : desktop.titles[entry.scenarioId] !== undefined
               ? 'desktop'
-              : null
+              : academy.titles[entry.scenarioId] !== undefined
+                ? 'academy'
+                : null
     return {
       scenarioId: entry.scenarioId,
       scenarioTitle: titleFor(entry.scenarioId, titles),
@@ -4378,7 +4402,9 @@ export async function loadProgress(): Promise<ProgressView> {
             ? { href: `/networking/incidents/${encodeURIComponent(entry.scenarioId)}` }
             : console === 'desktop'
               ? { href: `/desktop/cases/${encodeURIComponent(entry.scenarioId)}` }
-              : {}),
+              : console === 'academy'
+                ? { href: `/academy/cases/${encodeURIComponent(entry.scenarioId)}` }
+                : {}),
       attempts: entry.attempts,
       passes: entry.passes,
       bestScore: entry.bestScore,
@@ -4412,6 +4438,7 @@ export async function loadProgress(): Promise<ProgressView> {
       azureScenarioIds: new Set(Object.keys(azure.titles)),
       netlabScenarioIds: new Set(Object.keys(netlab.titles)),
       desktopScenarioIds: new Set(Object.keys(desktop.titles)),
+      academyScenarioIds: new Set(Object.keys(academy.titles)),
     }),
     hintHabits: hintHabits(scoredSteps, takenHints),
     hintHabitSummary: summarizeHintHabits(scoredSteps, takenHints, scoredHintCounts),

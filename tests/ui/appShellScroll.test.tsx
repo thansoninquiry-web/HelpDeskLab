@@ -104,6 +104,7 @@ describe('the header while the page is scrolled', () => {
       'Azure',
       'Networking',
       'Desktop',
+      'Education',
       'Job targets',
       'Progress',
       'Settings',

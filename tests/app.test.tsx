@@ -218,6 +218,7 @@ describe('app shell', () => {
       'Azure',
       'Networking',
       'Desktop',
+      'Education',
       'Job targets',
       'Progress',
       'Settings',

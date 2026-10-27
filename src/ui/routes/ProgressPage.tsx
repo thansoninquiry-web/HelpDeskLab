@@ -35,6 +35,7 @@ const SIMULATOR_LABELS: Record<SimulatorId, string> = {
   azure: 'Azure',
   netlab: 'Networking lab',
   desktop: 'Desktop support',
+  academy: 'Education IT',
 }
 
 const SIMULATOR_FILTERS: ReadonlyArray<{ value: SimulatorId | 'all'; label: string }> = [
@@ -44,6 +45,7 @@ const SIMULATOR_FILTERS: ReadonlyArray<{ value: SimulatorId | 'all'; label: stri
   { value: 'azure', label: SIMULATOR_LABELS.azure },
   { value: 'netlab', label: SIMULATOR_LABELS.netlab },
   { value: 'desktop', label: SIMULATOR_LABELS.desktop },
+  { value: 'academy', label: SIMULATOR_LABELS.academy },
 ]
 
 /**

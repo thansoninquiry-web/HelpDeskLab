@@ -16,6 +16,10 @@ import { AzureNetworkPage } from '../../modules/azure/ui/NetworkPage'
 import { AzureResourcePage } from '../../modules/azure/ui/ResourcePage'
 import { AzureTicketsPage } from '../../modules/azure/ui/TicketsPage'
 import { AzureTerminalPage } from '../../modules/azure/ui/TerminalPage'
+import { AcademyCasePage } from '../../modules/academy/ui/CasePage'
+import { AcademyDeskPage } from '../../modules/academy/ui/DeskPage'
+import { AcademyOnsitePage } from '../../modules/academy/ui/OnsitePage'
+import { AcademyPhrasesPage } from '../../modules/academy/ui/PhrasesPage'
 import { DesktopBenchPage } from '../../modules/desktop/ui/BenchPage'
 import { DesktopCasePage } from '../../modules/desktop/ui/CasePage'
 import { DesktopCasesPage } from '../../modules/desktop/ui/CasesPage'
@@ -80,6 +84,12 @@ export function AppRoutes() {
         <Route path="desktop/cases/:caseId" element={<DesktopCasePage />} />
         <Route path="desktop/bench" element={<DesktopBenchPage />} />
         <Route path="desktop/tools" element={<DesktopToolsPage />} />
+        {/* The Education IT pack: a school desk, its visits, and the two study
+            surfaces a school technician needs: phrases and the onsite checklist. */}
+        <Route path="academy" element={<AcademyDeskPage />} />
+        <Route path="academy/cases/:scenarioId" element={<AcademyCasePage />} />
+        <Route path="academy/onsite" element={<AcademyOnsitePage />} />
+        <Route path="academy/phrases" element={<AcademyPhrasesPage />} />
         {/* The algorithm drill: a problem library and one problem's workspace. */}
         <Route path="dsa" element={<DsaProblemsPage />} />
         <Route path="dsa/patterns" element={<DsaPatternsPage />} />

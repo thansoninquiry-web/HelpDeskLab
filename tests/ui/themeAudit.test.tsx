@@ -37,6 +37,7 @@ import dsaStyles from '../../src/modules/dsa/ui/dsa.module.css'
 import languageStyles from '../../src/modules/languages/ui/languages.module.css'
 import netlabStyles from '../../src/modules/netlab/ui/netlab.module.css'
 import desktopStyles from '../../src/modules/desktop/ui/desktop.module.css'
+import academyStyles from '../../src/modules/academy/ui/academy.module.css'
 
 /**
  * The theme audit: every route, in both themes, plus the palette itself.
@@ -110,6 +111,7 @@ const MODULES = {
   'src/modules/languages/ui/languages.module.css': languageStyles,
   'src/modules/netlab/ui/netlab.module.css': netlabStyles,
   'src/modules/desktop/ui/desktop.module.css': desktopStyles,
+  'src/modules/academy/ui/academy.module.css': academyStyles,
 }
 
 interface RouteCase {
@@ -343,6 +345,16 @@ beforeAll(async () => {
     },
     { name: 'desktop bench', path: '/desktop/bench', ready: 'Legacy mode · Windows 7' },
     { name: 'desktop tools', path: '/desktop/tools', ready: 'System File Checker' },
+    // The Education IT pack: a school profile, a live visit with the clock and
+    // the caller, the onsite checklist and the Spanish phrasebook.
+    { name: 'academy desk', path: '/academy', ready: 'Who calls' },
+    {
+      name: 'academy visit',
+      path: '/academy/cases/projector-no-signal',
+      ready: 'Read the room',
+    },
+    { name: 'academy onsite checklist', path: '/academy/onsite', ready: 'Pack for the visit' },
+    { name: 'academy phrases', path: '/academy/phrases', ready: 'Spanish for the school desk' },
     { name: 'not found', path: '/no-such-route' },
   ]
 }, 60_000)

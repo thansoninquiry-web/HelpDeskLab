@@ -3,9 +3,10 @@ export interface Migration {
   statements: readonly string[]
 }
 
-export const SCHEMA_VERSION = 19
+export const SCHEMA_VERSION = 20
 
 export const REQUIRED_TABLES: readonly string[] = [
+  'academy_attempts',
   'actions',
   'azure_attempts',
   'azure_events',
@@ -509,6 +510,26 @@ export const MIGRATIONS: readonly Migration[] = [
         state_json TEXT NOT NULL
       ) STRICT`,
       'CREATE INDEX idx_desktop_attempts_case ON desktop_attempts(case_id, started_at)',
+    ],
+  },
+  {
+    version: 20,
+    // The Education IT pack keeps the visit, not the school: Larkspur Academy,
+    // its rooms and its twenty-five scenarios are code in
+    // `src/modules/academy`, so the row holds the reads, the conversation, the
+    // walk-up, the visit checklist and the score for one visit. No real pupil,
+    // parent or staff data is stored, and no caller is a real person.
+    statements: [
+      `CREATE TABLE academy_attempts (
+        id TEXT PRIMARY KEY,
+        scenario_id TEXT NOT NULL,
+        started_at INTEGER NOT NULL,
+        finished_at INTEGER,
+        score INTEGER CHECK (score IS NULL OR score BETWEEN 0 AND 100),
+        score_json TEXT,
+        state_json TEXT NOT NULL
+      ) STRICT`,
+      'CREATE INDEX idx_academy_attempts_scenario ON academy_attempts(scenario_id, started_at)',
     ],
   },
 ]

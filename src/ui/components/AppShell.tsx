@@ -23,6 +23,7 @@ const navigation = [
   { to: '/azure', label: 'Azure', end: false, icon: 'cloud' },
   { to: '/networking', label: 'Networking', end: false, icon: 'network' },
   { to: '/desktop', label: 'Desktop', end: false, icon: 'desktop' },
+  { to: '/academy', label: 'Education', end: false, icon: 'school' },
   { to: '/targets', label: 'Job targets', end: false, icon: 'target' },
   { to: '/progress', label: 'Progress', end: false, icon: 'chart' },
   { to: '/settings', label: 'Settings', end: false, icon: 'gear' },
@@ -118,6 +119,15 @@ function Icon({ name }: { name: (typeof navigation)[number]['icon'] }) {
         <rect x="3" y="4" width="12" height="16" rx="1.5" />
         <path d="M6 7h6M6 10h6M6 16h2" />
         <rect x="17" y="7" width="4" height="10" rx="1" />
+      </svg>
+    )
+  }
+  if (name === 'school') {
+    // A bell over a desk: the Education IT pack runs on the school clock.
+    return (
+      <svg {...common}>
+        <path d="M6 20h12M12 20v-6M5 14a7 7 0 0 1 14 0Z" />
+        <path d="M12 7V5" />
       </svg>
     )
   }

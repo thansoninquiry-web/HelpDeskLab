@@ -9,6 +9,7 @@ import type {
   SnapshotStore,
   TicketRepository,
 } from '../domain/ports'
+import { AcademyStore } from '../modules/academy/persistence/store'
 import { AzureStore } from '../modules/azure/persistence/store'
 import { DesktopStore } from '../modules/desktop/persistence/store'
 import { DsaStore } from '../modules/dsa/persistence/store'
@@ -68,6 +69,13 @@ export interface Persistence {
    * a new case is a content change rather than a schema change.
    */
   desktop: DesktopStore
+  /**
+   * The Education IT pack's table: one row per visit to a Larkspur Academy
+   * scenario, holding the reads, the caller conversation, the walk-up, the
+   * visit checklist and the score. The school and its scenarios are code, so a
+   * new scenario is a content change rather than a schema change.
+   */
+  academy: AcademyStore
   schemaVersion(): number
   exportDatabase(): Promise<Uint8Array>
   importDatabase(bytes: Uint8Array): Promise<void>
@@ -117,6 +125,7 @@ export class SqlitePersistence implements Persistence, BackupStore {
   readonly languages: LanguageStore
   readonly netlab: NetlabStore
   readonly desktop: DesktopStore
+  readonly academy: AcademyStore
 
   constructor(db: SqliteDriver, snapshotStore: SnapshotStore, wasmBinary?: ArrayBuffer) {
     this.db = db
@@ -141,6 +150,7 @@ export class SqlitePersistence implements Persistence, BackupStore {
     this.languages = new LanguageStore(context)
     this.netlab = new NetlabStore(context)
     this.desktop = new DesktopStore(context)
+    this.academy = new AcademyStore(context)
   }
 
   schemaVersion(): number {
