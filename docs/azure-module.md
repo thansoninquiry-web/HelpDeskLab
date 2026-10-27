@@ -20,7 +20,15 @@ convenience.
 | `/azure/resources/:resourceId` | One record: settings, findings, action bar and activity log |
 | `/azure/network` | Network security groups and their rules |
 | `/azure/access` | Role assignments and what each role can do |
+| `/azure/course` | The three Azure lessons, with progress and a link into each |
 | `/azure/tickets` | The nine practice tickets |
+| `/azure/terminal` | The subscription as an `az` command line |
+
+The course tab exists so the lessons are reachable from the console without
+opening a ticket first; it is the reverse of the lesson link each ticket carries.
+It keeps nothing of its own — the list is `loadCurriculum()` filtered on
+`practice === 'azure'`, the same field the dashboard uses — so a fourth Azure
+module appears here without this page changing.
 
 ## Data model
 
@@ -169,3 +177,20 @@ exports `registerAzureTicketTemplates`, `findAzureTemplate` and
 `isAzureTicketComplete`, which is the whole ticket surface. Moving
 `src/modules/azure/` and its migration out is a folder move plus those two app
 files.
+
+## Terminal
+
+`/azure/terminal` drives the subscription the way the job does: `az` commands
+over machines, storage, rules and access. A command prints, or it asks the page
+to run one action through `AzureService.act` — the same call the resource page
+makes — so the activity log and the ticket score cannot tell the two apart.
+
+`az resource show` prints the record and its findings and records the read the
+diagnosis category is scored from, exactly as the resource page's read button
+does. Deleting a machine or a resource group is refused with a pointer to the
+page that states what goes with it: the shell is not a quieter way to lose a
+disk.
+
+The resolver is `logic/commands.ts`. It parses flags in any order (`--name x` or
+`--name=x`) and keeps the real CLI's spelling, so the commands are worth
+learning rather than only worth clicking.

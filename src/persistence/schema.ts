@@ -3,7 +3,7 @@ export interface Migration {
   statements: readonly string[]
 }
 
-export const SCHEMA_VERSION = 17
+export const SCHEMA_VERSION = 18
 
 export const REQUIRED_TABLES: readonly string[] = [
   'actions',
@@ -17,6 +17,9 @@ export const REQUIRED_TABLES: readonly string[] = [
   'dsa_drafts',
   'lang_attempts',
   'lang_lesson_reads',
+  'netlab_attempts',
+  'netlab_concept_reads',
+  'netlab_quiz',
   'intune_apps',
   'intune_attempts',
   'intune_device_apps',
@@ -455,6 +458,37 @@ export const MIGRATIONS: readonly Migration[] = [
         PRIMARY KEY (track_id, lesson_id)
       ) STRICT`,
       'CREATE INDEX idx_lang_attempts_item ON lang_attempts(track_id, item_id, created_at)',
+    ],
+  },
+  {
+    version: 18,
+    // The Networking Lab keeps the work rather than the topology: the school's
+    // network is code in `src/modules/netlab`, so the rows hold the attempt (its
+    // checks, its changes and its score) and the quiz answers under the concept
+    // cards. Nothing in these tables names a real address.
+    statements: [
+      `CREATE TABLE netlab_attempts (
+        id TEXT PRIMARY KEY,
+        incident_id TEXT NOT NULL,
+        started_at INTEGER NOT NULL,
+        finished_at INTEGER,
+        score INTEGER CHECK (score IS NULL OR score BETWEEN 0 AND 100),
+        score_json TEXT,
+        state_json TEXT NOT NULL
+      ) STRICT`,
+      `CREATE TABLE netlab_quiz (
+        concept_id TEXT NOT NULL,
+        question_id TEXT NOT NULL,
+        choice TEXT NOT NULL,
+        correct INTEGER NOT NULL CHECK (correct IN (0, 1)),
+        answered_at INTEGER NOT NULL,
+        PRIMARY KEY (concept_id, question_id)
+      ) STRICT`,
+      `CREATE TABLE netlab_concept_reads (
+        concept_id TEXT PRIMARY KEY,
+        read_at INTEGER NOT NULL
+      ) STRICT`,
+      'CREATE INDEX idx_netlab_attempts_incident ON netlab_attempts(incident_id, started_at)',
     ],
   },
 ]

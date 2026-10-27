@@ -13,6 +13,7 @@ import { AzureStore } from '../modules/azure/persistence/store'
 import { DsaStore } from '../modules/dsa/persistence/store'
 import { IntuneStore } from '../modules/intune/persistence/store'
 import { LanguageStore } from '../modules/languages/persistence/store'
+import { NetlabStore } from '../modules/netlab/persistence/store'
 import { ImportError, PersistenceError } from './errors'
 import { runMigrations } from './migrations'
 import { createRepositories } from './repositories'
@@ -54,6 +55,12 @@ export interface Persistence {
    * a content change rather than a schema change.
    */
   languages: LanguageStore
+  /**
+   * The Networking Lab's three tables: one attempt per incident visit and the
+   * quiz answers under the concept cards. The topology itself is code, so a new
+   * incident is a content change rather than a schema change.
+   */
+  netlab: NetlabStore
   schemaVersion(): number
   exportDatabase(): Promise<Uint8Array>
   importDatabase(bytes: Uint8Array): Promise<void>
@@ -101,6 +108,7 @@ export class SqlitePersistence implements Persistence, BackupStore {
   readonly azure: AzureStore
   readonly dsa: DsaStore
   readonly languages: LanguageStore
+  readonly netlab: NetlabStore
 
   constructor(db: SqliteDriver, snapshotStore: SnapshotStore, wasmBinary?: ArrayBuffer) {
     this.db = db
@@ -123,6 +131,7 @@ export class SqlitePersistence implements Persistence, BackupStore {
     this.azure = new AzureStore(context)
     this.dsa = new DsaStore(context)
     this.languages = new LanguageStore(context)
+    this.netlab = new NetlabStore(context)
   }
 
   schemaVersion(): number {

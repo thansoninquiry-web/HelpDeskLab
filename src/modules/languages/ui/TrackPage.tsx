@@ -101,6 +101,11 @@ export function LanguageTrackPage() {
         >
           {practiceLabel}
         </Link>
+        {/* One drill is a single decision; a run is the whole track's drills in
+            order, with a tally at the end — the way the material is rehearsed. */}
+        <Link className={styles.primaryButton} to={`/languages/${track.id}/run`}>
+          Run the drills
+        </Link>
       </div>
 
       <section className={styles.section} aria-labelledby="track-goals">

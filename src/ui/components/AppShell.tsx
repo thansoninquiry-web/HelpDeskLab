@@ -21,6 +21,7 @@ const navigation = [
   { to: '/languages', label: 'Languages', end: false, icon: 'book' },
   { to: '/intune', label: 'Intune', end: false, icon: 'device' },
   { to: '/azure', label: 'Azure', end: false, icon: 'cloud' },
+  { to: '/networking', label: 'Networking', end: false, icon: 'network' },
   { to: '/targets', label: 'Job targets', end: false, icon: 'target' },
   { to: '/progress', label: 'Progress', end: false, icon: 'chart' },
   { to: '/settings', label: 'Settings', end: false, icon: 'gear' },
@@ -97,6 +98,15 @@ function Icon({ name }: { name: (typeof navigation)[number]['icon'] }) {
     return (
       <svg {...common}>
         <path d="M7 18h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6 11a3.5 3.5 0 0 0 1 7Z" />
+      </svg>
+    )
+  }
+  if (name === 'network') {
+    // A switch with its access ports: the networking lab is the wire, not the cloud.
+    return (
+      <svg {...common}>
+        <rect x="3" y="7" width="18" height="8" rx="1.5" />
+        <path d="M7 15v4M12 15v4M17 15v4M7 7V4M17 7V4" />
       </svg>
     )
   }

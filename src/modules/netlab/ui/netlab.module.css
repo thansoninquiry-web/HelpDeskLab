@@ -1,0 +1,937 @@
+/* The Networking Lab reads as its own console inside the lab: a topology you
+   can click, a shell under it, and the same tokens as everywhere else so both
+   themes hold and the type scale is not bypassed. */
+
+.page {
+  max-width: var(--max-width);
+}
+
+.nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin: 1.25rem 0 1.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.navLink {
+  padding: 0.4rem 0.7rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-family: var(--font-display);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.08em;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.navLink:hover {
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.navLinkActive {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.section {
+  margin-top: 1.75rem;
+}
+
+.sectionHeading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.sectionHeading h2 {
+  font-size: var(--type-sm);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.count {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+  text-transform: uppercase;
+}
+
+.note {
+  max-width: 62ch;
+  color: var(--text-muted);
+  font-size: var(--type-md);
+  line-height: 1.55;
+}
+
+.lead {
+  max-width: 70ch;
+  color: var(--text-muted);
+  font-size: var(--type-lg);
+  line-height: 1.5;
+}
+
+.link {
+  display: inline-block;
+  padding: 0.25rem 0;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.12rem 0.45rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-family: var(--font-display);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.badge[data-tone='low'] {
+  border-color: var(--success-border);
+  background: var(--success-soft);
+  color: var(--success-text);
+}
+
+.badge[data-tone='high'] {
+  border-color: var(--danger-border);
+  background: var(--danger-soft);
+  color: var(--danger-text);
+}
+
+.badge[data-tone='medium'] {
+  border-color: var(--severity-high-border);
+  background: var(--severity-high-soft);
+  color: var(--severity-high);
+}
+
+.badge[data-tone='quiet'] {
+  border-color: var(--border-strong);
+  color: var(--text-faint);
+}
+
+/* ------------------------------------------------------------- topology */
+
+.diagram {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.wanRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
+.stage {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.arrow {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--type-md);
+}
+
+.node {
+  display: flex;
+  flex: 1 1 12rem;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.node:hover {
+  border-color: var(--accent-border);
+  background: var(--hover);
+}
+
+.node[data-kind='wan'] {
+  border-style: dashed;
+}
+
+.node[data-state='down'] {
+  border-color: var(--danger-border);
+}
+
+.nodeName {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--font-display);
+  font-size: var(--type-md);
+  font-weight: 600;
+}
+
+.nodeKind {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.nodeMeta {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+  overflow-wrap: anywhere;
+}
+
+.dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--success);
+}
+
+.dot[data-state='down'] {
+  background: var(--danger);
+}
+
+.dot[data-state='weak'] {
+  background: var(--warning);
+}
+
+.vlanGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(20rem, 100%), 1fr));
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+
+.vlanCard {
+  min-width: 0;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+
+.vlanTitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+  font-family: var(--font-display);
+  font-size: var(--type-lg);
+}
+
+.vlanMeta {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+  line-height: 1.6;
+}
+
+.clientList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.7rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.clientLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+  text-decoration: none;
+}
+
+.clientLink:hover {
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+/* -------------------------------------------------------------- layout */
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+  margin-top: 1.25rem;
+}
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.panel {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+
+.panelTitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  font-family: var(--font-display);
+  font-size: var(--type-sm);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.field {
+  display: flex;
+  flex: 0 1 16rem;
+  flex-direction: column;
+  min-width: 0;
+  gap: 0.3rem;
+  margin-bottom: 0.9rem;
+  font-size: var(--type-2xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.field select {
+  width: 100%;
+  min-width: 0;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--type-sm);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.field select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.button,
+.buttonQuiet,
+.buttonDanger {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0.42rem 0.8rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  /* Opaque: a translucent panel behind a dimmed control would leave the label
+     below AA, so the buttons carry their own surface. */
+  background: var(--panel-strong);
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.07em;
+  text-align: center;
+  text-decoration: none;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.button:hover:not(:disabled),
+.buttonQuiet:hover:not(:disabled),
+.buttonDanger:hover:not(:disabled) {
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.buttonQuiet {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.buttonDanger {
+  border-color: var(--danger-border);
+  color: var(--danger-text);
+}
+
+/* Dimmed by colour rather than opacity: a faded label on a faded background is
+   how a disabled control ends up under AA while looking fine. */
+.button:disabled,
+.buttonQuiet:disabled,
+.buttonDanger:disabled {
+  cursor: not-allowed;
+}
+
+/* -------------------------------------------------------------- actions */
+
+.actionList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+}
+
+.action[data-risk='true'] {
+  border-color: var(--danger-border);
+}
+
+.actionBody {
+  display: flex;
+  flex: 1 1 14rem;
+  flex-direction: column;
+  min-width: 0;
+  gap: 0.15rem;
+}
+
+.actionLabel {
+  font-family: var(--font-display);
+  font-size: var(--type-sm);
+}
+
+.actionDetail {
+  color: var(--text-muted);
+  font-size: var(--type-2xs);
+  line-height: 1.5;
+}
+
+.done {
+  color: var(--success-text);
+  font-family: var(--font-display);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+/* ------------------------------------------------------------------ log */
+
+.log {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.logItem {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.4rem;
+  padding: 0.35rem 0.5rem;
+  border-left: 2px solid var(--border-strong);
+  background: var(--surface-inset);
+  font-size: var(--type-xs);
+}
+
+.logItem[data-kind='change'] {
+  border-left-color: var(--accent);
+}
+
+.logRead {
+  color: var(--text);
+}
+
+.logMeta {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+  overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------------- score */
+
+.score {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+}
+
+.score[data-passed='false'] {
+  border-color: var(--danger-border);
+  background: var(--danger-soft);
+}
+
+.scoreTotal {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.scoreTotal strong {
+  font-family: var(--font-display);
+  font-size: var(--type-4xl);
+}
+
+.categories {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(9rem, 100%), 1fr));
+  gap: 0.4rem;
+  margin: 0;
+}
+
+.categories div {
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+}
+
+.categories dt {
+  color: var(--text-muted);
+  font-size: var(--type-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.categories dd {
+  margin: 0.15rem 0 0;
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+}
+
+.items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.items li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  font-size: var(--type-xs);
+}
+
+.items li[data-passed='false'] {
+  border-color: var(--danger-border);
+}
+
+.mark {
+  color: var(--success-text);
+  font-family: var(--font-mono);
+}
+
+.items li[data-passed='false'] .mark {
+  color: var(--danger-text);
+}
+
+.explain {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  color: var(--text-muted);
+  font-size: var(--type-xs);
+  line-height: 1.6;
+}
+
+/* -------------------------------------------------------------- concepts */
+
+.cardGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  margin-top: 1.25rem;
+}
+
+.card {
+  padding: 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+
+.cardHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-bottom: 0.4rem;
+}
+
+.cardTitle {
+  font-family: var(--font-display);
+  font-size: var(--type-3xl);
+  letter-spacing: 0.01em;
+}
+
+.cardLede {
+  max-width: 70ch;
+  color: var(--text-muted);
+  font-size: var(--type-md);
+  line-height: 1.55;
+}
+
+.cardSections {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  margin-top: 1rem;
+}
+
+.cardSection h3 {
+  margin-bottom: 0.3rem;
+  font-family: var(--font-display);
+  font-size: var(--type-md);
+}
+
+.cardSection p {
+  max-width: 72ch;
+  color: var(--text-muted);
+  font-size: var(--type-sm);
+  line-height: 1.65;
+}
+
+.points {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--text-muted);
+  font-size: var(--type-sm);
+  line-height: 1.55;
+}
+
+.takeaway {
+  margin-top: 0.9rem;
+  padding: 0.6rem 0.7rem;
+  border-left: 3px solid var(--accent);
+  background: var(--surface-inset);
+  color: var(--text);
+  font-size: var(--type-sm);
+  line-height: 1.55;
+}
+
+.quiz {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.quizTitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  font-family: var(--font-display);
+  font-size: var(--type-sm);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.question {
+  margin: 0 0 1rem;
+  padding: 0;
+}
+
+.questionText {
+  margin-bottom: 0.5rem;
+  font-size: var(--type-md);
+  line-height: 1.5;
+}
+
+.choices {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.choice {
+  display: flex;
+  width: 100%;
+  gap: 0.5rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+  color: var(--text);
+  font-size: var(--type-sm);
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+}
+
+.choice:hover {
+  border-color: var(--accent-border);
+}
+
+.choice[data-state='correct'] {
+  border-color: var(--success-border);
+  background: var(--success-soft);
+  color: var(--success-text);
+}
+
+.choice[data-state='wrong'] {
+  border-color: var(--danger-border);
+  background: var(--danger-soft);
+  color: var(--danger-text);
+}
+
+.choiceMark {
+  font-family: var(--font-mono);
+}
+
+.explanation {
+  margin-top: 0.5rem;
+  color: var(--text-muted);
+  font-size: var(--type-xs);
+  line-height: 1.6;
+}
+
+.right {
+  color: var(--success-text);
+}
+
+.wrong {
+  color: var(--danger-text);
+}
+
+/* ---------------------------------------------------------- device page */
+
+.metaList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(11rem, 100%), 1fr));
+  gap: 0.5rem;
+  margin: 1rem 0 0;
+}
+
+.metaItem {
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+}
+
+.metaItem dt {
+  color: var(--text-muted);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.metaItem dd {
+  margin: 0.2rem 0 0;
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+  overflow-wrap: anywhere;
+}
+
+.readOut {
+  margin: 0.5rem 0 0;
+  padding: 0.7rem;
+  max-height: 18rem;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.empty {
+  color: var(--text-muted);
+  font-size: var(--type-sm);
+}
+
+/* ------------------------------------------------------------- incidents */
+
+.incidentList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.incidentRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+
+.incidentRow:hover {
+  border-color: var(--accent-border);
+}
+
+.incidentBody {
+  display: flex;
+  flex: 1 1 16rem;
+  flex-direction: column;
+  min-width: 0;
+  gap: 0.2rem;
+}
+
+.incidentTitle {
+  font-family: var(--font-display);
+  font-size: var(--type-md);
+}
+
+.incidentSymptom {
+  color: var(--text-muted);
+  font-size: var(--type-xs);
+  line-height: 1.5;
+}
+
+.incidentMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.report {
+  margin: 1rem 0 0;
+  padding: 0.75rem 0.9rem;
+  border-left: 3px solid var(--accent);
+  background: var(--surface-inset);
+  color: var(--text-muted);
+  font-size: var(--type-md);
+  line-height: 1.6;
+}
+
+.hints {
+  margin-top: 0.75rem;
+}
+
+.hintList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hint {
+  padding: 0.5rem 0.6rem;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: var(--type-xs);
+  line-height: 1.55;
+}
+
+.conceptLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+}
+
+.conceptChip {
+  display: inline-block;
+  padding: 0.3rem 0.55rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface-inset);
+  color: var(--accent);
+  font-size: var(--type-2xs);
+  text-decoration: none;
+}
+
+.conceptChip:hover {
+  border-color: var(--accent-border);
+}

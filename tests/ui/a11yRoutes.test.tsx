@@ -15,6 +15,7 @@ import {
 import appShellStyles from '../../src/ui/components/AppShell.module.css'
 import fakeDesktopStyles from '../../src/ui/components/FakeDesktop.module.css'
 import pageHeaderStyles from '../../src/ui/components/PageHeader.module.css'
+import commandConsoleStyles from '../../src/ui/components/CommandConsole.module.css'
 import toolConsoleStyles from '../../src/ui/components/ToolConsole.module.css'
 import toolPickerStyles from '../../src/ui/components/ToolPicker.module.css'
 import topologyMapStyles from '../../src/ui/components/TopologyMap.module.css'
@@ -25,6 +26,7 @@ import workspaceStyles from '../../src/ui/routes/workspace.module.css'
 import azureStyles from '../../src/modules/azure/ui/azure.module.css'
 import intuneStyles from '../../src/modules/intune/ui/intune.module.css'
 import dsaStyles from '../../src/modules/dsa/ui/dsa.module.css'
+import netlabStyles from '../../src/modules/netlab/ui/netlab.module.css'
 
 /**
  * The rendered half of the accessibility audit: the labels a screen reader
@@ -79,6 +81,7 @@ const MODULES = {
   'src/ui/components/AppShell.module.css': appShellStyles,
   'src/ui/components/FakeDesktop.module.css': fakeDesktopStyles,
   'src/ui/components/PageHeader.module.css': pageHeaderStyles,
+  'src/ui/components/CommandConsole.module.css': commandConsoleStyles,
   'src/ui/components/ToolConsole.module.css': toolConsoleStyles,
   'src/ui/components/ToolPicker.module.css': toolPickerStyles,
   'src/ui/components/TopologyMap.module.css': topologyMapStyles,
@@ -89,6 +92,7 @@ const MODULES = {
   'src/modules/azure/ui/azure.module.css': azureStyles,
   'src/modules/intune/ui/intune.module.css': intuneStyles,
   'src/modules/dsa/ui/dsa.module.css': dsaStyles,
+  'src/modules/netlab/ui/netlab.module.css': netlabStyles,
 }
 
 interface RouteCase {
@@ -153,13 +157,25 @@ beforeAll(async () => {
     { name: 'intune device', path: '/intune/devices/dev-lt-2207', ready: 'Compliance' },
     { name: 'intune policies', path: '/intune/policies', ready: 'Windows baseline' },
     { name: 'intune apps', path: '/intune/apps', ready: 'Northgate Portal' },
+    { name: 'intune course', path: '/intune/course', ready: 'Intune: Device Compliance' },
     { name: 'intune tickets', path: '/intune/tickets', ready: 'Choose a ticket to open it.' },
+    {
+      name: 'intune terminal',
+      path: '/intune/terminal',
+      ready: 'Type help for every command. Nothing destructive can be run from here.',
+    },
     // The Azure console seeds its own subscription, on the same terms.
     { name: 'azure inventory', path: '/azure', ready: '13 of 13 resources' },
     { name: 'azure resource', path: '/azure/resources/res-nsg-jump', ready: 'Findings' },
     { name: 'azure network', path: '/azure/network', ready: 'nsg-web-prod' },
     { name: 'azure access', path: '/azure/access', ready: 'Rowan Vale (contractor)' },
+    { name: 'azure course', path: '/azure/course', ready: 'Azure: Compute and Cost' },
     { name: 'azure tickets', path: '/azure/tickets', ready: 'Choose a ticket to open it.' },
+    {
+      name: 'azure terminal',
+      path: '/azure/terminal',
+      ready: 'Type help for every command. Nothing destructive can be run from here.',
+    },
     // The language tracks read their lessons from code and their marks from
     // SQLite, so `ready` is text only a rendered page can show.
     { name: 'language tracks', path: '/languages', ready: 'JDK 21, no framework' },
@@ -174,10 +190,31 @@ beforeAll(async () => {
       path: '/languages/java/practice/boxing-comparison',
       ready: 'Check answer',
     },
+    { name: 'language run', path: '/languages/java/run', ready: 'Check answer' },
     // The algorithm drill reads its bank from code and its progress from SQLite.
     { name: 'dsa library', path: '/dsa', ready: 'Unsolved only' },
     { name: 'dsa pattern sheet', path: '/dsa/patterns', ready: 'The input is sorted' },
     { name: 'dsa problem', path: '/dsa/pair-sum-sorted', ready: 'What to notice first' },
+    // The networking lab: a topology of links, an incident workspace with a
+    // console and an action bar, and the concept cards with their quiz.
+    { name: 'networking topology', path: '/networking', ready: 'VLAN 10 · Staff' },
+    {
+      name: 'networking incidents',
+      path: '/networking/incidents',
+      ready: 'One office PC has no network',
+    },
+    {
+      name: 'networking incident',
+      path: '/networking/incidents/one-pc-no-internet',
+      ready: 'Read the equipment',
+    },
+    {
+      name: 'networking device',
+      path: '/networking/devices/sw-core',
+      ready: 'show interfaces status',
+    },
+    { name: 'networking concepts', path: '/networking/concepts', ready: 'LAN, WAN and WLAN' },
+    { name: 'networking tools', path: '/networking/tools', ready: 'ipconfig /all' },
     { name: 'not found', path: '/no-such-route' },
   ]
 }, 60_000)

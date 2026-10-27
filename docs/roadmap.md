@@ -1,7 +1,7 @@
 # HelpDeskLab — Roadmap
 
-**Status:** M0–M8 built, M7 half done (its sign-off slot is still open) · R1 close-out still open
-**Last updated:** 2026-10-25
+**Status:** M0–M8 and M10 built, M7 half done (its sign-off slot is still open) · R1 close-out still open
+**Last updated:** 2026-10-26
 **Companion:** [architecture-helpdesklab.md](architecture-helpdesklab.md)
 
 ## 1. Goal and audience
@@ -103,6 +103,33 @@ misconception it stands for. Self-contained in `src/modules/languages/`, two
 `lang_*` tables from one migration (schema v17), and outside XP and the
 simulator filter for the drill's reason: reading a lesson is not resolving a
 ticket. Nothing is compiled or executed, so the skill is reading the runtime.
+- **M5e — typed consoles: done (2026-10-25).** The two admin consoles grew the
+  shell their product has: `/intune/terminal` takes PowerShell cmdlets and
+  `/azure/terminal` takes `az` commands, both over the same local estate and both
+  routing every action through the service the pages use, so a command and a
+  button leave one activity row and one score. Reads that the tickets score are
+  the reads either way: `Get-Device` and `az resource show` record the diagnostic
+  step. Destructive verbs are refused with a pointer to the page that states the
+  consequence. `/languages/:trackId/run` adds the third thing: a track's drills
+  asked in sequence with the number keys, ending in a tally that links back to
+  what was wrong. One component (`ui/components/CommandConsole.tsx`) draws both
+  shells; a module supplies its resolver and its prompt.
+- **M10 — networking lab: done (2026-10-26).** A fifth practice surface at
+  `/networking`, and the first one that is a place rather than a console: a
+  fictional primary school's network — ISP circuit, edge firewall, router,
+  managed switch, two access points and the staff and student VLANs — with every
+  device clickable into its own admin page or CLI. Fifteen scenarios cover one
+  PC with no internet, a whole room offline, a bad port, an exhausted scope, an
+  address conflict, a wrong VLAN, an AP down, weak coverage, DNS, the firewall,
+  the wrong gateway, a duplex mismatch and an ISP outage against an internal
+  fault with the same report. Five concept cards (LAN/WAN/WLAN, OSI, `/24` and
+  `/25`, DHCP-DNS-NAT, ISP circuit types) each end in a quiz, and six tools plus
+  a router/switch shell answer from the scenario's live state. Self-contained in
+  `src/modules/netlab/`, three `netlab_*` tables from one migration (schema
+  v18), scored 10/55/20/15 like every other attempt, with changes made before
+  the fault was isolated costing points. Reading a card or answering a quiz
+  carries no XP, for the drill's reason. See
+  [netlab-module.md](netlab-module.md).
 - **Next — R1 close-out:** fairness lint over every variant, three scoring
   fixtures per variant, the keyboard and resume audit, Leitner surfacing on
   Progress, and the sign-off pass with its evidence. Sign-off is what closes
@@ -117,8 +144,9 @@ surfaces beside the desk, not a new release line. So read §9.3's M5 row as *R1 
 the number is not — and its M8 *field notes* row as unbuilt: the lesson written for
 each module covers part of that ground, but a per-family primer does not exist yet.
 M9's rank and streak shipped inside M8 and are in the header today, though the
-tier ladder itself is only written down in `src/domain/progress/rank.ts`; M10's
-text call mode and M11's interview drill are still only ideas.
+tier ladder itself is only written down in `src/domain/progress/rank.ts`. M10's
+label went to the networking lab, so the text call mode the plan lists under that
+number is still only an idea, as is M11's interview drill.
 
 The Release 1 checklist and acceptance criteria below are still outstanding; the
 items above cover the build milestones but not yet the fairness-lint acceptance
@@ -424,7 +452,7 @@ its fixture set before it ships rather than after.
 | M7 | R1 sign-off: recovery-flow polish, accessibility and performance pass, docs refresh, recorded manual E2E script — **still open**; the job-targets surface that shipped under the same label is recorded in §11 | S | All R1 acceptance criteria recorded with evidence |
 | M8 | Family field notes: one original primer per family, linked from queue and debrief — **label used instead for the service consoles, curriculum, theming and type scale; the primers are still unbuilt** | S–M | Every family has a primer; copy independently written; no schema change |
 | M9 | Rank and streak: derived rank from XP, weekly streak on the dashboard — **shipped inside M8, except that the ladder is documented only in `src/domain/progress/rank.ts`** | S | Rank and streak survive reload; thresholds documented; no new tables |
-| M10 | Text call mode: one family end-to-end | M | Call variant playable from greeting to resolution; transcript stored as actions; communication rubric item with fixtures |
+| M10 | Text call mode: one family end-to-end — **label used instead for the networking lab; the call mode is still unbuilt** | M | Call variant playable from greeting to resolution; transcript stored as actions; communication rubric item with fixtures |
 | M11 | Interview drill: personas, questions, deterministic scoring, summary | M–L | Three personas playable; scoring is deterministic and explained; no AI or free text required |
 
 **Reading this table today.** The label **M5** went to the device console, so

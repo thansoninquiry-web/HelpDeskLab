@@ -586,3 +586,38 @@
     flex-direction: column;
   }
 }
+
+/* A run asks its questions one after another, so its answers are buttons rather
+   than radios: each one carries the number key that picks it, and the chosen one
+   is held until Enter checks it. */
+button.choice {
+  width: 100%;
+  font-family: inherit;
+  text-align: left;
+}
+
+button.choice:disabled {
+  cursor: default;
+}
+
+button.choice .choiceMark {
+  display: block;
+  margin-top: 0.2rem;
+}
+
+.choiceKey {
+  min-width: 1.4rem;
+  padding: 0.05rem 0.3rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+  text-align: center;
+}
+
+.choice[data-state='chosen'] {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--text);
+}

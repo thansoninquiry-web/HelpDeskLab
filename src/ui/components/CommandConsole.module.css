@@ -1,0 +1,179 @@
+/* A terminal pane: the module's own shell, drawn in the same tokens as the
+   ticket workspace so both themes and both consoles agree about what a console
+   looks like. */
+
+.console {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin-top: 1.5rem;
+  padding: 0.9rem 0.95rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  container-type: inline-size;
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+}
+
+.title {
+  margin: 0;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: var(--type-sm);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: var(--type-sm);
+}
+
+.scroll {
+  max-height: 22rem;
+  overflow-y: auto;
+  padding: 0.7rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+  /* The scrollback is the one place the lab shows raw text: no prose wrapping
+     rules, no hyphenation, and a scrollbar that never widens the pane. */
+  overflow-wrap: anywhere;
+}
+
+.inputLine,
+.outputLine {
+  margin: 0;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.inputLine {
+  color: var(--text);
+}
+
+.outputLine[data-tone='error'] {
+  color: var(--danger-text);
+}
+
+.outputLine[data-tone='success'] {
+  color: var(--success-text);
+}
+
+.outputLine[data-tone='muted'] {
+  color: var(--text-faint);
+}
+
+.promptRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+}
+
+.promptLabel {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+}
+
+.input {
+  flex: 1 1 12rem;
+  min-width: 0;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+}
+
+.input::placeholder {
+  color: var(--text-faint);
+}
+
+.input:focus-visible {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.run {
+  cursor: pointer;
+  padding: 0.45rem 0.9rem;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--type-sm);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.run:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.run:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.help {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: var(--type-sm);
+}
+
+.help[role='alert'] {
+  color: var(--danger-text);
+}
+
+.suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.suggestionsLabel {
+  color: var(--text-faint);
+  font-family: var(--font-display);
+  font-size: var(--type-2xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.suggestion {
+  cursor: pointer;
+  padding: 0.25rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+}
+
+.suggestion:hover {
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+@container (max-width: 30rem) {
+  .run {
+    width: 100%;
+  }
+}

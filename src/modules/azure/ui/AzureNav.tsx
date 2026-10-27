@@ -5,7 +5,11 @@ const sections = [
   { to: '/azure', label: 'Inventory', end: true },
   { to: '/azure/network', label: 'Network rules', end: false },
   { to: '/azure/access', label: 'Access', end: false },
+  // The course behind the tickets, so a lesson is reachable from the console
+  // without opening one first.
+  { to: '/azure/course', label: 'Course', end: false },
   { to: '/azure/tickets', label: 'Practice tickets', end: false },
+  { to: '/azure/terminal', label: 'Terminal', end: false },
 ] as const
 
 /** The console's own tabs, so the app shell keeps one section for the module. */

@@ -28,11 +28,12 @@ const REWIND_LABELS: Record<RewindBand, string> = {
   rare: 'Rarely',
 }
 
-/** The two simulators a scored attempt can come from, in the learner's words. */
+/** The simulators a scored attempt can come from, in the learner's words. */
 const SIMULATOR_LABELS: Record<SimulatorId, string> = {
   'service-desk': 'Service desk',
   intune: 'Intune',
   azure: 'Azure',
+  netlab: 'Networking lab',
 }
 
 const SIMULATOR_FILTERS: ReadonlyArray<{ value: SimulatorId | 'all'; label: string }> = [
@@ -40,6 +41,7 @@ const SIMULATOR_FILTERS: ReadonlyArray<{ value: SimulatorId | 'all'; label: stri
   { value: 'service-desk', label: SIMULATOR_LABELS['service-desk'] },
   { value: 'intune', label: SIMULATOR_LABELS.intune },
   { value: 'azure', label: SIMULATOR_LABELS.azure },
+  { value: 'netlab', label: SIMULATOR_LABELS.netlab },
 ]
 
 /**

@@ -28,8 +28,16 @@ reasoning, not compilation.
 | `/languages/:trackId` | One track: what it leaves you able to do, its lessons in order, its drills with their state |
 | `/languages/:trackId/lessons/:lessonId` | One lesson, with a read mark and the neighbouring lessons |
 | `/languages/:trackId/practice/:itemId` | One drill: the snippet, the answer options, and the explained result |
+| `/languages/:trackId/run` | A run: the track's drills in order, keys to answer, and the tally at the end |
 
 `trackId` is one of `java`, `csharp`, `python`.
+
+A **run** is the drills asked one after another instead of one page at a time:
+the number keys pick an answer, Enter checks it and then moves on, and the last
+screen counts what was right and links back to the ones that were not. It calls
+the same `submit` per answer, so it writes the same attempts and moves the same
+progress as answering the drills individually — there is no run table and no
+run score, because a run is rehearsal, not a second measurement.
 
 ## The content is code; only progress is stored
 

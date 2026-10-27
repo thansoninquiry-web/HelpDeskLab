@@ -16,15 +16,24 @@ only for the scoring thresholds, and the app touches it through two functions.
 | `data/seed.ts` | The starting estate, with timestamps relative to first open |
 | `logic/compliance.ts` | Policy evaluation, app targeting, version comparison |
 | `logic/actions.ts` | The device action engine and its audit events |
+| `logic/commands.ts` | The terminal's resolver: what a typed cmdlet reads, and which action it asks for |
 | `tickets/templates.ts` | The eight practice tickets |
 | `tickets/scoring.ts` | Attempt scoring, reuse of the app's thresholds and bands |
 | `tickets/registry.ts` | The two-function seam (register + completion check) |
 | `persistence/store.ts` | Reads, seeds and writes the `intune_*` tables |
 | `service.ts` | Use cases against the store, with the clock injected |
-| `ui/` | Devices, device detail, policies, apps and practice tickets |
+| `ui/` | Devices, device detail, policies, apps, course and practice tickets |
 
 The app side is `src/app/intuneService.ts`, which hands the module the local
 database's `intune` store. Nothing else in the app imports the module.
+
+`/intune/course` is the console's own tab for the lessons its tickets are drawn
+from: the three Intune modules in course order, each with its progress and a link
+to `/modules/<id>`. It exists so the course is reachable from the console
+without opening a ticket first — the reverse of the lesson link each ticket
+carries. It keeps no data of its own: the list comes from `loadCurriculum()`
+filtered on `practice === 'intune'`, the same field the dashboard uses to decide
+where a module is worked, so adding a fourth Intune module needs no change here.
 
 ## Data model
 
@@ -216,3 +225,27 @@ list, so a new destructive action is priced without touching the scorer.
 
 Practicing changes the estate for good. The devices page has a two-step reset that
 deletes the module's rows and reseeds them; practice attempts go with it.
+
+## Terminal
+
+`/intune/terminal` is the estate as a shell. It is a second way to the same
+service, not a second implementation: every command resolves against the loaded
+estate in `logic/commands.ts`, prints, or asks the page to run exactly one action
+through `IntuneService.act`, which is what the action bar calls too. So a sync
+typed at the prompt writes the same `intune_events` row, moves the same device,
+and scores the same as the button.
+
+Two rules hold the shell to the rest of the console:
+
+- **Nothing destructive.** `Retire-Device` and `Wipe-Device` are refused with a
+  pointer to the device page. Wiping a phone is still a two-step decision stated
+  in full sentences, and a terminal that does it on one line would undercut that.
+- **Reading counts.** `Get-Device` prints the record and records the read, the
+  same event the *Read the device record* button writes, so working from the
+  terminal cannot cost a learner the diagnosis points the button would have
+  earned. `Get-Devices`, `Get-Compliance`, `Get-Apps` and `Get-Policies` are
+  plain reads and record nothing.
+
+The pane itself is `ui/components/CommandConsole.tsx`: prompt, scrollback, up and
+down to recall, `help`, `Clear-Host`. It knows nothing about Intune, so the Azure
+console beside it borrows the same component and supplies its own prompt.
