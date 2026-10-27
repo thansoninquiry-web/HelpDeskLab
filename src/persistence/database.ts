@@ -10,6 +10,7 @@ import type {
   TicketRepository,
 } from '../domain/ports'
 import { AzureStore } from '../modules/azure/persistence/store'
+import { DesktopStore } from '../modules/desktop/persistence/store'
 import { DsaStore } from '../modules/dsa/persistence/store'
 import { IntuneStore } from '../modules/intune/persistence/store'
 import { LanguageStore } from '../modules/languages/persistence/store'
@@ -61,6 +62,12 @@ export interface Persistence {
    * incident is a content change rather than a schema change.
    */
   netlab: NetlabStore
+  /**
+   * The Desktop Support bench's table: one row per visit to a case, holding the
+   * reads, the changes and the checklist. The machine and its cases are code, so
+   * a new case is a content change rather than a schema change.
+   */
+  desktop: DesktopStore
   schemaVersion(): number
   exportDatabase(): Promise<Uint8Array>
   importDatabase(bytes: Uint8Array): Promise<void>
@@ -109,6 +116,7 @@ export class SqlitePersistence implements Persistence, BackupStore {
   readonly dsa: DsaStore
   readonly languages: LanguageStore
   readonly netlab: NetlabStore
+  readonly desktop: DesktopStore
 
   constructor(db: SqliteDriver, snapshotStore: SnapshotStore, wasmBinary?: ArrayBuffer) {
     this.db = db
@@ -132,6 +140,7 @@ export class SqlitePersistence implements Persistence, BackupStore {
     this.dsa = new DsaStore(context)
     this.languages = new LanguageStore(context)
     this.netlab = new NetlabStore(context)
+    this.desktop = new DesktopStore(context)
   }
 
   schemaVersion(): number {

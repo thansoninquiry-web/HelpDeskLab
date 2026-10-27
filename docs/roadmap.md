@@ -1,6 +1,6 @@
 # HelpDeskLab — Roadmap
 
-**Status:** M0–M8 and M10 built, M7 half done (its sign-off slot is still open) · R1 close-out still open
+**Status:** M0–M8, M10 and M11 built, M7 half done (its sign-off slot is still open) · R1 close-out still open
 **Last updated:** 2026-10-26
 **Companion:** [architecture-helpdesklab.md](architecture-helpdesklab.md)
 
@@ -130,6 +130,25 @@ ticket. Nothing is compiled or executed, so the skill is reading the runtime.
   the fault was isolated costing points. Reading a card or answering a quiz
   carries no XP, for the drill's reason. See
   [netlab-module.md](netlab-module.md).
+- **M11 — desktop support and PC repair: done (2026-10-26).** A sixth simulator at
+  `/desktop`: a bench with a desktop and a laptop, twenty-five cases, and a
+  checklist that is scored. Ten hardware cases (dead PSU, beep-code memory, a
+  failing module, a failing drive, overheating, a flat CMOS cell, a dead battery,
+  a dead charger, a cracked panel, dead keys) each open a clickable internals
+  diagram where a part is selected, tested or replaced. Four Windows 10/11 cases
+  and three **Legacy mode** cases (Windows 7 USB drivers after a clean install,
+  XP-era compatibility, a machine out of support with updates off) run Task
+  Manager, Device Manager, Event Viewer, Disk Management, msconfig, Safe Mode,
+  `sfc /scannow`, `chkdsk` and System Restore against the case's own machine.
+  Four application cases cover Outlook profiles, an Office add-in crash, a stuck
+  spooler and a shared printer install, and four QuickBooks cases cover a damaged
+  company file, multi-user hosting, a lapsed licence and a backup restore.
+  "Do the right thing" is four scored steps — verify the user, back up before
+  anything that can lose data, document, follow up — and a data-risk change made
+  before the backup cannot pass however healthy the machine ends up. Self-
+  contained in `src/modules/desktop/`, one `desktop_attempts` table from one
+  migration (schema v19), scored 25/20/40/15, and joined to XP and weak topics.
+  See [desktop-module.md](desktop-module.md).
 - **Next — R1 close-out:** fairness lint over every variant, three scoring
   fixtures per variant, the keyboard and resume audit, Leitner surfacing on
   Progress, and the sign-off pass with its evidence. Sign-off is what closes
@@ -145,8 +164,9 @@ the number is not — and its M8 *field notes* row as unbuilt: the lesson writte
 each module covers part of that ground, but a per-family primer does not exist yet.
 M9's rank and streak shipped inside M8 and are in the header today, though the
 tier ladder itself is only written down in `src/domain/progress/rank.ts`. M10's
-label went to the networking lab, so the text call mode the plan lists under that
-number is still only an idea, as is M11's interview drill.
+label went to the networking lab and M11's to the desktop bench, so neither the
+text call mode nor the interview drill the plan lists under those numbers has
+been built.
 
 The Release 1 checklist and acceptance criteria below are still outstanding; the
 items above cover the build milestones but not yet the fairness-lint acceptance
@@ -438,8 +458,10 @@ handoff note reused the existing note actions rather than adding a schema field.
 | M10 Text call mode | Existing caller prompts and the `verify-caller` intent; the environment reducer for the state the caller reacts to; the session action log; the declarative rubric evaluator | Call turns recorded under the existing `ask-user` action kind (the `actions.kind` CHECK constraint would otherwise force a migration), so the log, debrief, and scoring loader stay as they are; plus a call-turn content file per variant and one communication rubric item |
 | M11 Interview drill | The page shell, the debrief-style summary layout, and the rubric evaluator's deterministic item model | Persona and question content plus an answer key; no AI, no free text, no persistence in v1 — the summary is shown once and not stored |
 
-Two consequences worth stating: none of M8–M11 needs a schema version, and M8 and
-M10 are content-heavy rather than rule-heavy. M10 is still the only item that
+Two consequences worth stating: none of M8–M11 *as planned here* needs a schema
+version — the two labels since reused (M10's networking lab and M11's desktop
+bench) each added one, v18 and v19 — and M8 and M10 are content-heavy rather
+than rule-heavy. M10 is still the only item that
 adds an interaction mode and writes to an existing path, which is why it needs
 its fixture set before it ships rather than after.
 
@@ -453,7 +475,7 @@ its fixture set before it ships rather than after.
 | M8 | Family field notes: one original primer per family, linked from queue and debrief — **label used instead for the service consoles, curriculum, theming and type scale; the primers are still unbuilt** | S–M | Every family has a primer; copy independently written; no schema change |
 | M9 | Rank and streak: derived rank from XP, weekly streak on the dashboard — **shipped inside M8, except that the ladder is documented only in `src/domain/progress/rank.ts`** | S | Rank and streak survive reload; thresholds documented; no new tables |
 | M10 | Text call mode: one family end-to-end — **label used instead for the networking lab; the call mode is still unbuilt** | M | Call variant playable from greeting to resolution; transcript stored as actions; communication rubric item with fixtures |
-| M11 | Interview drill: personas, questions, deterministic scoring, summary | M–L | Three personas playable; scoring is deterministic and explained; no AI or free text required |
+| M11 | Interview drill — **label used instead for the desktop bench; the drill is still unbuilt**: personas, questions, deterministic scoring, summary | M–L | Three personas playable; scoring is deterministic and explained; no AI or free text required |
 
 **Reading this table today.** The label **M5** went to the device console, so
 this row's work is the *R1 close-out* described under *Current status* — the

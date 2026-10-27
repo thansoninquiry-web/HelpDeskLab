@@ -217,6 +217,7 @@ describe('app shell', () => {
       'Intune',
       'Azure',
       'Networking',
+      'Desktop',
       'Job targets',
       'Progress',
       'Settings',

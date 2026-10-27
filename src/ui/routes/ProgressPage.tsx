@@ -34,6 +34,7 @@ const SIMULATOR_LABELS: Record<SimulatorId, string> = {
   intune: 'Intune',
   azure: 'Azure',
   netlab: 'Networking lab',
+  desktop: 'Desktop support',
 }
 
 const SIMULATOR_FILTERS: ReadonlyArray<{ value: SimulatorId | 'all'; label: string }> = [
@@ -42,6 +43,7 @@ const SIMULATOR_FILTERS: ReadonlyArray<{ value: SimulatorId | 'all'; label: stri
   { value: 'intune', label: SIMULATOR_LABELS.intune },
   { value: 'azure', label: SIMULATOR_LABELS.azure },
   { value: 'netlab', label: SIMULATOR_LABELS.netlab },
+  { value: 'desktop', label: SIMULATOR_LABELS.desktop },
 ]
 
 /**

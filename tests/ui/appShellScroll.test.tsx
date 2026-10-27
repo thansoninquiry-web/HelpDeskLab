@@ -103,6 +103,7 @@ describe('the header while the page is scrolled', () => {
       'Intune',
       'Azure',
       'Networking',
+      'Desktop',
       'Job targets',
       'Progress',
       'Settings',

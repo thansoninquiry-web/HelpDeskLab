@@ -16,6 +16,10 @@ import { AzureNetworkPage } from '../../modules/azure/ui/NetworkPage'
 import { AzureResourcePage } from '../../modules/azure/ui/ResourcePage'
 import { AzureTicketsPage } from '../../modules/azure/ui/TicketsPage'
 import { AzureTerminalPage } from '../../modules/azure/ui/TerminalPage'
+import { DesktopBenchPage } from '../../modules/desktop/ui/BenchPage'
+import { DesktopCasePage } from '../../modules/desktop/ui/CasePage'
+import { DesktopCasesPage } from '../../modules/desktop/ui/CasesPage'
+import { DesktopToolsPage } from '../../modules/desktop/ui/ToolsPage'
 import { NetlabConceptsPage } from '../../modules/netlab/ui/ConceptsPage'
 import { NetlabDevicePage } from '../../modules/netlab/ui/DevicePage'
 import { NetlabIncidentPage } from '../../modules/netlab/ui/IncidentPage'
@@ -71,6 +75,11 @@ export function AppRoutes() {
         <Route path="networking/devices/:deviceId" element={<NetlabDevicePage />} />
         <Route path="networking/concepts" element={<NetlabConceptsPage />} />
         <Route path="networking/tools" element={<NetlabToolsPage />} />
+        {/* The desktop bench: a case queue, one machine per case, and the bench. */}
+        <Route path="desktop" element={<DesktopCasesPage />} />
+        <Route path="desktop/cases/:caseId" element={<DesktopCasePage />} />
+        <Route path="desktop/bench" element={<DesktopBenchPage />} />
+        <Route path="desktop/tools" element={<DesktopToolsPage />} />
         {/* The algorithm drill: a problem library and one problem's workspace. */}
         <Route path="dsa" element={<DsaProblemsPage />} />
         <Route path="dsa/patterns" element={<DsaPatternsPage />} />

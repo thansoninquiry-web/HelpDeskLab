@@ -3,7 +3,7 @@ export interface Migration {
   statements: readonly string[]
 }
 
-export const SCHEMA_VERSION = 18
+export const SCHEMA_VERSION = 19
 
 export const REQUIRED_TABLES: readonly string[] = [
   'actions',
@@ -13,6 +13,7 @@ export const REQUIRED_TABLES: readonly string[] = [
   'azure_resource_groups',
   'azure_resources',
   'azure_role_assignments',
+  'desktop_attempts',
   'dsa_attempts',
   'dsa_drafts',
   'lang_attempts',
@@ -489,6 +490,25 @@ export const MIGRATIONS: readonly Migration[] = [
         read_at INTEGER NOT NULL
       ) STRICT`,
       'CREATE INDEX idx_netlab_attempts_incident ON netlab_attempts(incident_id, started_at)',
+    ],
+  },
+  {
+    version: 19,
+    // The Desktop Support bench keeps the attempt, not the machine: the parts,
+    // the cases and what each fault does are code in `src/modules/desktop`, so
+    // the rows hold the reads, the changes and the "do the right thing"
+    // checklist for one visit. No real user or company data is stored.
+    statements: [
+      `CREATE TABLE desktop_attempts (
+        id TEXT PRIMARY KEY,
+        case_id TEXT NOT NULL,
+        started_at INTEGER NOT NULL,
+        finished_at INTEGER,
+        score INTEGER CHECK (score IS NULL OR score BETWEEN 0 AND 100),
+        score_json TEXT,
+        state_json TEXT NOT NULL
+      ) STRICT`,
+      'CREATE INDEX idx_desktop_attempts_case ON desktop_attempts(case_id, started_at)',
     ],
   },
 ]

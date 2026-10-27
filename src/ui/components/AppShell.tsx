@@ -22,6 +22,7 @@ const navigation = [
   { to: '/intune', label: 'Intune', end: false, icon: 'device' },
   { to: '/azure', label: 'Azure', end: false, icon: 'cloud' },
   { to: '/networking', label: 'Networking', end: false, icon: 'network' },
+  { to: '/desktop', label: 'Desktop', end: false, icon: 'desktop' },
   { to: '/targets', label: 'Job targets', end: false, icon: 'target' },
   { to: '/progress', label: 'Progress', end: false, icon: 'chart' },
   { to: '/settings', label: 'Settings', end: false, icon: 'gear' },
@@ -107,6 +108,16 @@ function Icon({ name }: { name: (typeof navigation)[number]['icon'] }) {
       <svg {...common}>
         <rect x="3" y="7" width="18" height="8" rx="1.5" />
         <path d="M7 15v4M12 15v4M17 15v4M7 7V4M17 7V4" />
+      </svg>
+    )
+  }
+  if (name === 'desktop') {
+    // A tower and a panel: the bench is the machine, not the network.
+    return (
+      <svg {...common}>
+        <rect x="3" y="4" width="12" height="16" rx="1.5" />
+        <path d="M6 7h6M6 10h6M6 16h2" />
+        <rect x="17" y="7" width="4" height="10" rx="1" />
       </svg>
     )
   }

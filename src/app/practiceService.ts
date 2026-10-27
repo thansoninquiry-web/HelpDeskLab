@@ -123,6 +123,7 @@ import { foldScenarioStats } from '../domain/progress/leitner'
 import { summarizeHistory, type ProgressSummary, type RankProgress } from '../domain/progress/rank'
 import { loadAzureProgress } from './azureProgress'
 import { loadIntuneProgress } from './intuneProgress'
+import { loadDesktopProgress } from './desktopProgress'
 import { loadNetlabProgress } from './netlabProgress'
 import {
   familyRewinds,
@@ -707,7 +708,7 @@ export interface ReferenceStepView {
   detail?: string
 }
 
-export type SimulatorId = 'service-desk' | 'intune' | 'azure' | 'netlab'
+export type SimulatorId = 'service-desk' | 'intune' | 'azure' | 'netlab' | 'desktop'
 
 export interface ProgressRow {
   scenarioId: string
@@ -4157,6 +4158,8 @@ export interface WeakTopicOptions {
   azureScenarioIds?: ReadonlySet<string>
   /** Incidents practiced in the Networking Lab rather than the ticket queue. */
   netlabScenarioIds?: ReadonlySet<string>
+  /** Cases practiced on the Desktop bench rather than the ticket queue. */
+  desktopScenarioIds?: ReadonlySet<string>
 }
 
 /**
@@ -4175,6 +4178,7 @@ export function computeWeakTopics(
   const intune = options.intuneScenarioIds ?? new Set<string>()
   const azure = options.azureScenarioIds ?? new Set<string>()
   const netlab = options.netlabScenarioIds ?? new Set<string>()
+  const desktop = options.desktopScenarioIds ?? new Set<string>()
   const byScenario = new Map<string, ScoreHistoryEntry[]>()
   for (const entry of history) {
     const existing = byScenario.get(entry.scenarioId)
@@ -4237,13 +4241,17 @@ export function computeWeakTopics(
         ? 'azure'
         : netlab.has(scenarioId)
           ? 'netlab'
-          : null
+          : desktop.has(scenarioId)
+            ? 'desktop'
+            : null
     const surface =
       console === 'intune' || console === 'azure'
         ? 'console ticket'
         : console === 'netlab'
           ? 'incident'
-          : null
+          : console === 'desktop'
+            ? 'case'
+            : null
     const recommendation =
       weakestCategory && weakestCategory.percent < 100
         ? surface
@@ -4269,13 +4277,17 @@ export function computeWeakTopics(
             ? '/azure/tickets'
             : console === 'netlab'
               ? `/networking/incidents/${encodeURIComponent(scenarioId)}`
-              : `/practice?family=${encodeURIComponent(scenarioId)}`,
+              : console === 'desktop'
+                ? `/desktop/cases/${encodeURIComponent(scenarioId)}`
+                : `/practice?family=${encodeURIComponent(scenarioId)}`,
       actionLabel:
         console === 'netlab'
           ? 'Open the incident'
-          : console
-            ? 'Open the console'
-            : `Practice ${scenarioId}`,
+          : console === 'desktop'
+            ? 'Open the case'
+            : console
+              ? 'Open the console'
+              : `Practice ${scenarioId}`,
     })
   }
 
@@ -4316,18 +4328,26 @@ export async function loadProgress(): Promise<ProgressView> {
   // The Intune console scores its own attempts without opening a ticket session,
   // so its finished work joins the ticket history here rather than in another
   // table: XP, rank, streaks and the scenario list then read one history.
-  const [intune, azure, netlab] = await Promise.all([
+  const [intune, azure, netlab, desktop] = await Promise.all([
     loadIntuneProgress(),
     loadAzureProgress(),
     loadNetlabProgress(),
+    loadDesktopProgress(),
   ])
-  const mergedHistory = [...history, ...intune.history, ...azure.history, ...netlab.history]
-  const mergedStats = [...stats, ...intune.stats, ...azure.stats, ...netlab.stats]
+  const mergedHistory = [
+    ...history,
+    ...intune.history,
+    ...azure.history,
+    ...netlab.history,
+    ...desktop.history,
+  ]
+  const mergedStats = [...stats, ...intune.stats, ...azure.stats, ...netlab.stats, ...desktop.stats]
   const titles = {
     ...SCENARIO_TITLES,
     ...intune.titles,
     ...azure.titles,
     ...netlab.titles,
+    ...desktop.titles,
   }
 
   const summary = summarizeHistory(mergedHistory, Date.now())
@@ -4343,7 +4363,9 @@ export async function loadProgress(): Promise<ProgressView> {
           ? 'azure'
           : netlab.titles[entry.scenarioId] !== undefined
             ? 'netlab'
-            : null
+            : desktop.titles[entry.scenarioId] !== undefined
+              ? 'desktop'
+              : null
     return {
       scenarioId: entry.scenarioId,
       scenarioTitle: titleFor(entry.scenarioId, titles),
@@ -4354,7 +4376,9 @@ export async function loadProgress(): Promise<ProgressView> {
           ? { href: '/azure/tickets' }
           : console === 'netlab'
             ? { href: `/networking/incidents/${encodeURIComponent(entry.scenarioId)}` }
-            : {}),
+            : console === 'desktop'
+              ? { href: `/desktop/cases/${encodeURIComponent(entry.scenarioId)}` }
+              : {}),
       attempts: entry.attempts,
       passes: entry.passes,
       bestScore: entry.bestScore,
@@ -4387,6 +4411,7 @@ export async function loadProgress(): Promise<ProgressView> {
       intuneScenarioIds: new Set(Object.keys(intune.titles)),
       azureScenarioIds: new Set(Object.keys(azure.titles)),
       netlabScenarioIds: new Set(Object.keys(netlab.titles)),
+      desktopScenarioIds: new Set(Object.keys(desktop.titles)),
     }),
     hintHabits: hintHabits(scoredSteps, takenHints),
     hintHabitSummary: summarizeHintHabits(scoredSteps, takenHints, scoredHintCounts),
@@ -4417,14 +4442,15 @@ function rewindRows(
 /** Header-sized view: XP, rank, and streak without the recommendation work. */
 export async function loadProgressSummary(): Promise<ProgressSummary> {
   const db = await database()
-  const [history, intune, azure, netlab] = await Promise.all([
+  const [history, intune, azure, netlab, desktop] = await Promise.all([
     db.scores.listHistory(),
     loadIntuneProgress(),
     loadAzureProgress(),
     loadNetlabProgress(),
+    loadDesktopProgress(),
   ])
   return summarizeHistory(
-    [...history, ...intune.history, ...azure.history, ...netlab.history],
+    [...history, ...intune.history, ...azure.history, ...netlab.history, ...desktop.history],
     Date.now(),
   )
 }

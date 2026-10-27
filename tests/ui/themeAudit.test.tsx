@@ -36,6 +36,7 @@ import intuneStyles from '../../src/modules/intune/ui/intune.module.css'
 import dsaStyles from '../../src/modules/dsa/ui/dsa.module.css'
 import languageStyles from '../../src/modules/languages/ui/languages.module.css'
 import netlabStyles from '../../src/modules/netlab/ui/netlab.module.css'
+import desktopStyles from '../../src/modules/desktop/ui/desktop.module.css'
 
 /**
  * The theme audit: every route, in both themes, plus the palette itself.
@@ -108,6 +109,7 @@ const MODULES = {
   'src/modules/dsa/ui/dsa.module.css': dsaStyles,
   'src/modules/languages/ui/languages.module.css': languageStyles,
   'src/modules/netlab/ui/netlab.module.css': netlabStyles,
+  'src/modules/desktop/ui/desktop.module.css': desktopStyles,
 }
 
 interface RouteCase {
@@ -326,6 +328,21 @@ beforeAll(async () => {
     },
     { name: 'networking concepts', path: '/networking/concepts', ready: 'LAN, WAN and WLAN' },
     { name: 'networking tools', path: '/networking/tools', ready: 'ipconfig /all' },
+    // The desktop bench: a case queue, a machine with a clickable diagram and a
+    // checklist, and the bench and tool references.
+    { name: 'desktop cases', path: '/desktop', ready: 'The office PC is completely dead' },
+    {
+      name: 'desktop case',
+      path: '/desktop/cases/cmos-clock-reset',
+      ready: 'Do the right thing',
+    },
+    {
+      name: 'desktop case without a diagram',
+      path: '/desktop/cases/outlook-profile-corrupt',
+      ready: 'Reads that isolate it',
+    },
+    { name: 'desktop bench', path: '/desktop/bench', ready: 'Legacy mode · Windows 7' },
+    { name: 'desktop tools', path: '/desktop/tools', ready: 'System File Checker' },
     { name: 'not found', path: '/no-such-route' },
   ]
 }, 60_000)
