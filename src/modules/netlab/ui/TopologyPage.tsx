@@ -89,6 +89,14 @@ export function NetlabTopologyPage() {
 
       <NetlabNav />
 
+      <p className={styles.note}>
+        First time in the lab?{' '}
+        <Link className={styles.link} to="/networking/tutorial">
+          Read the tutorial
+        </Link>{' '}
+        — one incident, from the report down to the wire.
+      </p>
+
       <section className={styles.section} aria-labelledby="path-heading">
         <div className={styles.sectionHeading}>
           <h2 id="path-heading">The path out of the building</h2>

@@ -62,6 +62,14 @@ export function DesktopCasesPage() {
 
       <DesktopNav />
 
+      <p className={styles.note}>
+        New to the bench?{' '}
+        <Link className={styles.link} to="/desktop/tutorial">
+          Read the tutorial
+        </Link>{' '}
+        — one machine, from the symptom to the note.
+      </p>
+
       {error ? (
         <p className={styles.empty} role="alert">
           {error}

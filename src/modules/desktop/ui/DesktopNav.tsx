@@ -3,6 +3,7 @@ import styles from './desktop.module.css'
 
 const sections = [
   { to: '/desktop', label: 'Cases', end: true },
+  { to: '/desktop/tutorial', label: 'Tutorial', end: false },
   { to: '/desktop/bench', label: 'Bench', end: false },
   { to: '/desktop/tools', label: 'Tools', end: false },
 ] as const

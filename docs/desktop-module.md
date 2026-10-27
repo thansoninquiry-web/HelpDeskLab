@@ -7,6 +7,11 @@ kept.
 The school in the networking lab has a stock room; this is the desk that looks
 after its machines. Nothing here names a real person, company or machine.
 
+A learner-facing tutorial at `/desktop/tutorial` walks one case from the symptom
+to the note — the part test, the backup rule, the one change and the verify —
+with the 25/20/40/15 split and the first mistakes. Its content is
+`data/tutorial.ts`, rendered by the shared tutorial layout.
+
 ## The bench
 
 Two shapes, because the faults differ by shape:

@@ -5,7 +5,10 @@ and no cloud account. Ashfield Primary School is fictional in every particular:
 the addresses come from the documentation ranges, every MAC shares a made-up
 prefix, and the ISP on the wall is invented.
 
-The module lives in `src/modules/netlab/` and is reached at `/networking`.
+The module lives in `src/modules/netlab/` and is reached at `/networking`. A
+learner-facing tutorial at `/networking/tutorial` walks one PC-with-no-link
+incident from the report to the socket, with the scoring and the first mistakes;
+the content is `data/tutorial.ts` and the shared tutorial layout.
 
 ## The estate
 

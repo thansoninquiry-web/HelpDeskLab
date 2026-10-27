@@ -3,6 +3,7 @@ import styles from './netlab.module.css'
 
 const sections = [
   { to: '/networking', label: 'Topology', end: true },
+  { to: '/networking/tutorial', label: 'Tutorial', end: false },
   { to: '/networking/incidents', label: 'Incidents', end: false },
   { to: '/networking/concepts', label: 'Concepts', end: false },
   { to: '/networking/tools', label: 'Tools', end: false },

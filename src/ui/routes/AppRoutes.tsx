@@ -20,15 +20,18 @@ import { AcademyCasePage } from '../../modules/academy/ui/CasePage'
 import { AcademyDeskPage } from '../../modules/academy/ui/DeskPage'
 import { AcademyOnsitePage } from '../../modules/academy/ui/OnsitePage'
 import { AcademyPhrasesPage } from '../../modules/academy/ui/PhrasesPage'
+import { AcademyTutorialPage } from '../../modules/academy/ui/TutorialPage'
 import { DesktopBenchPage } from '../../modules/desktop/ui/BenchPage'
 import { DesktopCasePage } from '../../modules/desktop/ui/CasePage'
 import { DesktopCasesPage } from '../../modules/desktop/ui/CasesPage'
 import { DesktopToolsPage } from '../../modules/desktop/ui/ToolsPage'
+import { DesktopTutorialPage } from '../../modules/desktop/ui/TutorialPage'
 import { NetlabConceptsPage } from '../../modules/netlab/ui/ConceptsPage'
 import { NetlabDevicePage } from '../../modules/netlab/ui/DevicePage'
 import { NetlabIncidentPage } from '../../modules/netlab/ui/IncidentPage'
 import { NetlabIncidentsPage } from '../../modules/netlab/ui/IncidentsPage'
 import { NetlabToolsPage } from '../../modules/netlab/ui/ToolsPage'
+import { NetlabTutorialPage } from '../../modules/netlab/ui/TutorialPage'
 import { NetlabTopologyPage } from '../../modules/netlab/ui/TopologyPage'
 import { IntuneAppsPage } from '../../modules/intune/ui/AppsPage'
 import { IntuneCoursePage } from '../../modules/intune/ui/CoursePage'
@@ -74,6 +77,7 @@ export function AppRoutes() {
         <Route path="azure/terminal" element={<AzureTerminalPage />} />
         {/* The networking lab: a school network, one fault at a time. */}
         <Route path="networking" element={<NetlabTopologyPage />} />
+        <Route path="networking/tutorial" element={<NetlabTutorialPage />} />
         <Route path="networking/incidents" element={<NetlabIncidentsPage />} />
         <Route path="networking/incidents/:incidentId" element={<NetlabIncidentPage />} />
         <Route path="networking/devices/:deviceId" element={<NetlabDevicePage />} />
@@ -81,12 +85,14 @@ export function AppRoutes() {
         <Route path="networking/tools" element={<NetlabToolsPage />} />
         {/* The desktop bench: a case queue, one machine per case, and the bench. */}
         <Route path="desktop" element={<DesktopCasesPage />} />
+        <Route path="desktop/tutorial" element={<DesktopTutorialPage />} />
         <Route path="desktop/cases/:caseId" element={<DesktopCasePage />} />
         <Route path="desktop/bench" element={<DesktopBenchPage />} />
         <Route path="desktop/tools" element={<DesktopToolsPage />} />
         {/* The Education IT pack: a school desk, its visits, and the two study
             surfaces a school technician needs: phrases and the onsite checklist. */}
         <Route path="academy" element={<AcademyDeskPage />} />
+        <Route path="academy/tutorial" element={<AcademyTutorialPage />} />
         <Route path="academy/cases/:scenarioId" element={<AcademyCasePage />} />
         <Route path="academy/onsite" element={<AcademyOnsitePage />} />
         <Route path="academy/phrases" element={<AcademyPhrasesPage />} />

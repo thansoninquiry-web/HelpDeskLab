@@ -38,6 +38,7 @@ import languageStyles from '../../src/modules/languages/ui/languages.module.css'
 import netlabStyles from '../../src/modules/netlab/ui/netlab.module.css'
 import desktopStyles from '../../src/modules/desktop/ui/desktop.module.css'
 import academyStyles from '../../src/modules/academy/ui/academy.module.css'
+import tutorialStyles from '../../src/modules/shared/TutorialPage.module.css'
 
 /**
  * The theme audit: every route, in both themes, plus the palette itself.
@@ -112,6 +113,7 @@ const MODULES = {
   'src/modules/netlab/ui/netlab.module.css': netlabStyles,
   'src/modules/desktop/ui/desktop.module.css': desktopStyles,
   'src/modules/academy/ui/academy.module.css': academyStyles,
+  'src/modules/shared/TutorialPage.module.css': tutorialStyles,
 }
 
 interface RouteCase {
@@ -355,6 +357,10 @@ beforeAll(async () => {
     },
     { name: 'academy onsite checklist', path: '/academy/onsite', ready: 'Pack for the visit' },
     { name: 'academy phrases', path: '/academy/phrases', ready: 'Spanish for the school desk' },
+    // The tutorials: one shared layout, the same shape for all three surfaces.
+    { name: 'networking tutorial', path: '/networking/tutorial', ready: 'Before you start' },
+    { name: 'desktop tutorial', path: '/desktop/tutorial', ready: 'Before you start' },
+    { name: 'academy tutorial', path: '/academy/tutorial', ready: 'Before you start' },
     { name: 'not found', path: '/no-such-route' },
   ]
 }, 60_000)

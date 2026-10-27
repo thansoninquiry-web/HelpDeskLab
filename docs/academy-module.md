@@ -7,6 +7,11 @@ Larkspur Academy is invented for this pack — 410 pupils, 46 staff, one
 technician, seven rooms and a rolling laptop cart. Nothing here names a real
 person, school or machine, and no caller is modelled on anyone.
 
+A learner-facing tutorial at `/academy/tutorial` walks one projector visit from
+the bell to the note: the reads, the caller conversation, the walk-up, the
+onsite checklist and where the 100 points come from. Its content is
+`data/tutorial.ts`, rendered by the shared tutorial layout.
+
 ## Why a module rather than a generator family
 
 The scenario pack was asked for "on top of the existing ticket generator". It is

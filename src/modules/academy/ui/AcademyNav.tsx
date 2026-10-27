@@ -3,6 +3,7 @@ import styles from './academy.module.css'
 
 const sections = [
   { to: '/academy', label: 'Desk', end: true },
+  { to: '/academy/tutorial', label: 'Tutorial', end: false },
   { to: '/academy/onsite', label: 'Onsite checklist', end: false },
   { to: '/academy/phrases', label: 'Spanish phrases', end: false },
 ] as const

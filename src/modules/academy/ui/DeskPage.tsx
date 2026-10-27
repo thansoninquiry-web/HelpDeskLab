@@ -36,6 +36,14 @@ export function AcademyDeskPage() {
 
       <AcademyNav />
 
+      <p className={styles.note}>
+        First day at the school?{' '}
+        <Link className={styles.link} to="/academy/tutorial">
+          Read the tutorial
+        </Link>{' '}
+        — one visit, from the bell to the note.
+      </p>
+
       {error ? (
         <p className={styles.empty} role="alert">
           {error}
